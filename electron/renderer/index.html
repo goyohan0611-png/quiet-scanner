@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quiet Scanner</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="menubar">
+        <button data-menu="file" data-i18n="mbFile">파일</button>
+        <button data-menu="view" data-i18n="mbView">보기</button>
+        <button data-menu="scan" data-i18n="mbScan">스캔</button>
+        <button data-menu="switch" data-i18n="mbSwitch">스위치</button>
+        <button data-menu="tool" data-i18n="mbTool">도구</button>
+        <span class="mb-gap"></span>
+        <span class="mb-stat" id="mbStat"></span>
+      </header>
+      <div id="mbPop" class="mb-pop" hidden></div>
+      <section class="control-panel">
+        <div class="field interface-field"><label data-i18n="ifaceLabel">네트워크 인터페이스</label><div class="interface-control"><button id="ifaceBtn" class="iface-btn" disabled>네트워크 엔진 준비 중...</button><button id="refreshInterfaces" data-i18n="refresh" data-i18n-title="refreshTitle">↻ 새로고침</button></div></div>
+        <div class="field target-field"><label for="target" data-i18n="targetLabel">스캔할 대역</label><input id="target" placeholder="192.168.0.1-254" data-i18n-title="targetTitle" /></div>
+        <div class="toolbar-actions"><button id="scanBtn" class="primary" data-i18n="scan">대역 스캔</button></div>
+      </section>
+      <section class="workbar">
+        <div><strong id="titleCount" data-i18n="idle">대기 중</strong><span id="subTitle" data-i18n="pickIface">인터페이스를 선택하고 스캔을 시작하십시오.</span></div>
+        <div class="workbar-tools">
+          <input id="filterInput" class="filter-input" data-i18n-ph="filterPh" />
+          <button id="historyBtn" class="ghost-btn" data-i18n="historyBtn" data-i18n-title="historyTitle">기록</button>
+          <button id="freeBtn" class="ghost-btn" data-i18n="free" data-i18n-title="freeTitle">후보 IP</button>
+          <button id="snmpBtn" class="ghost-btn" data-i18n="swport" data-i18n-title="swportTitle">스위치 포트</button>
+          <!-- 준공 리포트·내보내기는 파일 메뉴로 갔다. 단추는 화면에서만 빼고
+               자리에 남겨 둔다 — 메뉴가 이 단추를 그대로 누르기 때문이다.
+               같은 동작을 두 벌로 만들면 한쪽만 고치고 다른 쪽을 잊는다. -->
+          <button id="reportBtn" class="ghost-btn" data-i18n="reportBtn" hidden>준공 리포트</button>
+          <button id="exportBtn" class="ghost-btn" data-i18n="exportBtn" hidden>내보내기</button>
+        </div>
+      </section>
+      <section class="table-shell">
+        <div class="net-tabs" id="netTabs" hidden></div>
+        <div class="table-head" id="tableHead" data-i18n-title="headTitle"></div>
+        <div id="deviceList" class="device-list"><div class="empty" data-i18n="emptyList">아직 발견된 장비가 없습니다.</div></div>
+      </section>
+      <div id="logResizeHandle" class="log-resize-handle" data-i18n-title="logResizeTitle"></div>
+      <section class="activity-panel">
+        <div id="scanProgress" class="log-progress" hidden><span id="scanProgressText">0%</span><i><b id="scanProgressBar"></b></i></div>
+        <div class="log-head"><strong data-i18n="logHead">작업 로그</strong><span id="notice" data-i18n="ready">준비됨</span></div>
+        <div id="logEntries" class="log-entries"><div class="log-empty" data-i18n="logEmpty">작업 기록이 여기에 표시됩니다.</div></div>
+      </section>
+    </main>
+    <div id="contextMenu" class="context-menu" hidden>
+      <button data-menu="identify" data-i18n="menuIdentify">장비 정보 검사</button>
+      <button data-menu="isolate" data-i18n="menuIsolate">이 장비만 격리</button>
+      <button data-menu="release" data-i18n="menuRelease">격리 해제</button>
+      <button data-menu="poe" data-i18n="menuPoe">이 장비 전원 재시작 (PoE)</button>
+      <span></span>
+      <button data-menu="book" data-i18n="menuBook">장비 사전에 등록…</button>
+      <button data-menu="copyMac" data-i18n="menuCopyMac">MAC 주소 복사</button>
+    </div>
+    <div id="bookDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header>
+          <strong data-i18n="bookTitle">장비 사전에 등록</strong>
+          <button id="bookClose" data-i18n-title="close">×</button>
+        </header>
+        <p class="modal-hint" data-i18n="bookHint"></p>
+        <div class="modal-grid">
+          <label><span data-i18n="bookPrefixLabel">MAC 앞자리</span><input id="bookPrefix" placeholder="BC-AD-28" /></label>
+          <label><span data-i18n="bookVendorLabel">제조사</span><input id="bookVendor" placeholder="Hikvision" /></label>
+          <label><span data-i18n="bookKindLabel">장비 종류</span><input id="bookKind" data-i18n-ph="bookKindPh" /></label>
+          <label><span data-i18n="bookNoteLabel">메모</span><input id="bookNote" data-i18n-ph="optional" /></label>
+        </div>
+        <div class="modal-scope" id="bookScope"></div>
+        <div class="book-list-head">
+          <strong data-i18n="bookListHead">등록된 사전</strong>
+          <span id="bookCount"></span>
+          <span class="spacer"></span>
+          <input id="bookSearch" class="filter-input" data-i18n-ph="bookSearchPh" />
+        </div>
+        <div id="bookList" class="book-list"></div>
+        <footer>
+          <button id="bookDelete" class="ghost" data-i18n="bookDelete">사전에서 지우기</button>
+          <span class="spacer"></span>
+          <button id="bookCancel" class="ghost" data-i18n="cancel">취소</button>
+          <button id="bookSave" class="primary" data-i18n="save">저장</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="compareDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header><strong data-i18n="compareDlg">스캔 기록 비교</strong><button id="compareClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" id="compareWhen"></p>
+        <div id="compareBody" class="compare-body"></div>
+        <footer><span class="spacer"></span><button id="compareOk" class="primary" data-i18n="close">닫기</button></footer>
+      </div>
+    </div>
+
+    <div id="historyDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header><strong data-i18n="historyTitle">스캔 기록</strong><button id="historyClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" data-i18n="historyHint">완료된 스캔을 현재 목록과 비교합니다. 최근 30회까지 보관합니다.</p>
+        <div id="historyBody" class="history-body"></div>
+        <footer><span class="spacer"></span><button id="historyOk" class="primary" data-i18n="close">닫기</button></footer>
+      </div>
+    </div>
+
+    <div id="poeDialog" class="modal" hidden>
+      <div class="modal-card">
+        <header><strong data-i18n="poeDlg">PoE 전원 재시작</strong><button id="poeClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" data-i18n="poeHint"></p>
+        <div class="modal-grid">
+          <label><span data-i18n="poeTargetLabel">대상</span><input id="poeTarget" readonly /></label>
+          <label><span data-i18n="snmpHostLabel">스위치 IP</span><input id="poeHost" placeholder="192.168.0.1" /></label>
+          <label><span data-i18n="poeWriteLabel">쓰기 커뮤니티 문자열</span><input id="poeCommunity" /></label>
+          <label><span data-i18n="poeWaitLabel">끄고 기다릴 시간(초)</span><input id="poeWait" type="number" min="2" max="30" value="6" /></label>
+        </div>
+        <div class="modal-scope modal-caution" id="poeScope" data-i18n="poeWarn"></div>
+        <footer><span class="spacer"></span><button id="poeCancel" class="ghost" data-i18n="cancel">취소</button><button id="poeRun" class="primary danger" data-i18n="poeRun">전원 껐다 켜기</button></footer>
+      </div>
+    </div>
+
+    <div id="portsDialog" class="modal" hidden>
+      <div class="modal-card modal-card--face">
+        <header><strong data-i18n="portsDlg">스위치 포트 관리</strong><button id="portsClose" data-i18n-title="close">×</button></header>
+        <div class="ports-top"><span id="portsWhere"></span><span id="portsTally"></span></div>
+        <div id="portsFace" class="face"></div>
+        <div id="portsDetail" class="port-detail" hidden></div>
+        <footer class="ports-foot">
+          <label class="ports-comm"><span data-i18n="poeWriteLabel">쓰기 커뮤니티 문자열</span><input id="portsCommunity" data-i18n-ph="portsCommPh" /></label>
+          <button id="portsLockFree" class="ghost" data-i18n="portsLockFree">빈 포트 전부 잠그기</button>
+          <span class="spacer"></span>
+          <button id="portsOk" class="primary" data-i18n="close">닫기</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="reportDialog" class="modal" hidden>
+      <div class="modal-card">
+        <header><strong data-i18n="reportDlg">준공 · 점검 리포트</strong><button id="reportClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" data-i18n="reportHint">스캔 결과와 스위치 포트를 엑셀 한 부로 뽑습니다. 시트 다섯 장 — 점검 소견 · 장비 목록 · 스위치 포트 배치 · PoE 전력 · 남은 IP.</p>
+        <div class="modal-grid report-form">
+          <label><span data-i18n="reportSite">현장 이름</span><input id="reportSite" data-i18n-ph="reportSitePh" /></label>
+          <label><span data-i18n="reportAuthor">점검자</span><input id="reportAuthor" data-i18n-ph="reportAuthorPh" /></label>
+          <label class="wide"><span data-i18n="reportSwitches">스위치 IP</span><input id="reportSwitches" data-i18n-ph="reportSwitchesPh" /></label>
+          <label><span data-i18n="reportCommunity">읽기 커뮤니티 문자열</span><input id="reportCommunity" data-i18n-ph="portsCommPh" /></label>
+          <label class="wide"><span data-i18n="reportNote">현장 소견</span><textarea id="reportNote" rows="3" data-i18n-ph="reportNotePh"></textarea></label>
+        </div>
+        <div class="modal-scope" id="reportScope"></div>
+        <footer><span class="spacer"></span><button id="reportCancel" class="ghost" data-i18n="cancel">취소</button><button id="reportGo" class="primary" data-i18n="reportGo">엑셀로 저장</button></footer>
+      </div>
+    </div>
+
+    <div id="ifaceMenu" class="context-menu iface-menu" hidden></div>
+    <div id="columnMenu" class="context-menu column-menu" hidden></div>
+    <div id="freeDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header><strong data-i18n="freeDlg">사용 가능 후보 IP</strong><button id="freeClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" id="freeWhen"></p>
+        <p class="modal-caution" data-i18n="freeCaution">응답이 없었던 IP 목록입니다. 배정 전에는 실제 사용 여부를 확인하십시오.</p>
+        <div id="freeBody" class="free-body"></div>
+        <footer><button id="freeCopy" class="ghost" data-i18n="freeCopyBtn">목록 복사</button><button id="freeExport" class="ghost" data-i18n="freeExportBtn">배정용 CSV 저장</button><span class="spacer"></span><button id="freeOk" class="primary" data-i18n="close">닫기</button></footer>
+      </div>
+    </div>
+
+    <div id="isolateDialog" class="modal" hidden>
+      <div class="modal-card">
+        <header><strong data-i18n="isolateDlg">장비 격리 확인</strong><button id="isolateClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" id="isolateTarget"></p>
+        <p class="modal-caution" data-i18n="isolateCaution">이 컴퓨터에서는 이 IP를 선택한 MAC 주소에만 연결합니다. 작업 뒤에는 격리 해제를 누르십시오.</p>
+        <footer><span class="spacer"></span><button id="isolateCancel" class="ghost" data-i18n="cancel">취소</button><button id="isolateConfirm" class="primary danger" data-i18n="isolateConfirm">이 장비만 격리</button></footer>
+      </div>
+    </div>
+
+    <div id="snmpDialog" class="modal" hidden>
+      <div class="modal-card">
+        <header><strong data-i18n="snmpDlg">스위치 포트 찾기</strong><button id="snmpClose" data-i18n-title="close">×</button></header>
+        <p class="modal-hint" data-i18n="snmpHint"></p>
+        <div class="modal-grid">
+          <label><span data-i18n="snmpHostLabel">스위치 IP</span><input id="snmpHost" placeholder="192.168.0.1" /></label>
+          <label><span data-i18n="snmpCommLabel">커뮤니티 문자열</span><input id="snmpCommunity" placeholder="public" /></label>
+        </div>
+        <div class="modal-scope" id="snmpScope" data-i18n="snmpScope"></div>
+        <footer><button id="portsBtn" class="ghost" data-i18n="portsBtn" data-i18n-title="portsTitle">포트 관리…</button><span class="spacer"></span><button id="snmpCancel" class="ghost" data-i18n="cancel">취소</button><button id="snmpRun" class="primary" data-i18n="snmpRun">조회</button></footer>
+      </div>
+    </div>
+
+    <script src="i18n.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

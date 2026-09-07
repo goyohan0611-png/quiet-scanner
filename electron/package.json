@@ -1,0 +1,51 @@
+{
+  "name": "quiet-scanner-electron",
+  "version": "3.0.0",
+  "description": "IP 충돌 현장 정리 도구",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win dir",
+    "build:installer": "electron-builder --win nsis --publish never --config.directories.output=installer"
+  },
+  "build": {
+    "appId": "com.lab241.quietscanner",
+    "productName": "Quiet Scanner",
+    "artifactName": "${productName} Setup ${version}.${ext}",
+    "icon": "renderer/IPFixStudio.ico",
+    "win": {
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../IPFixBackend",
+        "to": "IPFixBackend"
+      }
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "include": "installer.nsh"
+    },
+    "extraFiles": [
+      {
+        "from": "../사용설명서.html",
+        "to": "사용설명서.html"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}

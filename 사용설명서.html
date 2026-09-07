@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiet Scanner 사용설명서</title>
+<style>
+:root{
+  --ink:#182230; --muted:#6f7d90; --line:#e7ecf3; --bg:#f7f9fc;
+  --blue:#2878f0; --green:#0a9d67; --red:#e7475b; --red-bg:#fff5f6;
+  --amber:#ba7a09; --amber-bg:#fff8e9;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; padding:0; color:var(--ink); background:var(--bg);
+  font-family:Pretendard,"Malgun Gothic","맑은 고딕",sans-serif;
+  font-size:15px; line-height:1.75;
+}
+.wrap{max-width:860px; margin:0 auto; padding:0 24px 80px}
+
+/* 머리 */
+header{background:#fff; border-bottom:1px solid var(--line); margin-bottom:34px}
+.head-in{max-width:860px; margin:0 auto; padding:34px 24px 28px}
+h1{margin:0 0 6px; font-size:27px; letter-spacing:-.4px}
+.sub{margin:0; color:var(--muted); font-size:14px}
+.ver{display:inline-block; margin-top:14px; padding:3px 9px; color:#4a5a6e;
+     background:#eef2f7; font-size:12px; font-family:Consolas,monospace}
+
+/* 목차 */
+nav{background:#fff; border:1px solid var(--line); padding:16px 20px; margin-bottom:34px}
+nav b{display:block; margin-bottom:9px; font-size:13px; color:var(--muted)}
+nav ol{margin:0; padding-left:20px; columns:2; column-gap:28px}
+nav li{margin-bottom:3px}
+nav a{color:#31465e; text-decoration:none}
+nav a:hover{color:var(--blue); text-decoration:underline}
+
+h2{margin:44px 0 4px; padding-bottom:9px; border-bottom:2px solid var(--ink);
+   font-size:20px; letter-spacing:-.3px}
+h2 .num{color:#b6c1cf; margin-right:9px; font-weight:400}
+h3{margin:26px 0 6px; font-size:15.5px}
+p{margin:9px 0}
+ul,ol{margin:9px 0; padding-left:22px}
+li{margin:4px 0}
+code{padding:1px 5px; background:#eef2f7; color:#2b3b4f;
+     font-family:Consolas,monospace; font-size:13px}
+kbd{display:inline-block; padding:1px 7px; background:#fff; border:1px solid #cbd5e1;
+    border-bottom-width:2px; font-family:Consolas,monospace; font-size:12.5px}
+strong{font-weight:600}
+
+/* 경고 상자 */
+.box{margin:16px 0; padding:14px 18px; border-left:3px solid; background:#fff}
+.box p:first-child{margin-top:0} .box p:last-child{margin-bottom:0}
+.box b{display:block; margin-bottom:4px; font-size:14.5px}
+.danger{border-color:var(--red); background:var(--red-bg); color:#8c332c}
+.danger b{color:#7a2b25}
+.warn{border-color:var(--amber); background:var(--amber-bg); color:#8b611a}
+.warn b{color:#7a5310}
+.note{border-color:var(--blue); background:#f2f7ff; color:#3a5372}
+.note b{color:#22456f}
+.good{border-color:var(--green); background:#eefaf4; color:#136b4c}
+.good b{color:#0d5a3f}
+
+table{width:100%; border-collapse:collapse; margin:16px 0; background:#fff;
+      font-size:14px}
+th,td{padding:9px 12px; border:1px solid var(--line); text-align:left;
+      vertical-align:top}
+th{background:#f4f7fb; font-weight:600; font-size:13px; color:#48586c}
+td code{font-size:12.5px}
+
+.step{margin:18px 0; padding-left:0; list-style:none; counter-reset:s}
+.step>li{counter-increment:s; position:relative; margin:0 0 14px; padding:0 0 0 40px}
+.step>li::before{
+  content:counter(s); position:absolute; left:0; top:1px;
+  width:26px; height:26px; display:grid; place-items:center;
+  background:var(--blue); color:#fff; font-size:13px; font-weight:600
+}
+.step>li b{display:block; margin-bottom:1px}
+
+.chip{display:inline-block; padding:1px 7px; font-size:12px; font-family:Consolas,monospace}
+.c-red{color:#fff; background:var(--red)}
+.c-amber{color:#fff; background:var(--amber)}
+.c-gray{color:#5b6b80; background:#eef1f5}
+
+footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--line);
+       color:var(--muted); font-size:13px}
+
+@media print{
+  body{background:#fff; font-size:11pt}
+  header{margin-bottom:20px} nav{display:none}
+  h2{page-break-after:avoid} .box,table{page-break-inside:avoid}
+}
+@media (max-width:640px){ nav ol{columns:1} }
+
+/* ── 말 바꾸기 단추 ────────────────────────────────────────────────
+   오른쪽 위에 붙박아 둔다. 종이로 뽑을 때는 뺀다 — 인쇄물에서 누를 수 있는
+   단추는 잉크 낭비다. */
+.langbar{position:fixed; top:14px; right:16px; z-index:9; display:flex;
+         background:#fff; border:1px solid var(--line); box-shadow:0 2px 10px #1d2b3d12}
+.langbar button{padding:5px 13px; border:0; background:#fff; color:#5b6b80;
+                font:inherit; font-size:12.5px; cursor:pointer}
+.langbar button+button{border-left:1px solid var(--line)}
+.langbar button:hover{background:#f4f7fb}
+.langbar button[aria-pressed="true"]{background:var(--blue); color:#fff; font-weight:600}
+@media print{ .langbar{display:none} }
+@media (max-width:640px){ .langbar{top:8px; right:8px} }
+</style>
+</head>
+<body>
+
+<div class="langbar">
+  <button type="button" data-set="ko" aria-pressed="true">한국어</button>
+  <button type="button" data-set="en" aria-pressed="false">English</button>
+</div>
+
+<div id="doc-ko">
+<header>
+  <div class="head-in">
+    <h1>Quiet Scanner 사용설명서</h1>
+    <p class="sub">IP가 충돌났을 때, 장비를 뽑았다 꽂지 않고 정리하는 도구</p>
+    <span class="ver">v3.0</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav>
+  <b>목차</b>
+  <ol>
+    <li><a href="#s1">처음이면 이것부터</a></li>
+    <li><a href="#s2">이 도구가 못 하는 것</a></li>
+    <li><a href="#s3">IP 충돌 정리하기</a></li>
+    <li><a href="#s4">스위치에서 포트 찾기</a></li>
+    <li><a href="#s5">포트 잠그기 · 풀기</a></li>
+    <li><a href="#s6">눈으로 못 찾는 고장 둘</a></li>
+    <li><a href="#s7">준공 · 점검 리포트</a></li>
+    <li><a href="#s8">단축키</a></li>
+    <li><a href="#s9">안 될 때</a></li>
+  </ol>
+</nav>
+
+
+<h2 id="s1"><span class="num">1</span>처음이면 이것부터</h2>
+
+<p>두 가지가 갖춰져야 스캔이 됩니다.</p>
+
+<table>
+<tr><th style="width:150px">필요한 것</th><th>확인 방법</th></tr>
+<tr>
+  <td><b>관리자 권한</b></td>
+  <td>이 프로그램은 항상 관리자로 실행됩니다. 실행할 때 뜨는 창에서 <b>예</b>를 누르십시오. 격리(정적 ARP)와 원시 패킷 송신에 반드시 필요합니다.</td>
+</tr>
+<tr>
+  <td><b>Npcap 드라이버</b></td>
+  <td>설치할 때 없으면 받는 곳을 안내합니다. 나중에 필요하면 <code>npcap.com</code> 에서 받으십시오. <b>없으면 스캔이 아예 안 됩니다.</b></td>
+</tr>
+</table>
+
+<h3>첫 화면에서 할 일</h3>
+
+<ol class="step">
+  <li><b>랜카드 확인</b>지금 인터넷을 쓰고 있는 카드가 자동으로 잡힙니다. 현장 망에 따로 물렸으면 목록에서 직접 고르십시오.</li>
+  <li><b>대역 확인</b>고른 카드의 대역이 자동으로 채워집니다. <code>192.168.0.0/24</code> 같은 모양입니다. 다른 대역을 보려면 직접 고쳐 넣으십시오.</li>
+  <li><b>대역 스캔</b>누르면 세 번에 걸쳐 훑습니다. 한 번 조용했다고 바로 "없음" 이라고 하지 않습니다.</li>
+</ol>
+
+
+<h2 id="s2"><span class="num">2</span>이 도구가 못 하는 것</h2>
+
+<p>이걸 먼저 아셔야 합니다. 도구를 잘못 믿으면 현장에서 사고가 납니다.</p>
+
+<div class="danger box">
+<b>조용하다 ≠ 비어 있다</b>
+<p>꺼져 있는 장비도 조용합니다. 빈 IP 목록은 <b>"응답이 없던 주소"</b>이지 "확실히 빈 주소"가 아닙니다. 야간에 꺼지는 장비가 있는 현장이면 특히 조심하십시오.</p>
+</div>
+
+<div class="danger box">
+<b>라우터 너머는 못 봅니다</b>
+<p>충돌 탐지는 ARP로 합니다. ARP는 같은 대역(2계층) 안에서만 오갑니다. <b>라우터를 넘어가는 순간 아무것도 안 보입니다.</b> 대형 현장을 한 자리에서 통째로 잡는 것은 이 방식으로 불가능합니다. 대역마다 가서 물려야 합니다.</p>
+<p style="margin-top:6px">단, <b>스위치 조회(SNMP)는 대역을 넘습니다.</b> 다른 층 스위치 IP를 알면 거기 포트는 여기서 읽을 수 있습니다.</p>
+</div>
+
+<div class="warn box">
+<b>스캔이 안 끝났으면 빈 IP를 안 줍니다</b>
+<p>중간에 멈추거나 오류가 나면 <b>빈 IP 목록을 아예 내놓지 않습니다.</b> 창에 이유가 뜹니다. 경고와 목록을 같이 주면 사람은 목록만 보기 때문입니다.</p>
+</div>
+
+<div class="warn box">
+<b>첫 방문에는 "속도 저하 없음"이 없습니다</b>
+<p>속도 비교는 지난 기록이 있어야 합니다. 처음 온 현장은 비교할 것이 없으니 리포트에 <b>'첫 기록'</b>이라고 적힙니다. 이건 "확인했는데 문제 없음"이 아니라 "아직 모름"입니다.</p>
+</div>
+
+
+<h2 id="s3"><span class="num">3</span>IP 충돌 정리하기</h2>
+
+<p>CCTV·AV 장비는 공장 초기 IP가 다 같습니다. 여덟 대를 물리면 여덟 대가 전부 같은 IP라고 우깁니다. 일반 스캐너는 그중 한 대만 봅니다 — 윈도우 ARP 표가 IP 하나당 MAC 하나만 저장하기 때문입니다.</p>
+
+<p><b>이 도구는 전부 봅니다.</b> 충돌난 줄은 빨갛게, <span class="chip c-red">충돌 4대</span> 같은 딱지가 붙습니다. 줄을 누르면 펼쳐집니다.</p>
+
+<h3>선을 안 뽑고 정리하는 순서</h3>
+
+<ol class="step">
+  <li><b>충돌 줄을 펼친다</b>같은 IP를 쓰는 장비가 MAC별로 다 나옵니다.</li>
+  <li><b>한 대를 골라 오른쪽 클릭 → 이 장비만 격리</b>그 IP를 그 MAC 하나에 못박습니다(정적 ARP). 이제 그 IP로 접속하면 <b>그 한 대에만</b> 붙습니다.</li>
+  <li><b>웹으로 들어가 IP를 바꾼다</b>격리된 채로 장비 웹페이지를 열고 IP를 고칩니다. 새 IP는 <b>후보 IP</b>(<kbd>Ctrl</kbd>+<kbd>F</kbd>)에서 고르십시오.</li>
+  <li><b>격리를 푼다</b>오른쪽 클릭 → 격리 해제. 다음 장비로 넘어갑니다.</li>
+</ol>
+
+<div class="note box">
+<b>격리를 걸어둔 채 프로그램을 끄지 마십시오</b>
+<p>정적 ARP는 PC에 남습니다. 다음에 켜면 <b>"남은 격리 N건"</b>을 정리하겠다고 물어봅니다. 거기서 정리하시면 됩니다. 그냥 두면 그 IP는 계속 한 대로만 보입니다 — 찾으려는 충돌을 이 도구가 가리는 셈이 됩니다.</p>
+</div>
+
+
+<h2 id="s4"><span class="num">4</span>스위치에서 포트 찾기</h2>
+
+<p>"이 카메라가 몇 번 포트인가"를 랙 앞에서 선 뽑아가며 찾지 않아도 됩니다. 스위치가 알고 있습니다.</p>
+
+<ol class="step">
+  <li><b>스위치 → 스위치 조회</b>스위치 IP와 읽기 커뮤니티 문자열을 넣습니다.</li>
+  <li><b>조회를 누른다</b>스위치의 MAC 표를 읽어서 목록의 장비마다 <b>어느 스위치 몇 번 포트</b>인지 붙입니다.</li>
+</ol>
+
+<p>목록의 <b>스위치 포트</b> 칸에 이렇게 나옵니다.</p>
+
+<table>
+<tr><th style="width:200px">보이는 것</th><th>뜻</th></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-gray">1G</span></code></td><td>3층 스위치 12번 포트, 1기가로 붙음</td></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-red">100M</span></code></td><td>다른 포트보다 느림 — 랜선 의심</td></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-red">1G½</span></code></td><td><b>반이중</b> — 6번 항목을 보십시오</td></tr>
+</table>
+
+<div class="note box">
+<b>SNMP는 대역을 넘습니다</b>
+<p>충돌 스캔과 달리 스위치 조회는 UDP 161로 하기 때문에 라우터 너머 스위치도 읽힙니다. 다른 층 스위치 IP만 알면 됩니다.</p>
+</div>
+
+
+<h2 id="s5"><span class="num">5</span>포트 잠그기 · 풀기</h2>
+
+<p><b>스위치 → 스위치 포트</b>(<kbd>Ctrl</kbd>+<kbd>P</kbd>)를 열면 스위치 앞판이 그대로 그려집니다. 실물처럼 홀수는 윗줄, 짝수는 아랫줄입니다.</p>
+
+<table>
+<tr><th style="width:120px">색</th><th>뜻</th></tr>
+<tr><td>초록</td><td>사용 중</td></tr>
+<tr><td>빨강</td><td>속도 저하 또는 반이중(<code>½</code>)</td></tr>
+<tr><td>흰색(테두리만)</td><td>빈 포트</td></tr>
+<tr><td>빨간 테두리 <code>✕</code></td><td>잠긴 포트</td></tr>
+<tr><td>아래 노란 줄</td><td>PoE 급전 중</td></tr>
+<tr><td>점선</td><td><b>못 잠그는 포트</b></td></tr>
+</table>
+
+<div class="danger box">
+<b>이 세 가지 포트는 잠글 수 없게 막아뒀습니다</b>
+<ul style="margin:6px 0 0">
+  <li>이 컴퓨터가 물린 포트 — 잠그면 내 연결이 끊깁니다</li>
+  <li>스위치 관리 포트 — 잠그면 SNMP가 안 닿아 <b>현장에 다시 가야 합니다</b></li>
+  <li>장비가 2대 이상 보이는 포트(업링크) — 잠그면 <b>그 아래가 통째로 내려갑니다</b></li>
+</ul>
+</div>
+
+<h3>잠그거나 풀 때</h3>
+
+<p><b>쓰기 커뮤니티 문자열</b>이 따로 필요합니다. 읽기용으로는 안 됩니다. 쓴 값은 반드시 되읽어서 확인하기 때문에 1~3초 걸립니다 — 정상입니다.</p>
+
+<div class="warn box">
+<b>풀어도 통신은 바로 안 살아납니다</b>
+<p>랜선 양끝이 속도를 다시 맞추는 데 2~3초, 그다음 스위치가 루프를 확인하는 동안(STP) <b>최대 30초</b> 더 걸립니다. 그동안 링크 LED는 켜져 있는데 데이터만 안 흐릅니다.</p>
+<p style="margin-top:6px"><b>장비가 안 올라와도 30초까지는 정상입니다.</b> 이 도구가 링크를 지켜보면서 알려줍니다. 그 사이에 멀쩡한 포트를 다시 만지지 마십시오.</p>
+</div>
+
+<p>줄이려면 스위치 설정에서 <b>끝단 포트만</b> Fast Link를 켜면 2~3초로 줄어듭니다. Cisco CBS220 기준 <code>Spanning Tree → STP Interface Settings → Fast Link: Enable</code>.</p>
+
+<div class="danger box">
+<b>업링크 포트에는 Fast Link를 절대 켜지 마십시오</b>
+<p>루프가 즉시 돌고 <b>현장 전체가 내려갑니다.</b> 같은 화면의 BPDU Guard를 함께 켜두면 보험이 됩니다.</p>
+</div>
+
+<h3>PoE</h3>
+<p>급전 중인 포트는 전원을 껐다 켤 수 있습니다. <b>껐다 켜기는 언제나 한 동작</b>이라 몇 초 뒤 저절로 돌아옵니다. 끈 채로 두려면 <b>전원 끊기</b>를 쓰십시오.</p>
+
+
+<h2 id="s6"><span class="num">6</span>눈으로 못 찾는 고장 둘</h2>
+
+<p>이 도구를 만든 진짜 이유입니다. 둘 다 <b>링크는 멀쩡히 붙어 있고 핑도 갑니다.</b></p>
+
+<h3>① 속도 저하 — "예전엔 1G였는데 지금 100M"</h3>
+
+<p>기가는 8가닥을 다 씁니다. <b>한 가닥만 헐거워져도 링크는 안 끊기고 조용히 100M로 내려앉습니다.</b> 화면이 끊긴다는 신고가 들어와도 눈으로는 절대 못 찾습니다.</p>
+
+<p>이 도구는 포트마다 <b>여태 본 최고 속도</b>를 기억합니다. 그보다 떨어지면 빨갛게 뜨고, 언제 그 속도였는지 날짜까지 알려줍니다.</p>
+
+<p><b>조치</b> — 랜선 양끝을 다시 성단하십시오.</p>
+
+<div class="note box">
+<b>일부러 100M 장비를 물려둔 포트라면</b>
+<p>포트를 고르고 <b>"이 속도가 정상입니다"</b>를 누르십시오. 다음부터 그 포트는 빨갛게 안 나옵니다. 안 그러면 영원히 빨간 채로 남고, 사람은 곧 빨간색 전체를 무시하게 됩니다.</p>
+</div>
+
+<h3>② 반이중 — "1G로 뜨는데 느리다"</h3>
+
+<p>제일 안 잡히는 고장입니다. <b>속도 칸은 1G로 멀쩡합니다.</b> 그런데 파일 하나 옮기는 데 몇 분이 걸립니다.</p>
+
+<p><b>원인</b> — 양끝 중 한쪽만 속도·듀플렉스를 손으로 박아두면, 반대쪽은 협상할 상대가 없어서 규칙대로 <b>반이중</b>으로 내려앉습니다. 반이중 쪽은 늦은 충돌이 나고 전이중 쪽은 깨진 프레임을 봅니다. <b>둘 다 링크는 안 끊습니다.</b></p>
+
+<p>이 도구는 <code>½</code> 로 표시합니다. 목록의 속도 옆, 앞판 칸 오른쪽 아래, 상세 설명 세 군데에 나옵니다.</p>
+
+<div class="danger box">
+<b>여기서 랜선부터 뜯으면 안 됩니다</b>
+<p>반이중은 <b>설정 문제</b>입니다. 성단을 두 번 해도 안 고쳐집니다. <b>양쪽 다 자동(auto)</b>으로 맞추십시오.</p>
+<p style="margin-top:6px">늦은 충돌 횟수가 같이 나오면 그건 짐작이 아니라 <b>지금 프레임이 깨지고 있다는 증거</b>입니다.</p>
+</div>
+
+<div class="warn box">
+<b>듀플렉스를 안 알려주는 스위치도 있습니다</b>
+<p>그런 스위치는 아무 표시도 안 나오고, 리포트에 <b>'이중 미확인'</b>이라고 적힙니다. 표시가 없는 것이 "확인했고 정상"이라는 뜻은 아닙니다.</p>
+</div>
+
+
+<h2 id="s7"><span class="num">7</span>준공 · 점검 리포트</h2>
+
+<p><b>파일 → 준공 리포트</b>(<kbd>Ctrl</kbd>+<kbd>R</kbd>). 엑셀 파일 한 부가 나옵니다. 현장에서 손으로 치던 것들입니다.</p>
+
+<table>
+<tr><th style="width:170px">시트</th><th>내용</th></tr>
+<tr><td>점검 소견</td><td>손봐야 할 것 + 서명란. <b>이 장만 봐도 됩니다</b></td></tr>
+<tr><td>장비 목록</td><td>IP·MAC·제조사·모델·물린 포트·PoE</td></tr>
+<tr><td>스위치 포트 배치</td><td>앞판 그림을 셀로 그림 + 포트별 상세</td></tr>
+<tr><td>PoE 전력</td><td>스위치별 공급/소비/여유, 급전 포트 목록</td></tr>
+<tr><td>남은 IP</td><td>배정에 쓸 수 있는 주소 구간</td></tr>
+</table>
+
+<div class="good box">
+<b>이 리포트는 모르는 것을 아는 척하지 않습니다</b>
+<p>못 읽은 스위치는 <b>'확인 못 함'</b>으로 맨 위에 적습니다. 처음 온 현장은 <b>'첫 기록'</b>, 듀플렉스를 못 읽으면 <b>'이중 미확인'</b>, 스캔을 안 돌렸으면 그것도 적습니다. <b>'특이사항 없음'</b>은 그 어느 것도 해당 안 될 때만 나옵니다.</p>
+<p style="margin-top:6px">고객에게 그대로 내도 되는 문서입니다.</p>
+</div>
+
+
+<h2 id="s8"><span class="num">8</span>단축키</h2>
+
+<table>
+<tr><th style="width:170px">키</th><th>기능</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>스캔 시작 / 중지</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>스위치 포트 관리</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>후보 IP (빈 주소 찾기)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>준공 리포트</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>내보내기</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd></td><td>스캔 기록 (지난 방문과 비교)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>밀집 보기 켜고 끄기</td></tr>
+</table>
+
+<p>IP를 누르면 <b>복사</b>됩니다. 장비 줄에서 <b>오른쪽 클릭</b>하면 격리·검사·웹 열기가 나옵니다.</p>
+
+
+<h2 id="s9"><span class="num">9</span>안 될 때</h2>
+
+<table>
+<tr><th style="width:240px">증상</th><th>원인과 조치</th></tr>
+<tr>
+  <td><b>스캔해도 아무것도 안 나온다</b></td>
+  <td>Npcap이 없거나 관리자 권한이 아닙니다. 프로그램을 끄고 <b>관리자 권한으로 다시</b> 실행하십시오. 그래도 안 되면 <code>npcap.com</code>에서 Npcap을 설치하십시오.</td>
+</tr>
+<tr>
+  <td><b>내 PC가 목록에 없다</b></td>
+  <td>있어야 정상입니다. ARP는 자기 외침을 자기가 못 듣기 때문에 따로 넣어줍니다. 안 보이면 랜카드를 잘못 고른 것입니다.</td>
+</tr>
+<tr>
+  <td><b>IP가 <code>169.254.x.x</code> 다</b></td>
+  <td>DHCP를 못 받았다는 뜻입니다. 사실상 <b>망에 안 붙은 상태</b>입니다. 랜선과 DHCP 서버를 먼저 확인하십시오.</td>
+</tr>
+<tr>
+  <td><b>스위치 조회가 안 된다</b></td>
+  <td>커뮤니티 문자열이 틀렸거나, 스위치가 SNMP를 안 켰거나, 방화벽이 UDP 161을 막았습니다. 진단 줄이 로그에 나오면 그걸 보십시오 — <b>dot1q·dot1d가 전부 0이면</b> 그 스위치는 MAC 표를 SNMP로 안 내주는 것이라 고칠 수 없습니다.</td>
+</tr>
+<tr>
+  <td><b>잠갔는데 스위치가 답이 없다</b></td>
+  <td><b>다시 누르지 마십시오.</b> 잠금이 먹혀서 관리 경로가 끊겼을 수 있습니다. 스위치 화면에서 직접 확인하십시오.</td>
+</tr>
+<tr>
+  <td><b>포트를 풀었는데 장비가 안 올라온다</b></td>
+  <td>30초까지는 정상입니다(STP). 5번 항목을 보십시오.</td>
+</tr>
+<tr>
+  <td><b>빈 IP 목록이 안 나온다</b></td>
+  <td>스캔이 끝까지 안 갔다는 뜻입니다. 일부러 안 주는 것입니다. 대역을 다시 스캔하십시오.</td>
+</tr>
+<tr>
+  <td><b>실행할 때 파란 경고창이 뜬다</b></td>
+  <td>코드 서명이 없어서 그렇습니다. 악성 여부와 무관합니다. <b>추가 정보 → 실행</b>을 누르십시오.</td>
+</tr>
+</table>
+
+<div class="note box">
+<b>창 아래 '작업 로그'를 먼저 보십시오</b>
+<p>거절당한 이유는 거기 다 적힙니다. 창이 열려 있을 때는 그 창 안에도 같은 내용이 나옵니다.</p>
+</div>
+
+<footer>
+  <p><b>Quiet Scanner v3.0</b> · Copyright (C) 2026 고요한 · GPLv2<br>
+  이 도구는 남의 장비 설정을 바꿉니다. 쓰기 커뮤니티 문자열은 아무 데나 적어두지 마십시오.</p>
+</footer>
+
+</div>
+</div>
+
+<div id="doc-en" hidden>
+<header>
+  <div class="head-in">
+    <h1>Quiet Scanner — User Guide</h1>
+    <p class="sub">Sort out IP conflicts without unplugging a single cable</p>
+    <span class="ver">v3.0</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav>
+  <b>Contents</b>
+  <ol>
+    <li><a href="#en-s1">Before you start</a></li>
+    <li><a href="#en-s2">What this tool cannot do</a></li>
+    <li><a href="#en-s3">Clearing IP conflicts</a></li>
+    <li><a href="#en-s4">Finding a device's switch port</a></li>
+    <li><a href="#en-s5">Locking and unlocking ports</a></li>
+    <li><a href="#en-s6">Two faults you cannot see</a></li>
+    <li><a href="#en-s7">Handover and inspection report</a></li>
+    <li><a href="#en-s8">Keyboard shortcuts</a></li>
+    <li><a href="#en-s9">When it does not work</a></li>
+  </ol>
+</nav>
+
+
+<h2 id="en-s1"><span class="num">1</span>Before you start</h2>
+
+<p>Two things must be in place before a scan will run.</p>
+
+<table>
+<tr><th style="width:170px">Requirement</th><th>How to check</th></tr>
+<tr>
+  <td><b>Administrator rights</b></td>
+  <td>The program always runs elevated. Click <b>Yes</b> on the prompt at launch. Static ARP pinning and raw packet transmission both require it.</td>
+</tr>
+<tr>
+  <td><b>Npcap driver</b></td>
+  <td>The installer points you to the download if it is missing. You can also get it from <code>npcap.com</code>. <b>Without Npcap, scanning does not work at all.</b></td>
+</tr>
+</table>
+
+<h3>What to do on the first screen</h3>
+
+<ol class="step">
+  <li><b>Check the adapter</b>The card you are currently using for network access is picked automatically. If you plugged into the site network separately, choose that card from the list.</li>
+  <li><b>Check the range</b>The chosen card's range fills in by itself — something like <code>192.168.0.0/24</code>. Edit it to sweep a different range.</li>
+  <li><b>Scan range</b>The sweep runs three passes. One silent reply is not treated as "nothing there".</li>
+</ol>
+
+
+<h2 id="en-s2"><span class="num">2</span>What this tool cannot do</h2>
+
+<p>Read this first. Trusting the tool where it should not be trusted is how sites get broken.</p>
+
+<div class="danger box">
+<b>Silent does not mean free</b>
+<p>A powered-off device is also silent. The free-IP list means <b>"no reply was heard"</b>, not "definitely unused". Be especially careful on sites where equipment is switched off overnight.</p>
+</div>
+
+<div class="danger box">
+<b>Nothing is visible past a router</b>
+<p>Conflict detection uses ARP, and ARP only travels inside one broadcast domain (layer 2). <b>The moment you cross a router, you see nothing.</b> Sweeping a large site from a single point is not possible this way — you have to plug into each range.</p>
+<p style="margin-top:6px">One exception: <b>switch queries (SNMP) do cross subnets.</b> If you know another floor's switch IP, you can read its ports from here.</p>
+</div>
+
+<div class="warn box">
+<b>An unfinished scan gives you no free-IP list</b>
+<p>If the sweep is stopped or fails, the tool <b>refuses to produce the list at all</b> and tells you why. Handing over a warning together with a list does not work — people read the list.</p>
+</div>
+
+<div class="warn box">
+<b>On a first visit there is no "no speed drop"</b>
+<p>Speed comparison needs an earlier reading. With nothing to compare against, the report says <b>"first record"</b>. That means "not known yet", not "checked and fine".</p>
+</div>
+
+
+<h2 id="en-s3"><span class="num">3</span>Clearing IP conflicts</h2>
+
+<p>CCTV and AV gear ships with the same factory IP. Put eight cameras on one switch and all eight insist they are the same address. An ordinary scanner sees only one of them — Windows keeps a single MAC per IP in its ARP table.</p>
+
+<p><b>This tool sees all of them.</b> Conflicting rows are marked in red with a <span class="chip c-red">4 devices</span> badge. Click the row to expand it.</p>
+
+<h3>Sorting them out without touching a cable</h3>
+
+<ol class="step">
+  <li><b>Expand the conflicting row</b>Every device sharing that IP is listed by MAC.</li>
+  <li><b>Right-click one → Isolate this device</b>That pins the IP to that one MAC (static ARP). From now on, connecting to that IP reaches <b>only that device</b>.</li>
+  <li><b>Open its web page and change the IP</b>With the device isolated, open its web interface and set a new address. Pick the new one from <b>Free IPs</b> (<kbd>Ctrl</kbd>+<kbd>F</kbd>).</li>
+  <li><b>Release the isolation</b>Right-click → Release. Move on to the next device.</li>
+</ol>
+
+<div class="note box">
+<b>Do not close the program with an isolation still active</b>
+<p>Static ARP entries stay on the PC. Next launch, the tool offers to clear <b>"N leftover isolations"</b> — accept it. Left in place, that IP keeps showing a single device: the tool would be hiding the very conflict you came to find.</p>
+</div>
+
+
+<h2 id="en-s4"><span class="num">4</span>Finding a device's switch port</h2>
+
+<p>You do not have to pull cables at the rack to answer "which port is this camera on". The switch already knows.</p>
+
+<ol class="step">
+  <li><b>Switch → Query switch</b>Enter the switch IP and the read community string.</li>
+  <li><b>Press Query</b>The tool reads the switch's MAC table and tags every device in the list with <b>which switch and which port</b> it sits on.</li>
+</ol>
+
+<p>The <b>Switch port</b> column then shows this.</p>
+
+<table>
+<tr><th style="width:230px">What you see</th><th>Meaning</th></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-gray">1G</span></code></td><td>Third-floor switch, port 12, linked at gigabit</td></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-red">100M</span></code></td><td>Slower than the rest of this switch — suspect the cable</td></tr>
+<tr><td><code>SW-3F &nbsp; Gi1/0/12 &nbsp; <span class="chip c-red">1G&frac12;</span></code></td><td><b>Half duplex</b> — see section 6</td></tr>
+</table>
+
+<div class="note box">
+<b>SNMP crosses subnets</b>
+<p>Unlike the conflict sweep, switch queries run over UDP 161, so switches behind a router are reachable. You only need the switch's IP.</p>
+</div>
+
+
+<h2 id="en-s5"><span class="num">5</span>Locking and unlocking ports</h2>
+
+<p><b>Switch → Switch ports</b> (<kbd>Ctrl</kbd>+<kbd>P</kbd>) draws the switch faceplate as it really is — odd numbers on the top row, even below.</p>
+
+<table>
+<tr><th style="width:150px">Colour</th><th>Meaning</th></tr>
+<tr><td>Green</td><td>In use</td></tr>
+<tr><td>Red</td><td>Speed drop, or half duplex (<code>&frac12;</code>)</td></tr>
+<tr><td>White, outline only</td><td>Unused port</td></tr>
+<tr><td>Red outline, <code>&#10005;</code></td><td>Locked port</td></tr>
+<tr><td>Yellow bar underneath</td><td>PoE power being delivered</td></tr>
+<tr><td>Dashed outline</td><td><b>Cannot be locked</b></td></tr>
+</table>
+
+<div class="danger box">
+<b>Three kinds of port are blocked from locking on purpose</b>
+<ul style="margin:6px 0 0">
+  <li>The port this computer is on — locking it cuts your own connection</li>
+  <li>The switch management port — locking it kills SNMP and <b>you have to drive back to site</b></li>
+  <li>Any port showing two or more devices (an uplink) — locking it takes <b>everything below it</b> down</li>
+</ul>
+</div>
+
+<h3>Locking or unlocking</h3>
+
+<p>This needs a separate <b>write community string</b>; the read-only one will not do. Every written value is read back to confirm it, which is why the operation takes 1–3 seconds. That is intended.</p>
+
+<div class="warn box">
+<b>Unlocking does not bring traffic back immediately</b>
+<p>The two ends renegotiate speed for 2–3 seconds, then the switch checks for loops (STP) for <b>up to 30 seconds</b> more. During that time the link LED is lit but no data flows.</p>
+<p style="margin-top:6px"><b>A device not coming back within 30 seconds is normal.</b> The tool watches the link and tells you. Do not go poking at a healthy port while that is happening.</p>
+</div>
+
+<p>To shorten it, enable Fast Link on <b>edge ports only</b>: on a Cisco CBS220 that is <code>Spanning Tree → STP Interface Settings → Fast Link: Enable</code>, which brings it down to 2–3 seconds.</p>
+
+<div class="danger box">
+<b>Never enable Fast Link on an uplink port</b>
+<p>A loop forms instantly and <b>the whole site goes down.</b> Turn on <b>BPDU Guard</b> on the same screen as insurance.</p>
+</div>
+
+<h3>PoE</h3>
+<p>Ports delivering power can be power-cycled. <b>A cycle is always a single action</b> — power returns by itself a few seconds later. To leave a port unpowered, use <b>Cut power</b> instead.</p>
+
+
+<h2 id="en-s6"><span class="num">6</span>Two faults you cannot see</h2>
+
+<p>This is the real reason the tool exists. In both cases <b>the link is up and ping works.</b></p>
+
+<h3>1. Speed drop — "it used to be 1G, now it is 100M"</h3>
+
+<p>Gigabit uses all eight wires. <b>One loose strand and the link does not drop — it quietly settles at 100M.</b> Someone reports stuttering video and there is nothing to see with your eyes.</p>
+
+<p>The tool remembers the <b>best speed ever seen</b> on each port. Fall below it and the port turns red, with the date that speed was last recorded.</p>
+
+<p><b>What to do</b> — re-terminate both ends of the cable.</p>
+
+<div class="note box">
+<b>If a 100M device belongs on that port</b>
+<p>Select the port and press <b>"This speed is normal"</b>. It stops being flagged. Otherwise it stays red forever, and people soon start ignoring red altogether.</p>
+</div>
+
+<h3>2. Half duplex — "it says 1G but it crawls"</h3>
+
+<p>The hardest fault to catch. <b>The speed column reads a healthy 1G</b> — yet copying one file takes minutes.</p>
+
+<p><b>Cause</b> — if only one end has speed and duplex hard-coded, the other end has nothing to negotiate with and, by the rules, falls back to <b>half duplex</b>. The half-duplex side logs late collisions; the full-duplex side sees malformed frames. <b>Neither side drops the link.</b></p>
+
+<p>The tool marks it with <code>&frac12;</code>, in three places: next to the speed in the device list, in the corner of the faceplate tile, and in the detail panel.</p>
+
+<div class="danger box">
+<b>Do not start by re-terminating the cable</b>
+<p>Half duplex is a <b>configuration problem.</b> You can re-terminate twice and it will not help. <b>Set both ends to auto.</b></p>
+<p style="margin-top:6px">If a late-collision count is shown alongside, that is not a guess — <b>frames are being lost right now.</b></p>
+</div>
+
+<div class="warn box">
+<b>Some switches do not report duplex at all</b>
+<p>Those show nothing, and the report says <b>"duplex not read"</b>. The absence of a mark is not the same as "checked and fine".</p>
+</div>
+
+
+<h2 id="en-s7"><span class="num">7</span>Handover and inspection report</h2>
+
+<p><b>File → Handover report</b> (<kbd>Ctrl</kbd>+<kbd>R</kbd>) produces one Excel workbook — the things people normally retype by hand on site.</p>
+
+<table>
+<tr><th style="width:200px">Sheet</th><th>Contents</th></tr>
+<tr><td>Findings</td><td>What needs attention, plus signature lines. <b>This sheet alone is often enough</b></td></tr>
+<tr><td>Devices</td><td>IP, MAC, vendor, model, switch port, PoE</td></tr>
+<tr><td>Switch layout</td><td>The faceplate drawn in cells, plus per-port detail</td></tr>
+<tr><td>PoE power</td><td>Capacity, draw and headroom per switch; powered ports</td></tr>
+<tr><td>Free IPs</td><td>Address blocks available for assignment</td></tr>
+</table>
+
+<div class="good box">
+<b>This report does not pretend to know what it does not</b>
+<p>A switch that could not be read is listed at the top as <b>"not checked"</b>. A first visit is marked <b>"first record"</b>; unreported duplex is marked <b>"duplex not read"</b>; a scan that was never run is stated too. <b>"All clear"</b> appears only when none of those apply.</p>
+<p style="margin-top:6px">It is fit to hand to the customer as it is.</p>
+</div>
+
+
+<h2 id="en-s8"><span class="num">8</span>Keyboard shortcuts</h2>
+
+<table>
+<tr><th style="width:200px">Key</th><th>Action</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Start / stop scan</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Switch port management</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Free IPs</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Handover report</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd></td><td>Scan history (compare with a previous visit)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Toggle dense view</td></tr>
+<tr><td><kbd>F1</kbd></td><td>This guide</td></tr>
+</table>
+
+<p>Clicking an IP <b>copies</b> it. <b>Right-click</b> a device row for isolate, identify and open-web.</p>
+
+
+<h2 id="en-s9"><span class="num">9</span>When it does not work</h2>
+
+<table>
+<tr><th style="width:270px">Symptom</th><th>Cause and fix</th></tr>
+<tr>
+  <td><b>The scan finds nothing at all</b></td>
+  <td>Either Npcap is missing or you are not elevated. Close the program and <b>run it as administrator</b>. If that does not help, install Npcap from <code>npcap.com</code>.</td>
+</tr>
+<tr>
+  <td><b>My own PC is not in the list</b></td>
+  <td>It should be. ARP cannot hear its own call, so the tool adds the local machine deliberately. If it is missing, you picked the wrong adapter.</td>
+</tr>
+<tr>
+  <td><b>The address is <code>169.254.x.x</code></b></td>
+  <td>DHCP failed. That machine is effectively <b>not on the network.</b> Check the cable and the DHCP server first.</td>
+</tr>
+<tr>
+  <td><b>The switch query fails</b></td>
+  <td>Wrong community string, SNMP disabled on the switch, or a firewall blocking UDP 161. If a probe line appears in the log, read it — <b>if every dot1q/dot1d count is 0</b>, that switch does not expose its MAC table over SNMP and there is nothing to fix.</td>
+</tr>
+<tr>
+  <td><b>I locked a port and the switch stopped answering</b></td>
+  <td><b>Do not press it again.</b> The lock may have taken and cut the management path. Check on the switch's own interface.</td>
+</tr>
+<tr>
+  <td><b>I unlocked a port and the device is not back</b></td>
+  <td>Up to 30 seconds is normal (STP). See section 5.</td>
+</tr>
+<tr>
+  <td><b>No free-IP list appears</b></td>
+  <td>The scan did not run to completion. The list is withheld on purpose. Re-scan the range.</td>
+</tr>
+<tr>
+  <td><b>A blue warning appears at launch</b></td>
+  <td>The binary is unsigned. It says nothing about whether the file is malicious. Click <b>More info → Run anyway</b>.</td>
+</tr>
+</table>
+
+<div class="note box">
+<b>Check the activity log at the bottom of the window first</b>
+<p>Every refusal states its reason there. While a dialog is open, the same text also appears inside that dialog.</p>
+</div>
+
+<footer>
+  <p><b>Quiet Scanner v3.0</b> · Copyright (C) 2026 Goyohan · GPLv2<br>
+  This tool changes settings on other people's equipment. Do not leave write community strings lying around.</p>
+</footer>
+
+</div>
+</div>
+
+<script>
+// 한 파일 안에 두 말을 다 담았다. 파일을 둘로 쪼개면 한쪽만 늙는다 —
+// 단축키를 고치고 영문판을 안 고치면 그 문서가 사람을 엉뚱한 데로 보낸다.
+(function () {
+  var KEY = 'qs.manual.lang';
+  var bar = document.querySelector('.langbar');
+
+  function apply(lang) {
+    var en = lang === 'en';
+    document.documentElement.lang = en ? 'en' : 'ko';
+    document.getElementById('doc-ko').hidden = en;
+    document.getElementById('doc-en').hidden = !en;
+    document.title = en ? 'Quiet Scanner — User Guide' : 'Quiet Scanner 사용설명서';
+    var buttons = bar.querySelectorAll('button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute('aria-pressed',
+        String(buttons[i].dataset.set === (en ? 'en' : 'ko')));
+    }
+    // file:// 에서는 저장이 막힌 브라우저가 있다. 못 적어도 문서는 열려야 한다.
+    try { localStorage.setItem(KEY, en ? 'en' : 'ko'); } catch (e) {}
+  }
+
+  // 고르는 차례: 주소 끝의 #en/#ko (앱이 지금 말로 열어준다) -> 지난 선택
+  // -> 브라우저 말. 한국어가 아니면 영문으로 연다.
+  var want = '';
+  var hash = (location.hash || '').replace('#', '').toLowerCase();
+  if (hash === 'en' || hash === 'ko') want = hash;
+  if (!want) { try { want = localStorage.getItem(KEY) || ''; } catch (e) {} }
+  if (!want) want = /^ko/i.test(navigator.language || '') ? 'ko' : 'en';
+
+  bar.addEventListener('click', function (event) {
+    var hit = event.target.closest('button[data-set]');
+    if (hit) apply(hit.dataset.set);
+  });
+  apply(want);
+}());
+</script>
+
+</body>
+</html>

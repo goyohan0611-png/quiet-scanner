@@ -1,0 +1,647 @@
+/* Quiet Scanner — 현장 IP 충돌 정리 도구
+ * Copyright (C) 2026 고요한
+ *
+ * 이 프로그램은 자유 소프트웨어입니다. GNU 일반 공중 사용 허가서 제2판 또는
+ * 그 이후 판의 조건에 따라 재배포하거나 수정할 수 있습니다. 아무런 보증도
+ * 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를 보십시오.
+ *
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation; either version 2 of the License, or (at your option) any later
+ * version. This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details. You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <https://www.gnu.org/licenses/>.
+ */
+@font-face { font-family: Pretendard; src: url('fonts/Pretendard-Regular.ttf'); font-weight: 400; }
+@font-face { font-family: Pretendard; src: url('fonts/Pretendard-SemiBold.ttf'); font-weight: 600; }
+@font-face { font-family: Pretendard; src: url('fonts/Pretendard-Bold.ttf'); font-weight: 700; }
+:root {
+  --pad: 20px;   /* 창 좌우 여백. 모든 줄이 이 값에 맞춘다 */ --ink:#182230; --muted:#6f7d90; --line:#e7ecf3; --panel:#fff; --bg:#f7f9fc; --blue:#2878f0; --green:#0a9d67; --red:#e7475b; --red-bg:#fff5f6; --amber:#ba7a09; --log-height:182px; }
+* { box-sizing:border-box; }
+/* 배율 125% 노트북이면 1390px 창이 CSS 로는 1112px 이다. 최소폭을 1120 으로
+   잡아두면 거기서 가로 스크롤이 생겨 오른쪽 단추가 잘린다. */
+body { margin:0; min-width:1040px; height:100vh; overflow:hidden; color:var(--ink); background:var(--bg); font-family:Pretendard,"Malgun Gothic",sans-serif; font-size:13px; }
+button,input,select { font:inherit; }
+/* 한 판으로 붙인다.
+   회색 배경 위에 흰 카드 넷이 따로 떠 있으면 웹페이지로 읽힌다. 여백을 없애고
+   1px 선으로만 나누면 계기판이 된다. 위쪽 껍데기도 271px -> 143px 로 줄였다 —
+   한 번 만지고 마는 것들이 화면 3분의 1을 먹고 있었다. */
+main { height:100vh; padding:0; display:grid;
+       grid-template-rows:auto auto auto minmax(0,1fr) 8px var(--log-height); gap:0;
+       background:#fff; }
+.control-panel { display:flex; align-items:center; gap:9px; padding:9px var(--pad);
+                 background:#fff; border:0; border-bottom:1px solid var(--line); }
+.field { display:flex; align-items:center; gap:7px; }
+/* 라벨은 접는다. 칸 안의 값이 이미 무엇인지 말한다 (랜카드 이름, 대역). */
+.field label { display:none; }
+.interface-field { width:auto; flex:0 1 430px; min-width:240px; }
+.target-field { width:auto; flex:0 0 200px; }
+.interface-control { display:flex; gap:6px; flex:1; min-width:0; }
+.field select,.field input { width:100%; height:30px; padding:0 9px; background:#fff;
+                             border:1px solid #d7e0eb; color:var(--ink); outline:none;
+                             font-size:12.5px; }
+.interface-control select { flex:1; width:auto; }
+.interface-control button { flex:0 0 auto; height:30px; padding:0 9px; font-size:12px; }
+/* 랜카드 칸만은 줄어들어야 한다. 'Bluetooth Device (Personal Area Network)' 처럼
+   긴 이름이 오면, 안 줄어드는 단추는 그 길이만큼 늘어나 옆 칸을 덮는다. */
+.interface-control > #ifaceBtn { flex:1 1 auto; min-width:0; }
+.workbar-tools { flex:0 0 auto; }
+.field select:focus,.field input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #e9f2ff; }
+.toolbar-actions { display:flex; align-items:center; gap:9px; }
+.control-panel .toolbar-actions button { height:30px; padding:0 13px; font-size:12.5px; }
+button { height:36px; padding:0 12px; color:#415267; background:#fff; border:1px solid #d7e0eb; cursor:pointer; }.primary { color:#fff; background:var(--blue); border-color:var(--blue); font-weight:600; }.primary:hover { background:#1769df; }.summary { display:flex; gap:24px; align-items:center; min-height:56px; padding:0 8px; border-bottom:1px solid var(--line); }.metric { display:flex; align-items:center; gap:8px; color:var(--muted); }.metric i { width:8px; height:8px; border-radius:50%; background:var(--blue); }.metric strong { color:var(--ink); font-size:14px; }.metric.red i { background:var(--red); }.metric.green i { background:var(--green); }.metric.amber i { background:var(--amber); }
+/* 좌우 여백은 한 값(--pad)으로 통일한다. 줄마다 다르면 세로선이 안 맞고,
+   밀집 보기가 그걸 0 으로 덮으면 글자가 창 모서리에 붙는다. */
+.workbar { display:flex; align-items:center; gap:12px; min-height:36px;
+           padding:0 var(--pad); background:#fbfcfe;
+           border-bottom:1px solid var(--line); }
+.workbar > div:first-child { flex:1 1 auto; min-width:0; overflow:hidden;
+                             white-space:nowrap; text-overflow:ellipsis; }
+.workbar strong { font-size:12.5px; }
+.workbar span { margin-left:10px; color:var(--muted); font-size:12px; }
+.table-shell { min-height:0; overflow:hidden; display:flex; flex-direction:column; background:#fff; border:0; }.table-head,.group-row,.device-row { display:grid; grid-template-columns:var(--grid-cols, 2fr .85fr 1fr 1.2fr 1.15fr .5fr 1fr .95fr 1fr); align-items:center; }.table-head { flex:0 0 auto; min-height:30px; padding:0 var(--pad); color:#96a3b4; background:#f9fbfd; border-bottom:1px solid var(--line); font-size:11px; }.device-list { min-height:0; overflow:auto; }.empty { display:grid; place-items:center; min-height:180px; color:#98a5b5; }.group-row { min-height:42px; padding:0 var(--pad); border-bottom:1px solid var(--line); background:#fff; color:#65758a; cursor:pointer; }.group-row:hover { background:#f8fbff; }.group-row.conflict { color:var(--red); background:var(--red-bg); border-left:3px solid var(--red); padding-left:11px; }.ip-cell { display:flex; gap:8px; align-items:center; }.chevron { color:#a5b1c0; font-size:11px; }.conflict .chevron { color:var(--red); }.ip { font-family:Consolas,"JetBrains Mono",monospace; font-size:12px; }.conflict .ip { font-weight:600; }.conflict-badge { display:inline-flex; padding:3px 7px; color:var(--red); background:#ffe4e8; font-size:11px; }.device-row { min-height:48px; padding:0 var(--pad) 0 34px; border-bottom:1px solid #edf1f5; color:#65758a; cursor:context-menu; }.device-row:hover { background:#f8fbff; }.mac { color:#263447; font-family:Consolas,"JetBrains Mono",monospace; font-size:12px; }.ports { display:flex; gap:4px; flex-wrap:wrap; }.port { padding:2px 5px; color:#16835c; background:#eaf8f1; font-family:Consolas,monospace; font-size:10px; }.status { display:inline-flex; width:max-content; padding:3px 7px; color:#63758a; background:#f0f3f7; font-size:11px; }.status.isolated { color:#5c43c3; background:#f0ecff; }.status.done { color:#087c53; background:#e8f7ef; }
+.log-resize-handle { position:relative; cursor:row-resize; touch-action:none; }.log-resize-handle::after { content:""; position:absolute; top:3px; right:0; left:0; height:2px; background:#dbe4ef; }.log-resize-handle:hover::after,.log-resize-handle.dragging::after { background:var(--blue); }.activity-panel { min-height:0; margin-top:0; padding:9px var(--pad); overflow:hidden; display:flex; flex-direction:column; background:#fff; border:0; border-top:1px solid var(--line); }.log-progress { display:flex; align-items:center; gap:10px; padding-bottom:10px; color:var(--muted); font-size:11px; }.log-progress[hidden] { display:none; }.log-progress i { flex:1; display:block; height:6px; overflow:hidden; background:#e6edf6; border-radius:99px; }.log-progress b { display:block; width:0; height:100%; background:var(--blue); border-radius:inherit; transition:width .2s ease; }.log-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }.log-head strong { font-size:12px; }.log-head span { color:var(--muted); font-size:12px; }.log-entries { flex:1; min-height:0; margin-top:9px; overflow:auto; color:#65758a; font-size:12px; }.log-entry { display:flex; gap:10px; padding:4px 0; }.log-time { color:#a0acba; font-family:Consolas,monospace; font-size:11px; }.log-entry.ok .log-message { color:#087c53; }.log-entry.warn .log-message { color:#a96d08; }.log-entry.error .log-message { color:var(--red); }.log-empty { padding:18px 0; color:#a0acba; text-align:center; }
+.context-menu { position:fixed; z-index:20; width:196px; padding:5px; background:#fff; border:1px solid #dbe3ed; box-shadow:0 12px 32px #24334b2b; }.context-menu button { display:block; width:100%; height:32px; padding:0 9px; border:0; color:#34465c; text-align:left; }.context-menu button:hover { background:#eef5ff; color:#1769df; }.context-menu span { display:block; height:1px; margin:5px 4px; background:#edf1f5; }
+dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--line); box-shadow:0 20px 60px #1d2b3d33; }dialog::backdrop { background:#15203355; }dialog form { display:grid; gap:13px; padding:22px; }dialog h2 { margin:0; font-size:16px; }dialog p { margin:0; color:var(--muted); }dialog label { display:grid; gap:6px; color:var(--muted); font-size:12px; }dialog input { height:38px; padding:0 10px; border:1px solid #d7e0eb; }.dialog-actions,.dialog-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; }.dialog-error { color:var(--red); min-height:16px; }.dialog-top { align-items:flex-start; }.dialog-top form { padding:0; }#snapshotDialog { width:min(900px,calc(100vw - 80px)); }#snapshotDialog form { padding:16px; }#snapshotImage { max-width:100%; max-height:70vh; margin:auto; background:#111923; object-fit:contain; }
+
+
+/* ── 장비 사전 등록 창 ──────────────────────────────────────────────── */
+.modal[hidden] { display: none; }
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 14, 20, 0.45);
+}
+
+.modal-card {
+  width: min(520px, calc(100vw - 48px));
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line, #e2e7ee);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+  box-shadow: 0 18px 48px rgba(16, 26, 40, 0.18);
+}
+
+.modal-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.modal-card header strong { font-size: 14px; }
+
+.modal-card header button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mut, #6b7684);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.modal-card header button:hover { background: var(--hover, #eef1f6); }
+
+.modal-hint {
+  margin: 0 0 14px;
+  color: var(--mut, #6b7684);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+.modal-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--mut, #6b7684);
+}
+
+.modal-grid input {
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e2e7ee);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--tx, #242c38);
+  font-size: 12.5px;
+}
+
+.modal-grid input:focus {
+  border-color: var(--acc, #2f6feb);
+  outline: none;
+}
+
+.modal-scope {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--panel2, #eef1f6);
+  color: var(--mut, #6b7684);
+  font-size: 11.5px;
+  line-height: 1.5;
+  min-height: 18px;
+}
+
+.modal-card footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-card footer .spacer { flex: 1; }
+
+.modal-card footer button {
+  padding: 8px 15px;
+  border-radius: 7px;
+  border: 1px solid var(--line, #e2e7ee);
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.modal-card footer button:hover { background: var(--hover, #eef1f6); }
+
+.modal-card footer button.primary {
+  border-color: transparent;
+  background: var(--accbg, #3b82f6);
+  color: #fff;
+  font-weight: 600;
+}
+
+.modal-card footer button.primary:hover { filter: brightness(1.06); }
+.modal-card footer button.ghost { color: var(--mut, #6b7684); }
+
+.book-tag {
+  margin-left: 5px;
+  color: var(--acc, #2f6feb);
+  font-size: 10px;
+  font-style: normal;
+  opacity: 0.75;
+}
+
+.modal-scope { white-space: pre-line; }
+.modal-caution { margin:10px 0 0; padding:9px 11px; border-left:3px solid #d99b2f; background:#fff8e9; color:#8b611a; font-size:11.5px; line-height:1.55; }
+.modal-card footer button.danger { background:var(--red); border-color:var(--red); }
+.modal-card footer button.danger:hover { background:#d9394d; }
+
+/* .context-menu button 에 display:block 이 걸려 있어서 hidden 속성이 먹지 않는다.
+   격리 / 격리 해제는 지금 상태에 맞는 것만 보여야 한다. */
+.context-menu button[hidden] { display: none !important; }
+
+/* ── 검색 · 정렬 · 비교 ────────────────────────────────────────────── */
+
+.workbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.filter-input {
+  width: 230px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.filter-input:focus { border-color: #7fa8ee; outline: none; }
+
+.ghost-btn {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: #4a5b70;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ghost-btn:hover { background: #f2f7ff; border-color: #9fc0f2; color: #1769df; }
+
+.table-head .sortable { cursor: pointer; user-select: none; }
+.table-head .sortable:hover { color: #4a5b70; }
+.table-head .sortable[data-dir="asc"]::after  { content: " ▲"; font-size: 8px; }
+.table-head .sortable[data-dir="desc"]::after { content: " ▼"; font-size: 8px; }
+
+/* 모델 칸에 이름·응답시간을 한 줄 더 얹는다 (칸을 늘리지 않는다) */
+.model-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.model-cell .sub {
+  overflow: hidden;
+  color: #9aa8ba;
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-card--wide { width: min(680px, calc(100vw - 48px)); }
+
+.compare-body { max-height: 52vh; overflow-y: auto; margin-top: 4px; }
+.compare-group { margin-bottom: 14px; }
+.compare-group h4 { margin: 0 0 6px; font-size: 12px; color: #4a5b70; }
+.compare-group h4 b { color: #1769df; }
+.compare-none { margin: 0; color: #9aa8ba; font-size: 11.5px; }
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 190px 150px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 9px;
+  border-left: 3px solid transparent;
+  border-radius: 5px;
+  font-size: 11.5px;
+}
+
+.compare-row .ip { font-family: Consolas, monospace; }
+.compare-row.is-add  { background: #eefaf3; border-left-color: #2fa06d; }
+.compare-row.is-gone { background: #fdeef0; border-left-color: #d94a5a; }
+.compare-row.is-move { background: #fff6e6; border-left-color: #d99b2f; }
+
+.history-body { max-height:52vh; overflow-y:auto; margin-top:4px; border-top:1px solid var(--line); }
+.history-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:10px 2px; border-bottom:1px solid var(--line); }
+.history-row strong { display:block; color:#34465c; font-size:12px; }
+.history-row span { display:block; margin-top:3px; color:#8b98a9; font-size:11px; }
+
+/* 빈 IP 목록 — 연속된 자리는 한 덩어리로 */
+.free-body { max-height:420px; overflow:auto; border:1px solid var(--line); background:#fff; }
+.free-ip { padding:5px 12px; color:#3d4a5c; font-family:Consolas,monospace; font-size:12.5px; border-bottom:1px solid #f2f4f7; }
+.free-ip:last-child { border-bottom:none; }
+.free-ip:hover { background:#f8fbff; }
+
+/* 스위치 포트 */
+.swport { display:inline-flex; width:max-content; padding:3px 7px; color:#1f6feb; background:#eef4ff; font-family:Consolas,monospace; font-size:11px; }
+
+/* 칸이 늘어난 만큼 한 칸의 폭이 좁다. 넘치면 자르고 마우스로 확인한다. */
+.device-row > div { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.device-row .ports { overflow:visible; white-space:normal; }
+.device-row .dim { color:#c3ccd8; }
+.device-row .more { display:inline-block; margin-left:5px; font-style:normal; color:#a9b4c2; font-size:10.5px; }
+.mac .status { margin-left:7px; }
+.group-note { grid-column:2 / -1; color:inherit; white-space:nowrap; }
+
+/* 볼 칸 고르기 */
+.column-menu { min-width:168px; max-height:70vh; overflow:auto; }
+.column-menu button { display:flex; align-items:center; gap:8px; }
+.column-menu button[disabled] { color:#b4bfcc; cursor:default; }
+.column-menu button[disabled]:hover { background:none; }
+.column-menu .tick { font-style:normal; font-size:12px; color:#5b6b80; }
+.table-head span.sortable { cursor:pointer; user-select:none; }
+
+/* 맨 윗줄 — 이름은 왼쪽, 언어 메뉴는 오른쪽 */
+/* ── 합친 줄 ─────────────────────────────────────────────────────────
+   장비가 한 대뿐인 IP. 접혀 있던 여덟 칸이 여기서 다 찬다.
+   ------------------------------------------------------------------- */
+.solo-row { display:grid; grid-template-columns:var(--grid-cols); align-items:center;
+            min-height:42px; padding:0 var(--pad); border-bottom:1px solid #eef2f7;
+            color:#65758a; cursor:context-menu; }
+.solo-row:hover { background:#f8fbff; }
+/* 내 PC 는 왼쪽에 얇은 선으로만. 줄 전체를 칠하면 목록이 얼룩진다. */
+.solo-row.own-ip { box-shadow:inset 3px 0 0 var(--green); }
+.solo-row .ip-cell { display:flex; align-items:baseline; gap:9px; min-width:0; }
+/* IP 를 굵게 쓰면 모든 줄이 굵어진다. 줄마다 다 있는 것은 강조가 아니다 —
+   그냥 왼쪽 칸 전체가 무거워지고 촌스러워진다. 굵기는 충돌에만 남긴다. */
+.solo-row .ip { font-weight:400; color:#415063; letter-spacing:.1px; }
+.mac-sub { color:#96a3b4; font-family:Consolas,"JetBrains Mono",monospace;
+           font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+body.dense .solo-row { min-height:26px; }
+body.dense .mac-sub { font-size:10.5px; }
+
+/* ── 색을 아낀다 ─────────────────────────────────────────────────────
+   포트칩 초록 · 스위치포트 파랑 · 전력 초록이 줄마다 있으면, 색이 다섯 개라
+   아무것도 급해 보이지 않는다. 평소 것은 회색으로 눕히고 빨강은 진짜 문제
+   (충돌 · 예전보다 느려진 링크)에만 남긴다.
+   ------------------------------------------------------------------- */
+.port { color:#5b6b80; background:#f0f3f7; }
+.swport { color:#4a5b70; background:#f0f3f7; }
+.solo-row .kind-confidence, .device-row .kind-confidence { display:none; }
+
+/* 빈 IP 를 못 주는 이유. 이 목록은 그대로 배정에 쓰이므로, 못 믿을 때는
+   빈 화면이 아니라 이유가 크게 보여야 한다. */
+.free-refuse { margin:0; padding:22px 20px; border-left:3px solid var(--red);
+               background:#fff2f1; color:#8c332c; font-size:12.5px; line-height:1.65; }
+
+/* ── 장비 사전 목록 ─────────────────────────────────────────────────
+   앞자리는 2,600개가 넘지만 항목은 150개다. 앞자리를 한 줄씩 늘어놓으면
+   아무도 못 읽는다. 제조사·종류로 묶어 보여주고 앞자리는 접어 둔다.
+   ------------------------------------------------------------------- */
+.book-list-head { display:flex; align-items:center; gap:9px; margin:16px 0 7px; }
+.book-list-head strong { font-size:12px; color:#3d4a5c; }
+.book-list-head #bookCount { color:var(--muted); font-size:11.5px; }
+.book-list-head .filter-input { width:190px; height:28px; font-size:12px; }
+.book-list { max-height:240px; overflow-y:auto; border:1px solid var(--line);
+             border-radius:8px; background:#fcfdfe; }
+.bk-item { border-bottom:1px solid #eef2f6; }
+.bk-item:last-child { border-bottom:0; }
+.bk-row { display:grid; grid-template-columns:1.1fr 1fr auto; gap:10px;
+          align-items:center; padding:7px 11px;
+          cursor:pointer; font-size:12px; color:#4a5b70; }
+.bk-row:hover { background:#f1f7ff; }
+.bk-row.on { background:#e8f1fe; }
+.bk-row b { font-weight:600; color:#243043; }
+.bk-row .bk-kind { color:#65758a; }
+.bk-row .bk-pre { justify-self:end; color:#93a1b3; font-size:10.5px;
+                  font-family:ui-monospace,Consolas,monospace; white-space:nowrap; }
+.bk-row .bk-note { grid-column:1 / -1; margin-top:-2px; color:#98a5b5; font-size:11px; }
+/* 앞자리가 여럿이면 접어 둔다. 눌러서 펼치면 전부 나온다 —
+   예전에는 첫 번째 하나만 칸에 올라와서 나머지를 볼 방법이 없었다. */
+.bk-row.many .bk-pre em { display:inline-block; width:0; height:0; margin-right:7px;
+                          border:4px solid transparent; border-left-color:#a5b1c0;
+                          vertical-align:middle; transition:transform .12s ease; }
+.bk-row.many.open .bk-pre em { transform:rotate(90deg) translateX(-1px); }
+.bk-pres { display:flex; flex-wrap:wrap; gap:5px; padding:2px 11px 10px 11px;
+           background:#f7f9fc; }
+.bk-pres[hidden] { display:none; }
+.bk-chip { padding:3px 8px; border:1px solid #dde4ed; border-radius:5px;
+           background:#fff; color:#5b6b80; font-size:10.5px; cursor:pointer;
+           font-family:ui-monospace,Consolas,monospace; }
+.bk-chip:hover { border-color:var(--blue); color:var(--blue); background:#f1f7ff; }
+.bk-chip.on { border-color:var(--blue); background:#e8f1fe; color:var(--blue);
+              font-weight:600; }
+.bk-more { align-self:center; margin-left:4px; color:#98a5b5; font-size:10.5px;
+           font-style:normal; }
+.bk-mine { display:inline-block; margin-left:6px; padding:0 5px; border-radius:3px;
+           background:#e8f7ef; color:#0d7a52; font-size:10px; font-weight:600; }
+.bk-empty { padding:22px; color:#98a5b5; font-size:12px; text-align:center; }
+
+/* ── 메뉴바 ──────────────────────────────────────────────────────────
+   기능이 계속 늘어서 위쪽 단추 줄이 넘친다. 메뉴로 내리면 줄이 비고,
+   무엇보다 단축키가 붙는다. "전문가 툴 같다"는 느낌의 대부분은 회색 크롬이
+   아니라 '기능이 어디 있는지 예측이 된다'는 것이다.
+
+   자주 쓰는 것은 아래 작업줄에 단추로 그대로 둔다 — 메뉴는 찾는 곳이지
+   매번 거쳐야 하는 곳이 아니다.
+   ------------------------------------------------------------------- */
+.menubar { display:flex; align-items:center; gap:1px; height:30px; margin:0;
+           padding:0 var(--pad) 0 6px; background:#fff;
+           border-bottom:1px solid var(--line); }
+.menubar > button { height:24px; padding:0 11px; border:0; background:transparent;
+                    color:#3d4a5c; font-size:12.5px; border-radius:5px; cursor:pointer; }
+.menubar > button:hover { background:#eef4ff; color:#1769df; }
+.menubar > button.on { background:#e6effd; color:#1769df; }
+.mb-gap { flex:1; }
+.mb-stat { display:flex; align-items:center; gap:7px; color:#93a1b3; font-size:11.5px;
+           font-family:ui-monospace,Consolas,monospace; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; max-width:46vw; }
+.mb-stat i { flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:#c3ccd8; }
+.mb-stat.live i { background:#22a06b; }
+.mb-stat.busy i { background:#f0a020; }
+.mb-pop { position:fixed; z-index:40; min-width:216px; padding:5px; background:#fff;
+          border:1px solid #dbe3ed; border-radius:8px; box-shadow:0 14px 36px #24334b26; }
+.mb-pop button { display:flex; align-items:center; gap:10px; width:100%; height:30px;
+                 padding:0 10px; border:0; background:none; color:#34465c;
+                 font-size:12.5px; text-align:left; cursor:pointer; }
+.mb-pop button:hover { background:#eef5ff; color:#1769df; }
+.mb-pop button[disabled] { color:#b3bdca; cursor:default; background:none; }
+.mb-pop button b { flex:1; font-weight:400; }
+.mb-pop button b::before { content:'\2713'; margin-right:8px; color:transparent; }
+.mb-pop button.tick b::before { color:#1769df; }
+.mb-pop button i { color:#a8b4c4; font-style:normal; font-size:11px;
+                   font-family:ui-monospace,Consolas,monospace; }
+.mb-pop hr { height:1px; margin:5px 4px; border:0; background:#edf1f5; }
+
+/* ── 밀집 보기 ───────────────────────────────────────────────────────
+   사무실에서 72대를 훑을 때는 한 화면에 많이 보이는 게 낫고, 랙 앞에 서서
+   우클릭할 때는 줄이 두꺼운 게 낫다. 보스가 둘 다 하니 토글로 둔다.
+   ------------------------------------------------------------------- */
+body.dense .workbar { min-height:32px; }
+body.dense .table-head { min-height:26px; font-size:10.5px; }
+body.dense .group-row { min-height:25px; }
+body.dense .device-row { min-height:26px; padding-left:30px; }
+body.dense .model-cell .sub { display:none; }
+body.dense .ip, body.dense .mac { font-size:11.5px; }
+body.dense .status { padding:1px 6px; font-size:10.5px; }
+body.dense .port { padding:1px 4px; font-size:9.5px; }
+body.dense .conflict-badge { padding:1px 6px; font-size:10.5px; }
+body.dense .swcell { line-height:1.15; }
+body.dense .net-tabs { min-height:31px; padding:4px 8px 0; }
+body.dense .net-tab { height:26px; padding:0 10px; }
+
+.appbar { display:flex; align-items:center; justify-content:space-between; height:34px; margin-bottom:10px; border-bottom:1px solid var(--line); }
+.appbar-name { color:#6b7a8d; font-size:12.5px; font-weight:600; letter-spacing:.2px; }
+.appbar-btn { padding:4px 10px; color:#5b6b80; background:none; border:1px solid transparent; font-size:12px; cursor:pointer; }
+.appbar-btn:hover { color:#243043; background:#eef3fa; border-color:var(--line); }
+#langMenu button[data-on="1"] { color:#1f6feb; font-weight:600; }
+
+/* 작업줄 단추는 오른쪽에 붙인다 */
+.workbar-tools { display:flex; align-items:center; gap:6px; margin-left:auto; }
+
+/* 상단의 스캔 조작부는 입력칸과 실행 단추를 같은 결로 묶는다. */
+.control-panel { border-radius:10px; }
+.control-panel .field select,
+.control-panel .field input,
+.control-panel .interface-control button,
+.control-panel .toolbar-actions button { border-radius:7px; }
+
+/* 선택한 인터페이스의 IP는 내 장비이므로 목록에서 바로 구분한다. */
+.group-row.own-ip:not(.conflict) {
+  padding-left:13px;
+  color:#087c53;
+  background:#effaf4;
+  border-left:3px solid var(--green);
+}
+.group-row.own-ip:not(.conflict):hover { background:#e6f7ee; }
+
+/* IP 숫자는 복사, 나머지 그룹 줄은 펼치기/접기 — 두 동작을 겹치지 않게 둔다. */
+.ip-copy { width:auto; height:auto; padding:0; border:0; color:inherit; background:transparent; cursor:copy; }
+.ip-copy:hover { color:var(--blue); text-decoration:underline; }
+.ip-copy:focus-visible { outline:2px solid #9fc0f2; outline-offset:2px; }
+
+.kind-cell { display:flex; align-items:center; gap:5px; min-width:0; }
+.kind-confidence { flex:0 0 auto; padding:2px 5px; border-radius:4px; font-size:10px; font-style:normal; line-height:1.2; }
+.kind-confidence.confirmed { color:#087c53; background:#e8f7ef; }
+.kind-confidence.estimated { color:#9a6508; background:#fff3dc; }
+
+/* 스캔 중에는 같은 자리의 파란 단추가 빨간 '중지'가 된다 */
+.primary.danger { background:var(--red); border-color:var(--red); }
+.primary.danger:hover { background:#d9394d; }
+
+/* 링크 속도 — 스위치 포트 이름 옆에 붙는다. 느리면 빨갛게 */
+/* 스위치가 여러 대인 현장 — 어느 스위치의 몇 번 포트인지 두 줄로 적는다. */
+/* 한 줄로 둔다. 두 줄이면 줄 높이가 붙박여서 밀집 보기가 안 먹는다. */
+.swcell { display:flex; align-items:center; gap:6px; min-width:0; }
+.swname { flex:0 0 auto; color:#95a2b3; font-size:10.5px; line-height:1.2; overflow:hidden;
+          text-overflow:ellipsis; white-space:nowrap; }
+/* 포트 이름이 제일 먼저 줄어들어야 한다 — 속도·전력 칩은 짧고 늘 같은 폭이다. */
+.swcell > .swport { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.swcell > .swspeed, .swcell > .poe { flex:0 0 auto; }
+.swspeed { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#eef1f5; font-style:normal; font-size:10.5px; font-weight:600; }
+.swspeed.slow { color:#fff; background:var(--red); }
+
+/* 대역 탭 — 랜카드를 둘 이상 골라 훑었을 때만 나온다 */
+/* flex:0 0 auto 가 빠지면 안 된다. .table-shell 이 세로 flex 라서, 크기를
+   안 박아 두면 표가 길어질수록 이 줄이 눌려 글자 아랫부분이 잘려 나간다. */
+/* display 를 켜는 규칙이 [hidden] 보다 뒤에 있으면 숨겨도 자리를 차지한다.
+   대역이 하나뿐일 때 표 위에 빈 회색 띠가 생겼다. */
+.net-tabs[hidden] { display:none; }
+.net-tabs { flex:0 0 auto; display:flex; align-items:flex-end; gap:2px;
+            min-height:37px; padding:6px var(--pad) 0; background:#f9fbfd;
+            border-bottom:1px solid var(--line); overflow-x:auto; overflow-y:hidden; }
+.net-tab { flex:0 0 auto; display:inline-flex; align-items:center; height:30px;
+           padding:0 12px; border:1px solid transparent; border-bottom:0;
+           background:transparent; color:#7c8b9c; font-size:12px; line-height:1;
+           white-space:nowrap; }
+.net-tab i { display:inline-block; margin-left:7px; padding:1px 6px; font-style:normal;
+             font-size:10.5px; color:#8b98a8; background:#eef2f6; border-radius:9px; }
+.net-tab:hover { color:var(--ink); }
+.net-tab.on { color:var(--ink); background:#fff; border-color:var(--line);
+              border-radius:4px 4px 0 0; font-weight:600; margin-bottom:-1px; }
+.net-tab.on i { color:var(--blue); background:#e8f0fe; }
+
+/* 랜카드 고르기 — 여러 개를 체크해 한 번에 훑을 수 있다 */
+.iface-btn { flex:1; min-width:0; text-align:left; overflow:hidden; text-overflow:ellipsis;
+             white-space:nowrap; }
+.iface-btn::after { content:'▾'; float:right; margin-left:8px; color:#98a5b5; }
+.iface-menu { width:auto; max-width:min(560px, calc(100vw - 32px)); }
+.iface-menu button { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; }
+.iface-menu i { font-style:normal; }
+.iface-menu .if-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.iface-menu .if-net { color:var(--muted); font-family:ui-monospace,Consolas,monospace;
+                      font-size:11px; white-space:nowrap; }
+
+/* ── 스위치 앞판 ──────────────────────────────────────────────────────
+   실물처럼 홀수는 위, 짝수는 아래. 랙 앞에 서서 보는 그림과 같아야
+   "몇 번 포트" 를 눈으로 세지 않고 바로 짚을 수 있다.
+
+   바탕은 흰색이다. 앞판을 검게 칠하면 실물 흉내는 나지만 화면 한가운데
+   시커먼 덩어리가 생겨 정작 봐야 할 초록·빨강이 죽는다. */
+.modal-card--face { width:min(1000px, calc(100vw - 48px)); max-width:none; }
+.face { margin-top:12px; }
+.face-plate { display:flex; gap:16px; align-items:flex-start; padding:12px 14px;
+              background:#fff; border:1px solid var(--line); border-radius:6px; overflow-x:auto; }
+.face-bank { display:flex; flex-direction:column; gap:4px; }
+.face-bank--uplink { padding-left:14px; border-left:1px dashed #dbe3ec; }
+.face-line { display:flex; gap:3px; }
+.face-tag { margin-top:5px; color:#9aa7b6; font-size:9.5px; letter-spacing:.04em; text-align:center; }
+.pport { position:relative; display:grid; place-items:center; width:24px; height:22px; padding:0;
+         border:1px solid #dbe3ec; border-radius:3px; background:#fff; color:#8b98a8;
+         font-family:ui-monospace,Consolas,monospace; font-size:10px; line-height:1; cursor:pointer; }
+.pport:hover { border-color:#8ea6c2; color:#3c4b5e; }
+/* 빈 포트는 테두리만. 색이 있는 것은 전부 "볼 이유가 있는 것" 이어야 한다. */
+.pport.idle { }
+.pport.live { background:#e7f7f0; border-color:#93d9bd; color:#07734d; }
+/* 100M 는 빨강. 이 도구가 잡으려는 바로 그 상태다. */
+.pport.slow { background:#fdeaed; border-color:#f2a7b1; color:#c02a3e; }
+/* 잠긴 포트는 번호 대신 X. 색만으로는 100M 와 헷갈린다. */
+.pport.locked { background:#f4f6f9; border-color:#e7475b; color:#e7475b; font-size:12px; }
+/* PoE 급전 중이면 아래에 노란 띠 하나. 색을 또 쓰면 상태가 안 읽힌다. */
+.pport.has-poe { box-shadow:inset 0 -3px 0 #edc23c; }
+.pport.keep { cursor:not-allowed; border-style:dashed; }
+.pport.picked { outline:2px solid var(--blue); outline-offset:1px; }
+.pport--gap { visibility:hidden; }
+.face-legend { display:flex; flex-wrap:wrap; gap:7px 16px; margin-top:8px;
+               color:var(--muted); font-size:11px; }
+.face-key { display:flex; align-items:center; gap:6px; }
+.face-key .pport { width:14px; height:12px; cursor:default; font-size:9px; }
+
+/* 창 맨 위 한 줄 — 어느 스위치인지, 지금 상태가 어떤지 */
+.ports-top { display:flex; justify-content:space-between; align-items:baseline; gap:16px;
+             flex-wrap:wrap; margin-top:2px; color:var(--muted); font-size:12px; }
+.ports-top #portsWhere { font-family:ui-monospace,Consolas,monospace; }
+#portsTally { display:flex; gap:14px; }
+.tally { display:inline-flex; align-items:baseline; gap:5px; font-size:11.5px; }
+.tally b { font-size:13px; font-variant-numeric:tabular-nums; }
+.tally.live b { color:var(--green); }
+.tally.slow b { color:var(--red); }
+.tally.locked b { color:var(--red); }
+/* 이름을 pwr 로 둔다 — .poe 는 장비 목록 칩이 이미 쓰고 있어 배경이 묻어난다. */
+.tally.pwr b { color:#a5820e; }
+
+/* 고른 포트 하나 — 한 줄 요약과 단추뿐. 안 고르면 아예 안 나온다. */
+.port-detail { margin-top:12px; padding:12px 14px; background:#fbfcfe;
+               border:1px solid var(--line); border-radius:6px; }
+.pd-line { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:11px; }
+.pd-line > b { font-family:ui-monospace,Consolas,monospace; font-size:13px; color:var(--ink); }
+.pd-meta { color:var(--muted); font-size:12px; }
+.pd-alias { font-style:normal; font-size:12px; color:#7b8798; }
+.pd-keep { font-style:normal; font-size:11px; color:#8a6d1f; background:#fff6e2;
+           padding:2px 8px; border-radius:3px; }
+.port-state { font-weight:600; font-size:11.5px; }
+.port-state.up { color:#1b7a52; }
+.port-state.down { color:#95a2b3; }
+.port-state.locked { color:var(--red); }
+.pd-ghost { margin:0 0 11px; padding:8px 11px; border-left:3px solid var(--amber);
+            background:#fff8e9; color:#8b611a; font-size:11.5px; line-height:1.55; }
+/* 이 포트가 예전에는 더 빨랐다는 기록. 짐작(slowLink)이 아니라 우리가 적어둔
+   사실이라 눈에 띄게 따로 낸다. 옆에 '정상입니다' 를 같이 둔다 — 일부러
+   100M 장비를 물려둔 포트가 영원히 빨갛게 남으면 빨간색 전체가 무시당한다. */
+.pd-was { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+          margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
+          background:#fff2f1; color:#8c332c; font-size:11.5px; line-height:1.55; }
+.pd-was b { font-size:12.5px; color:#7a2b25; }
+.pd-was span { flex:1; min-width:200px; color:#96594f; }
+.pd-was button { flex:0 0 auto; height:28px; font-size:11.5px;
+                 background:#fff; border-color:#e8c4bf; color:#8c332c; }
+
+/* 반이중. 속도 저하와 같은 빨강을 쓰되 칸은 따로 둔다 — 둘은 조치가 다르다.
+   속도 저하는 랜선을 다시 성단하는 일이고, 반이중은 양끝 설정을 맞추는 일이다.
+   한 칸에 섞어 놓으면 기사가 멀쩡한 성단을 두 번 하고도 못 고친다. */
+.pd-half { margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
+           background:#fff2f1; color:#8c332c; font-size:11.5px; line-height:1.55; }
+.pd-half b { display:block; margin-bottom:3px; font-size:12.5px; color:#7a2b25; }
+.pd-half span { display:block; color:#96594f; }
+/* 늦은 충돌은 짐작이 아니라 증거다. 굵게 세워 둔다. */
+.pd-half .pd-proof { margin-top:5px; font-weight:600; color:#8c332c; }
+
+/* 앞판 칸의 ½. 번호를 가리면 안 되니 오른쪽 아래 구석에 작게 붙인다. */
+.pport .pp-half { position:absolute; right:1px; bottom:0; font-size:9px;
+                  font-style:normal; font-weight:700; line-height:1; opacity:.9; }
+.face-key .pport.half { font-size:9px; }
+/* 목록의 속도 칸에 붙는 ½ */
+.swspeed b { margin-left:2px; font-weight:700; }
+
+/* 준공 리포트 창 — 넓은 칸은 두 칸을 차지한다 */
+.report-form .wide { grid-column:1 / -1; }
+.report-form textarea { padding:8px 10px; border:1px solid var(--line,#e2e7ee);
+                        border-radius:7px; background:#fff; color:var(--tx,#242c38);
+                        font-family:inherit; font-size:12.5px; line-height:1.5;
+                        resize:vertical; }
+.report-form textarea:focus { border-color:var(--acc,#2f6feb); outline:none; }
+
+/* 창 안 실행 로그. 아래 작업 로그는 창 뒤에 가려서 안 보인다 —
+   거절당한 이유와 기다리는 과정은 그 자리에서 보여야 한다. */
+.modal-log { max-height:132px; margin:12px 0 0; padding:8px 10px; overflow-y:auto;
+             background:#f7f9fc; border:1px solid var(--line,#e2e7ee); border-radius:8px;
+             font-size:11.5px; line-height:1.5; }
+.ml-line { display:flex; gap:9px; padding:2px 0; color:#5b6b80; }
+.ml-line i { flex:0 0 auto; font-style:normal; color:#a3b0c0;
+             font-family:ui-monospace,Consolas,monospace; font-size:10.5px; padding-top:1px; }
+.ml-line span { flex:1; min-width:0; }
+.ml-line.ok span { color:#127a52; }
+.ml-line.warn span { color:#96650c; }
+.ml-line.bad span { color:var(--red); font-weight:600; }
+
+.pd-acts { display:flex; gap:7px; flex-wrap:wrap; }
+.pd-acts button { height:30px; font-size:12px; }
+.danger-btn { color:var(--red); border-color:#f0c8c4; }
+.danger-btn:hover:not(:disabled) { background:#fdeceb; }
+.danger-btn:disabled { color:#c3cbd5; border-color:#e6ebf1; background:#f7f9fb; cursor:not-allowed; }
+
+/* 쓰기 커뮤니티는 실제로 쓸 때만 필요하므로 맨 아래 동작 줄에 둔다. */
+.ports-foot { align-items:center; gap:10px; }
+.ports-comm { display:flex; align-items:center; gap:8px; margin:0; }
+.ports-comm > span { color:var(--muted); font-size:11.5px; white-space:nowrap; }
+.ports-comm > input { width:170px; height:30px; font-size:12px; }
+
+/* PoE 로 전원을 받는 포트. 초록은 "여기 전기가 흐른다" 는 뜻이다. */
+.poe { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#f0f3f7; font-style:normal; font-size:10.5px; font-weight:600; }
+
