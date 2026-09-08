@@ -144,15 +144,48 @@ OUI_FALLBACK = {
 # ---------------------------------------------------------------------------
 
 OUI_FILE = "oui.dat.gz"
-BOOK_FILE = "장비사전.json"
+BOOK_FILE = "device-book.json"
 # 현장에서 직접 등록한 것은 따로 담는다.
 #
 # 사전 하나에 다 담으면, 배포본 사전과 "우리 현장 녹화기" 같은 회사 사정이
 # 같은 파일에 섞인다. 그 파일을 공개 저장소에 올리는 순간 조달 정보가 같이
 # 나간다. 사람이 매번 조심해서 막을 일이 아니다 — 파일을 갈라 둔다.
-BOOK_MINE_FILE = "장비사전.내것.json"
+BOOK_MINE_FILE = "device-book.local.json"
 
 _OUI_CACHE = None
+
+
+# v3.0 까지 쓰던 한국어 파일 이름. 공개하면서 영어로 바꿨다.
+OLD_NAMES = {
+    "장비사전.내것.json": "device-book.local.json",
+    "스캔기록.json": "scan-history.json",
+    "포트기록.json": "port-history.json",
+    "격리기록.json": "isolation.json",
+}
+
+
+def migrate_old_names():
+    """옛 이름으로 쌓여 있던 기록을 새 이름으로 한 번 옮긴다.
+
+    이름만 바꾸고 말면 이미 쌓인 것이 통째로 안 읽힌다. 스캔 기록과 포트
+    속도 이력이 날아가는 것도 아깝지만, 진짜 위험한 것은 격리 기록이다 —
+    그건 PC 에 박아둔 정적 ARP 를 되돌리는 유일한 단서다. 못 읽으면 그 IP 는
+    재부팅할 때까지 엉뚱한 MAC 에 묶인 채로 잊힌다.
+
+    새 이름이 이미 있으면 건드리지 않는다. 옮기다 실패해도 프로그램은
+    그냥 돌아야 한다 — 기록 때문에 스캔이 못 도는 일은 없어야 한다.
+    """
+    moved = []
+    for old, new in OLD_NAMES.items():
+        try:
+            here = os.path.join(app_dir(), old)
+            there = os.path.join(app_dir(), new)
+            if os.path.isfile(here) and not os.path.exists(there):
+                os.replace(here, there)
+                moved.append("%s -> %s" % (old, new))
+        except OSError:
+            continue
+    return moved
 
 
 def app_dir():
@@ -850,7 +883,7 @@ def iface_info(name):
 # 장비를 알아보는 기준은 IP 가 아니라 MAC 이다 — IP 는 바뀌어도 MAC 은 안 바뀐다.
 # ---------------------------------------------------------------------------
 
-HISTORY_FILE = "스캔기록.json"
+HISTORY_FILE = "scan-history.json"
 HISTORY_LIMIT = 30
 
 
@@ -980,7 +1013,7 @@ def compare_device_maps(base, now):
 # 그래서 포트 속도를 매번 적어 두고, 예전보다 느려졌으면 사람이 찾기 전에
 # 먼저 말한다.
 
-PORT_HISTORY_FILE = "포트기록.json"
+PORT_HISTORY_FILE = "port-history.json"
 # 포트 조회는 이제 각자 스레드에서 돈다. 스위치 두 대를 동시에 읽으면 이
 # 파일을 동시에 고치게 되고, 그러면 한쪽 기록이 통째로 날아간다.
 PORT_HISTORY_LOCK = threading.RLock()
@@ -1187,7 +1220,7 @@ def _accept(store, slot, key):
 # (못은 메모리에만 박히므로 재부팅해도 사라진다. 다만 그걸 아는 사람이 없다.)
 # ---------------------------------------------------------------------------
 
-PIN_FILE = "격리기록.json"
+PIN_FILE = "isolation.json"
 _pin_lock = threading.Lock()
 
 

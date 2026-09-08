@@ -119,8 +119,8 @@ BC:AD:28  →  Hikvision  ·  IP 카메라 / NVR
 | `BC-AD-28` (6자리) | 그 제조사 장비 **전부** |
 | `BC-AD-28-11-22-33` (12자리) | **이 장비 한 대만** |
 
-사전은 `src/장비사전.json` 파일 하나입니다. 현장에서 직접 등록한 것은
-`src/장비사전.내것.json` 으로 따로 쌓여서 저장소에는 안 올라갑니다. 팀끼리 주고받을 수 있고,
+사전은 `src/device-book.json` 파일 하나입니다. 현장에서 직접 등록한 것은
+`src/device-book.local.json` 으로 따로 쌓여서 저장소에는 안 올라갑니다. 팀끼리 주고받을 수 있고,
 저장소에 보태주시면 다음 사람이 덕을 봅니다.
 
 > 계정이나 스트림 주소는 넣지 않습니다. 펌웨어마다 달라서 틀린 값은 없느니만
@@ -139,7 +139,7 @@ BC:AD:28  →  Hikvision  ·  IP 카메라 / NVR
 | 관리자 권한 | 격리(정적 ARP)에 필요 |
 
 Npcap은 **끼워 넣지 않았습니다.** 직접 받아 설치하십시오 — 5대까지 무료입니다.
-([이유](docs/가져다쓴것.md))
+([이유](docs/third-party.md))
 
 **설치 파일로**
 
@@ -152,7 +152,7 @@ Python 3.12  ·  Node.js LTS  ·  pip install pyinstaller scapy
 ```
 
 ```
-빌드하기.bat
+build.bat
 ```
 
 ---
@@ -165,7 +165,7 @@ electron/    화면 (일렉트론)
 scripts/     빌드 도구 — build_electron.bat · IPFixBackend.spec
 docs/        현장 절차서 · 가져다 쓴 것 목록
 tools/       보조 스크립트 (ArpDupScan.py · IPFix.ps1)
-사용설명서.html  프로그램 안에서 F1 로 열립니다
+manual.html     프로그램 안에서 F1 로 열립니다
 ```
 
 ---
@@ -204,7 +204,7 @@ ARP는 그 아래(2계층)라 드라이버 없이는 손이 닿지 않습니다.
 
 **GPLv2.** Scapy(GPLv2)와 Wireshark의 제조사 등록부(GPL-2.0-or-later)를
 담고 있어서입니다. 자세한 것은 [LICENSE.md](LICENSE.md) 와
-[docs/가져다쓴것.md](docs/가져다쓴것.md).
+[docs/third-party.md](docs/third-party.md).
 
 ---
 

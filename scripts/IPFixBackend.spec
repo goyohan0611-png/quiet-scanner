@@ -17,7 +17,7 @@ hiddenimports += collect_submodules('scapy')
 # build_electron.bat 이 프로젝트 뿌리에서 부르므로 뿌리 기준으로 적는다.
 datas = [
     ('src/oui.dat.gz', '.'),        # IEEE 제조사 등록부 58,471개
-    ('src/장비사전.json', '.'),      # MAC 앞자리 -> 장비 종류
+    ('src/device-book.json', '.'),  # MAC 앞자리 -> 장비 종류
 ]
 
 a = Analysis(

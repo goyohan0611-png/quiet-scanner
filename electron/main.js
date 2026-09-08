@@ -131,9 +131,9 @@ ipcMain.handle('dialog:save', async (_event, options) => {
 // 안 일어나면 사람은 프로그램이 고장 난 줄 안다.
 ipcMain.handle('open:manual', async (_event, lang) => {
   const spots = app.isPackaged
-    ? [path.join(path.dirname(app.getPath('exe')), '사용설명서.html'),
-       path.join(process.resourcesPath, '사용설명서.html')]
-    : [path.join(__dirname, '..', '사용설명서.html')];
+    ? [path.join(path.dirname(app.getPath('exe')), 'manual.html'),
+       path.join(process.resourcesPath, 'manual.html')]
+    : [path.join(__dirname, '..', 'manual.html')];
   // 설명서는 한 파일에 두 말을 담고 주소 끝(#ko·#en)으로 고른다. 프로그램을
   // 영어로 쓰는 사람에게 한글 문서를 띄우면 연 보람이 없다.
   const tag = lang === 'en' ? 'en' : 'ko';
@@ -147,5 +147,5 @@ ipcMain.handle('open:manual', async (_event, lang) => {
       return back ? { ok: false, why: back } : { ok: true };
     }
   }
-  return { ok: false, why: '사용설명서.html 을 찾지 못했습니다 (' + spots[0] + ')' };
+  return { ok: false, why: 'manual.html 을 찾지 못했습니다 (' + spots[0] + ')' };
 });

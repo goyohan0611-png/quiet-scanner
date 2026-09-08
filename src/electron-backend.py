@@ -34,8 +34,16 @@ except AttributeError:
 import IPFixStudio as core
 from IPFixStudio import T
 
+# 옛 한국어 파일 이름을 새 이름으로 옮긴다. 아래 pin_sweep 이 격리 기록을
+# 읽으므로 반드시 그 전에 해야 한다 — 순서가 뒤바뀌면 남아 있던 정적 ARP 를
+# 못 찾고, 그 IP 는 재부팅할 때까지 엉뚱한 MAC 에 묶인 채로 잊힌다.
+_moved = core.migrate_old_names()
+
 core.STORE = core.Store(demo=False)
 core.BOOK.load()
+for _line in _moved:
+    core.STORE.log(T("기록 파일 이름을 바꿨습니다 — %s",
+                     "Renamed a data file — %s") % _line, "info")
 OUTPUT_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
 SCAN_CANCEL = threading.Event()

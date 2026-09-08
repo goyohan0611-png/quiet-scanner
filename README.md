@@ -123,8 +123,8 @@ it is named the moment you scan.
 | `BC-AD-28` (6 digits) | **every device** from that vendor |
 | `BC-AD-28-11-22-33` (12 digits) | **that one device** |
 
-The book is a single file, `src/장비사전.json`. Anything you add on site goes
-to `src/장비사전.내것.json`, which stays out of the repository. Pass it around your team, or send
+The book is a single file, `src/device-book.json`. Anything you add on site goes
+to `src/device-book.local.json`, which stays out of the repository. Pass it around your team, or send
 additions back here and the next person benefits.
 
 > Credentials and stream URLs are deliberately not stored. They differ per
@@ -144,7 +144,7 @@ additions back here and the next person benefits.
 | Administrator | needed for isolation (static ARP) |
 
 Npcap is **not bundled** — install it yourself; it is free for up to 5 devices.
-([why](docs/가져다쓴것.md))
+([why](docs/third-party.md))
 
 **From the installer**
 
@@ -157,7 +157,7 @@ Python 3.12  ·  Node.js LTS  ·  pip install pyinstaller scapy
 ```
 
 ```
-빌드하기.bat
+build.bat
 ```
 
 ---
@@ -208,7 +208,7 @@ an unmanaged switch does not tell anyone what it knows.
 
 **GPLv2**, because it carries Scapy (GPLv2) and Wireshark's vendor registry
 (GPL-2.0-or-later). See [LICENSE.md](LICENSE.md) and
-[docs/가져다쓴것.md](docs/가져다쓴것.md).
+[docs/third-party.md](docs/third-party.md).
 
 ---
 
@@ -224,6 +224,6 @@ electron/    the window (Electron)
 scripts/     build tooling - build_electron.bat, IPFixBackend.spec
 docs/        field procedure, third-party licences
 tools/       side scripts (ArpDupScan.py, IPFix.ps1)
-사용설명서.html  user guide; F1 opens it from inside the app
+manual.html     user guide; F1 opens it from inside the app
 ```
 

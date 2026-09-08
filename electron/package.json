@@ -39,8 +39,8 @@
     },
     "extraFiles": [
       {
-        "from": "../사용설명서.html",
-        "to": "사용설명서.html"
+        "from": "../manual.html",
+        "to": "manual.html"
       }
     ]
   },
