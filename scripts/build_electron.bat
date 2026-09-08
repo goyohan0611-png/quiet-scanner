@@ -71,7 +71,10 @@ rem  Must build through the .spec file.
 rem  Passing electron-backend.py directly makes PyInstaller
 rem  overwrite the .spec and drop the vendor database.
 echo [1/4] building python engine...
-python -m PyInstaller --noconfirm --clean scripts\IPFixBackend.spec >> "%LOG%" 2>&1
+rem  Pin the output folders. Without them PyInstaller writes dist\ next to
+rem  the .spec (scripts\dist), and the check below - which looks in the root
+rem  dist\ - fails with "vendor database was not bundled".
+python -m PyInstaller --noconfirm --clean --distpath dist --workpath build scripts\IPFixBackend.spec >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo    ERROR: PyInstaller failed. See build.log
   goto :fail
