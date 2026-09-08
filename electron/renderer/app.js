@@ -1712,40 +1712,28 @@ function isHalfDuplex(row) {
 function portClass(row) {
   if (row.admin === 2) return 'locked';
   if (row.oper !== 1) return 'idle';
-  // Three grounds for calling a port slow. wasSpeed is our own record that this port
-  // used to run faster, so it is solid. slowLink is a guess: it is slower than its
-  // neighbours. Half duplex is no guess — the switch said it itself, so it is surest
-  // of the three, and the speed column looks fine, so nobody finds it unless we paint it.
-  return (isHalfDuplex(row) || row.wasSpeed || row.slowLink) ? 'slow' : 'live';
+  // Red is only for what we can prove. wasSpeed is our own earlier reading of this same
+  // port; half duplex the switch stated outright. Either one is a fact.
+  if (isHalfDuplex(row) || row.wasSpeed) return 'slow';
+  // Amber is for what we merely measured: the port carries less than the name on it
+  // says it can. Often that is a 100M camera in a gigabit port, which is nobody's
+  // fault — so it must not be red. But it must not be green either. Green is this
+  // window saying "checked, and fine", and nothing here checked that.
+  if (row.slowLink) return 'warn';
+  return 'live';
 }
 
 /** The switch faceplate. Like the real thing: odds on top, evens below. */
 function renderFace() {
   const rows = portsData.rows || [];
-  // The baseline is the most common speed, not the highest. One 10G uplink must not
-  // make every healthy 1G port read as slow.
-  // Only ports with a link count. Some switches report a nominal speed on ports with
-  // nothing plugged in, so twenty empty ports vote '1G is normal'.
-  const live = rows.filter(r => r.oper === 1 && r.speed > 0);
-  const tally = new Map();
-  for (const row of live) tally.set(row.speed, (tally.get(row.speed) || 0) + 1);
-  let usual = 0;
-  for (const [speed, n] of tally) {
-    const best = tally.get(usual) || 0;
-    // On a tie, the slower side is normal. Half the cameras on a CCTV site are often
-    // 100M, and leaning fast turns ten healthy cameras red.
-    if (n > best || (n === best && speed < usual)) usual = speed;
-  }
-  // Only a minority running slow can be called wrong. On a switch that is half 100M,
-  // 100M is not a fault, it is just what this site looks like.
-  const slowSide = live.filter(r => usual >= 1000 && r.speed <= usual / 4).length;
-  const minority = live.length >= 4 && slowSide * 3 <= live.length;
+  // Which ports are running slow is decided in the engine (mark_slow_ports) and arrives
+  // already marked. Working it out a second time here is what let this window and the
+  // activity log describe the same switch differently.
   for (const row of rows) {
-    // speedOk is a tech pressing "this port always ran at this speed". Press that and
-    // have the port stay red and the button looks dead, and from then on the tech
-    // ignores red everywhere.
-    row.slowLink = !row.speedOk && minority && usual >= 1000 && row.oper === 1
-      && row.speed > 0 && row.speed <= usual / 4;
+    // speedOk is a tech having pressed "this port always ran at this speed". Leave the
+    // port marked after that and the button looks dead, and from then on the tech
+    // ignores the colour everywhere.
+    row.slowLink = !!row.slowLink && !row.speedOk && row.oper === 1;
   }
   const access = rows.filter(r => !isUplink(r)).sort((a, b) => portNumber(a) - portNumber(b));
   const uplink = rows.filter(isUplink).sort((a, b) => portNumber(a) - portNumber(b));
@@ -1786,9 +1774,11 @@ function renderFace() {
     + `<div class="face-line">${top.join('')}</div>`
     + `<div class="face-line">${bottom.join('')}</div></div>`;
 
-  // Six legend keys. Five colours plus one dashed outline explain every faceplate state.
+  // Legend keys. Every colour on the faceplate is spelled out here, including the
+  // difference between "we measured this" (amber) and "we can prove this" (red).
   const legend = [
-    ['live', t('portsLegend')], ['slow', t('portsLegendSlow')],
+    ['live', t('portsLegend')], ['warn', t('portsLegendUnder')],
+    ['slow', t('portsLegendSlow')],
     ['slow half', t('portsLegendHalf')],
     ['idle', t('portsLegendIdle')], ['locked', t('portsLegendLock')],
     ['live has-poe', t('portsLegendPoe')], ['keep', t('portsLegendKeep')],
@@ -1805,7 +1795,7 @@ function renderFace() {
     : t('portsWhere', { sw: portsData.switch, n: rows.length });
   $('#portsTally').innerHTML = [
     ['live', rows.filter(r => portClass(r) === 'live').length, t('portsTallyUp')],
-    ['slow', rows.filter(r => r.slowLink && !r.wasSpeed).length, t('portsTallySlow')],
+    ['warn', rows.filter(r => portClass(r) === 'warn').length, t('portsTallySlow')],
     ['slow', rows.filter(r => r.wasSpeed).length, t('portsTallyWas')],
     ['slow', rows.filter(isHalfDuplex).length, t('portsTallyHalf')],
     ['locked', rows.filter(r => r.admin === 2).length, t('portsTallyLock')],
@@ -1872,7 +1862,8 @@ function renderDetail() {
   const why = row.wasSpeed
     ? t('portsWas', { was: formatSpeed(row.wasSpeed), when: row.wasAt || '-',
                       now: formatSpeed(row.speed) || '-' })
-    : (row.slowLink ? t('portsSlowGuess', { now: formatSpeed(row.speed) || '-' }) : '');
+    : (row.slowLink ? t('portsUnderRef', { now: formatSpeed(row.speed) || '-',
+                                           ref: formatSpeed(row.slowRef) || '-' }) : '');
   const was = why
     ? `<div class="pd-was"><b>${esc(why)}</b>`
       + `<span>${esc(t('portsWasWhy'))}</span>`

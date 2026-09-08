@@ -2679,7 +2679,7 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
         if not mac or not bridge_port:
             return
         ifindex = base.get(str(bridge_port), bridge_port)
-        label = names.get(str(ifindex)) or ("포트 %s" % bridge_port)
+        label = names.get(str(ifindex)) or (T("포트 %s", "Port %s") % bridge_port)
         ports[mac] = {"port": label, "portNo": bridge_port,
                       "ifIndex": ifindex, "vlan": vlan,
                       "speed": speeds.get(str(ifindex)) or 0,
@@ -2727,13 +2727,10 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
         if raw_sample:
             probe_line += T("  |  본 그대로: ", "  |  raw: ") + ", ".join(raw_sample)
 
-    # The reference speed is "the most common speed", not "the fastest port".
-    # One 10G SFP uplink plugged in makes the max 10000, and then every healthy
-    # 1G port gets flagged slow. The speed most of them run at is that switch's
-    # native speed.
+    # One judgement, shared with the port window. Keeping a second copy of this rule
+    # here is what let the log and the faceplate disagree about the same switch.
+    mark_slow_ports(ports.values())
     top = common_speed([info["speed"] for info in ports.values()])
-    for info in ports.values():
-        info["slow"] = bool(top >= 1000 and 0 < info["speed"] <= top // 4)
 
     # The two languages order the words differently, so use named fields, not positional (%s).
     # PoE — which ports the switch is powering. If it cannot be read, just move on.
@@ -3227,6 +3224,77 @@ def common_speed(speeds):
     return max(counts, key=lambda v: (counts[v], v))
 
 
+# Interface names, fastest first. "TenGigabitEthernet" also contains "Gigabit", so a
+# slower pattern tried first would file a 10G port as 1G. The name must be preceded by a
+# non-letter, or "Gate 1" reads as a 10G port on the "te" in the middle of it.
+PORT_NAME_SPEED = (
+    (re.compile(r"(?:^|[^a-z])(?:hu|hundredgig)", re.I), 100000),
+    (re.compile(r"(?:^|[^a-z])(?:fo|fortygig)", re.I), 40000),
+    (re.compile(r"(?:^|[^a-z])(?:twe|twentyfivegig)", re.I), 25000),
+    (re.compile(r"(?:^|[^a-z])(?:te|xe|tengig)", re.I), 10000),
+    (re.compile(r"(?:^|[^a-z])(?:gi|ge|gigabit)", re.I), 1000),
+    (re.compile(r"(?:^|[^a-z])(?:fa|fe|fastethernet)", re.I), 100),
+)
+
+
+def port_capable_speed(name):
+    """The speed the switch's own name for a port claims it can carry. 0 if it says nothing.
+
+    A switch calling a port GigabitEthernet6 has told us it is a gigabit port, and that
+    beats asking the neighbours. Asking the neighbours is exactly backwards in the case
+    that matters most: one installer terminating a whole rack badly in one afternoon makes
+    the broken ports the majority, and a majority then declares itself normal.
+
+    Names carrying no speed ("Port 3", "eth1", a bare "Ethernet1/1") return 0, and the
+    caller falls back to what the rest of the switch is doing.
+    """
+    text = (name or "").strip()
+    if not text:
+        return 0
+    for pattern, mbps in PORT_NAME_SPEED:
+        if pattern.search(text):
+            return mbps
+    return 0
+
+
+def mark_slow_ports(infos):
+    """The one place that decides whether a port is running below what it should.
+
+    Both screens used to answer this separately and disagreed three ways: the log counted
+    one vote per MAC (an uplink carrying thirty MACs voted thirty times) while the
+    faceplate counted one per port; ties went to the faster speed in one and the slower in
+    the other; and only the faceplate had a rule that gave up entirely once more than a
+    third of the ports were slow — so the more ports were broken, the quieter it got.
+
+    Reference, in order:
+      1. the port's own name (see port_capable_speed)
+      2. failing that, the speed most of this switch's ports run at
+
+    Sets on each row:
+      slow    - linked at or under a quarter of the reference
+      slowRef - the reference used, so the screen can say what it was measured against
+
+    Takes rows from either shape: the per-port table (name/index) or the MAC table
+    (port/ifIndex), which holds one entry per MAC and so has to be deduplicated first.
+    """
+    rows = list(infos)
+    seen, uniq = set(), []
+    for row in rows:
+        key = str(row.get("ifIndex") or row.get("index")
+                  or row.get("portNo") or row.get("name") or row.get("port") or id(row))
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(row)
+    peers = common_speed([int(r.get("speed") or 0) for r in uniq])
+    for info in rows:
+        speed = int(info.get("speed") or 0)
+        reference = port_capable_speed(info.get("name") or info.get("port")) or peers
+        info["slowRef"] = reference
+        info["slow"] = bool(reference >= 1000 and 0 < speed <= reference // 4)
+    return [r for r in rows if r.get("slow")]
+
+
 def apply_port_map(result):
     """Attach the table just read to the current list. Returns (devices matched, slow ports).
 
@@ -3271,7 +3339,8 @@ def apply_port_map(result):
             dev["poeWatt"] = info.get("poeWatt", 0.0)
             if info.get("slow"):
                 slow.append({"ip": dev["ip"], "port": info["port"],
-                             "speed": info.get("speed") or 0})
+                             "speed": info.get("speed") or 0,
+                             "ref": info.get("slowRef") or 0})
             hit += 1
     slow.sort(key=lambda row: row["ip"])
     return hit, slow

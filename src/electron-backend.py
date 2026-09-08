@@ -917,11 +917,11 @@ def run(action, payload):
         for row in slow:
             core.STORE.log(
                 T("느린 링크 — {ip} 가 {port} 에 {speed}Mbps 로 붙어 있습니다 "
-                  "(이 스위치 최고 {top}Mbps). 랜케이블·포트를 확인하십시오.",
+                  "(이 포트는 {ref}Mbps 까지 됩니다). 랜케이블·포트를 확인하십시오.",
                   "Slow link — {ip} is connected at {speed}Mbps on {port} "
-                  "(this switch tops out at {top}Mbps). Check the cable and port.")
+                  "(this port can carry {ref}Mbps). Check the cable and port.")
                 .format(ip=row["ip"], port=row["port"], speed=row["speed"],
-                        top=result.get("top", 0)), "warn")
+                        ref=row.get("ref") or result.get("top", 0)), "warn")
         return {"switch": result["name"], "read": result["count"], "matched": hit,
                 "slow": slow, "top": result.get("top", 0), "state": serialize()}
 
@@ -1073,6 +1073,10 @@ def run(action, payload):
         except Exception:
             okay = {}
 
+        # Same judgement the scan's slow-link warning uses. It used to be worked out
+        # again on the screen from a different population, and the two disagreed.
+        core.mark_slow_ports(listed)
+
         rows = []
         for info in sorted(listed, key=lambda r: int(r["index"])):
             # For a MAC we do not know, leave the IP blank — the UI shows the MAC instead.
@@ -1085,6 +1089,8 @@ def run(action, payload):
             rows.append(dict(info, devices=seen, speedKey=key,
                              wasSpeed=drop["best"] if drop else 0,
                              wasAt=(drop["bestAt"] if drop else "")[:10],
+                             slowLink=bool(info.get("slow")),
+                             slowRef=int(info.get("slowRef") or 0),
                              speedOk=bool(fine and int(info.get("speed") or 0) >= fine)))
         locked = sum(1 for r in rows if r["admin"] == 2)
         core.STORE.log(T("포트 {n}개를 읽었습니다 — 사용 중 {up}개 · 잠긴 포트 {lock}개",

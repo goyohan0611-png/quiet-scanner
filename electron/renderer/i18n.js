@@ -286,8 +286,8 @@ const STRINGS = {
                     'This port ran at {was} on {when}. Now {now}.'],
   portsWasWhy:     ['랜선 양끝을 다시 보십시오. 기가는 8가닥을 다 쓰는데, 한 가닥만 헐거워도 링크는 안 끊기고 조용히 100M 로 내려앉습니다.',
                     'Re-check both cable ends. Gigabit uses all 8 wires; one loose wire silently drops the link to 100M with no other symptom.'],
-  portsSlowGuess:  ['이 스위치에서 이 포트만 {now} 입니다. 지난 기록은 없어서 떨어진 것인지는 모릅니다.',
-                    'This port alone runs at {now} on this switch. With no earlier record, we cannot tell if it dropped.'],
+  portsUnderRef:   ['이 포트는 {ref} 까지 되는데 지금 {now} 로 붙어 있습니다. 지난 기록이 없어 떨어진 것인지 원래 그런지는 확인 못 했습니다.',
+                    'This port can carry {ref} but is linked at {now}. With no earlier reading, whether it dropped or was always like this is unverified.'],
   portsWasOk:      ['이 속도가 정상입니다', 'This speed is normal'],
   portsWasOkTitle: ['일부러 100M 장비를 물려 둔 포트라면 눌러 두십시오. 다음부터 이 포트는 빨갛게 나오지 않습니다.',
                     'Press this if a 100M device is meant to be here. The port stops being flagged.'],
@@ -332,7 +332,10 @@ const STRINGS = {
   ifaceMany:       ['랜카드 {n}개 — {list}', '{n} adapters — {list}'],
   portsUplink:     ['업링크 · SFP', 'Uplink · SFP'],
   portsLegend:     ['1G 연결', '1G link'],
-  portsLegendSlow: ['100M — 케이블 의심', '100M — suspect cable'],
+  portsLegendSlow: ['속도 떨어짐 — 확인됨', 'speed dropped — confirmed'],
+  // Amber, not red. The port carries less than its name says it can, which is worth a
+  // look but is not proof of a fault — a 100M camera in a gigabit port looks the same.
+  portsLegendUnder:['능력 미만 — 미확인', 'below capacity — unverified'],
   portsGhost:      ['이 포트에 물린 MAC {n}개가 스캔 목록에 없습니다 — IP 가 아직 없는 장비이거나, 훑지 않은 대역을 쓰고 있습니다.',
                     '{n} MAC{s} on this port {s2} not in the scan — the device may have no IP yet, or sit in a range you did not sweep.'],
   portsLegendIdle: ['빈 포트', 'unused'],

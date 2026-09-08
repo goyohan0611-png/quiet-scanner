@@ -537,6 +537,9 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 .pport.live { background:#e7f7f0; border-color:#93d9bd; color:#07734d; }
 /* 100M is red. This is the exact condition this tool exists to catch. */
 .pport.slow { background:#fdeaed; border-color:#f2a7b1; color:#c02a3e; }
+/* Measured below the port's rated speed, but nothing proves it is a fault. Amber sits
+   between "checked and fine" and "we have evidence", which is exactly where this is. */
+.pport.warn { background:#fdf3e0; border-color:#e8bd72; color:#9a6412; }
 /* A locked port shows an X instead of its number. Colour alone gets mistaken for 100M. */
 .pport.locked { background:#f4f6f9; border-color:#e7475b; color:#e7475b; font-size:12px; }
 /* One yellow band underneath when PoE is feeding power. Add another colour and the state stops reading. */
