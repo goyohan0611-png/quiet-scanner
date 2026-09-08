@@ -919,7 +919,7 @@ function openBook(key) {
   const mac = (device.mac || '').toUpperCase().replaceAll(':', '-');
   // Default is the vendor's first three bytes. Type the rest to pin it to this device.
   $('#bookPrefix').value = mac.split('-').slice(0, 3).join('-');
-  $('#bookVendor').value = device.vendor && device.vendor !== '미상' ? device.vendor : '';
+  $('#bookVendor').value = device.vendor || '';
   // The book stores the Korean kind names the engine uses — only the screen translates.
   $('#bookKind').value = device.kind && device.kind !== '미확인' ? device.kind : '';
   $('#bookNote').value = device.book_note || '';

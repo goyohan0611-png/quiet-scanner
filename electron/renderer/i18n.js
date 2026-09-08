@@ -14,9 +14,11 @@
    Every string the screen shows, in one place, as [Korean, English] pairs.
    Split them into separate files and one gets fixed while the other is forgotten.
 
-   처음 켜면 윈도우 언어를 보고 고른다. 사람이 바꾸면 그걸 기억한다.
-   장비 종류(KINDS)는 사전 파일과 엔진이 한국어로 뱉기 때문에, 화면에서
-   번역한다. 사람이 직접 적어 넣은 종류는 그대로 둔다 — 번역표에 없으니까.
+   On first run the Windows language decides. Once a person picks one, that
+   choice is remembered.
+   Device types (KINDS) come out of the book file and the engine in Korean, so
+   they are translated here at display time. A type someone typed in by hand is
+   left alone - it is not in the table.
    ------------------------------------------------------------------- */
 
 const LANG_STORE = 'ipscan.lang';

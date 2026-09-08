@@ -1,28 +1,28 @@
-# 이 프로그램이 쓰는 남의 코드
+# Third-party components
 
-Quiet Scanner 는 **GPLv2** 로 공개합니다. 아래 것들을 가져다 쓰기 때문입니다.
+Quiet Scanner is released under **GPLv2** because it carries the work below.
 
-| 가져다 쓴 것 | 하는 일 | 라이선스 |
+| Component | What it does | Licence |
 |---|---|---|
-| **Scapy** | ARP 패킷을 직접 만들고 받는다. 충돌 감지의 핵심 | GPLv2 |
-| **Wireshark manuf** | IEEE 제조사 등록부 원본 (`oui.dat.gz` 가 여기서 나왔다) | GPL-2.0-or-later |
-| **Pretendard** | 화면 글꼴 | SIL OFL 1.1 |
-| **Electron / Chromium** | 앱 창과 화면 | MIT / BSD 등 |
-| **PyInstaller** | 파이썬을 exe 로 묶는다 | GPL + 예외조항 (묶인 결과물은 자유) |
+| **Scapy** | Builds and receives ARP frames directly — the core of conflict detection | GPLv2 |
+| **Wireshark manuf** | Source of the IEEE vendor registry (`oui.dat.gz` is derived from it) | GPL-2.0-or-later |
+| **Pretendard** | Screen typeface | SIL OFL 1.1 |
+| **Electron / Chromium** | Application window and rendering | MIT / BSD and others |
+| **PyInstaller** | Bundles Python into an .exe | GPL with a linking exception (the bundled result is unencumbered) |
 
-## Npcap 은 넣지 않았습니다
+## Npcap is not bundled
 
-ARP 를 직접 다루려면 Npcap 드라이버가 필요하지만, **설치 파일에 끼워 넣지 않았습니다.**
-쓰는 분이 직접 받아 설치하십시오 — https://npcap.com
+Working with ARP directly needs the Npcap driver, but it is **not included in the
+installer.** Download and install it yourself — https://npcap.com
 
-Npcap 라이선스가 이 방식을 권합니다:
+The Npcap licence recommends this arrangement:
 
-> 무료·오픈소스 개발자에게는 보통 사용자가 직접 내려받아 설치하도록 안내하라고
-> 권합니다. 5대 이하면 무료입니다.
+> Free and open-source projects are normally asked to direct users to download
+> and install Npcap themselves. Use on up to 5 devices is free.
 
-시공 노트북 한두 대면 5대 한도에 한참 못 미칩니다.
+One or two installation laptops is well inside that limit.
 
-## 전문
+## Full licence texts
 
 - Scapy — https://github.com/secdev/scapy/blob/master/LICENSE
 - Wireshark — https://gitlab.com/wireshark/wireshark/-/blob/master/COPYING

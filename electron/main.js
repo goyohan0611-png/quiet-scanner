@@ -34,7 +34,7 @@ function startBackend() {
     child = spawn(cmd.file, cmd.args, { windowsHide: true });
   } catch (_) {
     backend = null;
-    backendError = new Error('네트워크 엔진을 실행하지 못했습니다. 설치를 다시 확인하십시오.');
+    backendError = new Error('Could not start the network engine. Check the installation.');
     return;
   }
   backend = child;
@@ -50,17 +50,17 @@ function startBackend() {
       const job = pending.get(message.id);
       if (!job) return;
       pending.delete(message.id);
-      message.ok ? job.resolve(message.data) : job.reject(new Error(message.error || '백엔드 오류'));
+      message.ok ? job.resolve(message.data) : job.reject(new Error(message.error || 'Backend error'));
     } catch (_) { /* anything that is not protocol output gets ignored */ }
   });
   child.on('error', () => {
-    backendError = new Error('네트워크 엔진을 실행하지 못했습니다. 설치를 다시 확인하십시오.');
+    backendError = new Error('Could not start the network engine. Check the installation.');
     if (backend === child) backend = null;
     for (const { reject } of pending.values()) reject(backendError);
     pending.clear();
   });
   child.on('exit', () => {
-    const error = new Error('네트워크 엔진이 종료되었습니다.');
+    const error = new Error('The network engine stopped.');
     if (backend === child) backend = null;
     for (const { reject } of pending.values()) reject(error);
     pending.clear();
@@ -70,7 +70,7 @@ function startBackend() {
 function request(action, payload = {}) {
   if (!backend || backend.killed) startBackend();
   if (!backend || backend.killed || !backend.stdin || backend.stdin.destroyed) {
-    return Promise.reject(backendError || new Error('네트워크 엔진을 시작하지 못했습니다.'));
+    return Promise.reject(backendError || new Error('Could not start the network engine.'));
   }
   const id = nextId++;
   const child = backend;
@@ -81,7 +81,7 @@ function request(action, payload = {}) {
       const job = pending.get(id);
       if (!job) return;
       pending.delete(id);
-      job.reject(new Error('네트워크 엔진에 요청을 전달하지 못했습니다.'));
+      job.reject(new Error('Could not pass the request to the network engine.'));
     });
   });
 }
@@ -143,5 +143,5 @@ ipcMain.handle('open:manual', async (_event, lang) => {
       return back ? { ok: false, why: back } : { ok: true };
     }
   }
-  return { ok: false, why: 'manual.html 을 찾지 못했습니다 (' + spots[0] + ')' };
+  return { ok: false, why: 'manual.html not found (' + spots[0] + ')' };
 });

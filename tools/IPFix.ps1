@@ -1,61 +1,70 @@
 ﻿<#
 .SYNOPSIS
-    IP 충돌 장비 순차 세팅 도구 (Windows 순정, 설치 불필요)
+    Walk through devices sharing one IP and change them one at a time.
+    Stock Windows PowerShell; nothing to install.
 
 .DESCRIPTION
-    같은 초기 IP로 출고된 장비 여러 대를 한 스위치에 전부 꽂아둔 상태에서,
-    장비를 하나씩 뽑았다 꽂지 않고 자리에서 순차적으로 IP를 바꾸기 위한 도구.
+    Several devices shipped with the same factory IP are all connected to one
+    switch. This changes their addresses in place, one after another, without
+    unplugging anything.
 
-    원리:
-      1) ARP 캐시를 지우고 대상 IP를 반복 호출하면, 충돌 중인 장비들이
-         번갈아 응답하면서 서로 다른 MAC이 캐시에 잡힌다. 이걸 모아서
-         현장에 몇 대가 물려 있는지 MAC 단위로 알아낸다.
-      2) 알아낸 MAC 하나를 정적(Permanent) ARP 엔트리로 박아두면,
-         해당 IP로 보내는 패킷은 그 MAC 장비에게만 간다.
-         나머지 장비는 조용해진다 -> 한 대씩 웹 접속해서 IP 변경.
-      3) IP를 바꾼 장비는 대상 IP에서 빠지므로, 엔트리를 지우고 다음 MAC으로 반복.
+    Copyright (C) 2026 Goyohan.  GPLv2 or later; see LICENSE.
+
+    How it works:
+      1) Clear the ARP cache and call the target IP repeatedly. The conflicting
+         devices answer in turn, so different MACs land in the cache. Collecting
+         those tells you, MAC by MAC, how many devices are on that IP.
+      2) Pin one of those MACs as a static (Permanent) ARP entry and packets to
+         that IP reach only that device. The rest go quiet -> open its web page
+         and change its IP.
+      3) Once changed, that device leaves the target IP, so drop the entry and
+         repeat with the next MAC.
 
 .PARAMETER Ip
-    충돌 중인 장비들의 초기 IP. (예: 192.168.1.64)
+    The factory IP the devices are sharing. (e.g. 192.168.1.64)
 
 .PARAMETER Rounds
-    MAC 수집 반복 횟수. 기본 40. 장비가 많으면 늘린다.
+    How many collection passes to run. Default 40; raise it when there are many
+    devices.
 
 .PARAMETER Macs
-    이미 MAC 목록을 알고 있을 때 스캔을 건너뛰고 바로 순차 처리에 들어간다.
-    (ArpDupScan.py 결과를 붙여넣을 때 사용)
+    Skip the scan and go straight to processing when the MAC list is already
+    known. (Paste the ArpDupScan.py results here.)
 
 .PARAMETER NewIpStart
-    새로 배정할 IP의 시작 주소. 장비 순서대로 +1씩 배정 계획을 뽑아준다.
+    First address of the new range. Each device is planned one higher than the
+    last.
 
 .PARAMETER InterfaceAlias
-    사용할 네트워크 어댑터 이름. 생략하면 대상 IP와 같은 대역의 어댑터를 자동 선택.
+    Network adapter to use. Omitted, the adapter on the target IP's subnet is
+    chosen automatically.
 
 .PARAMETER TempIp
-    PC가 대상 IP와 다른 대역일 때, 통신용 임시 IP를 어댑터에 잠시 추가한다.
-    스크립트 종료 시 자동으로 제거된다. (예: 192.168.1.250)
+    When the PC is on a different subnet, temporarily add this address to the
+    adapter so it can talk to the devices. Removed automatically on exit.
+    (e.g. 192.168.1.250)
 
 .PARAMETER ScanOnly
-    MAC 수집만 하고 종료. 현장에 몇 대가 물려 있는지 확인용.
+    Collect MACs and stop - just to see how many devices are out there.
 
 .PARAMETER NoBrowser
-    장비별 웹 페이지를 자동으로 열지 않는다.
+    Do not open each device's web page automatically.
 
 .EXAMPLE
-    # 1단계: 몇 대가 충돌 중인지 확인
+    # Step 1: see how many devices are in the conflict
     .\IPFix.ps1 -Ip 192.168.1.64 -ScanOnly
 
 .EXAMPLE
-    # 2단계: 192.168.10.101 부터 순서대로 배정하며 한 대씩 처리
+    # Step 2: assign from 192.168.10.101 upwards, one device at a time
     .\IPFix.ps1 -Ip 192.168.1.64 -NewIpStart 192.168.10.101
 
 .EXAMPLE
-    # PC가 다른 대역일 때 임시 IP를 붙여서 실행
+    # PC on another subnet: attach a temporary address first
     .\IPFix.ps1 -Ip 192.168.1.64 -TempIp 192.168.1.250 -NewIpStart 192.168.10.101
 
 .NOTES
-    반드시 "관리자 권한" PowerShell에서 실행할 것.
-    실행이 막히면: Set-ExecutionPolicy -Scope Process Bypass
+    Must be run from an ADMINISTRATOR PowerShell.
+    If execution is blocked: Set-ExecutionPolicy -Scope Process Bypass
 #>
 
 [CmdletBinding()]
@@ -83,7 +92,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
-# 제조사 OUI 미니 DB (현장에서 자주 보는 것만)
+# A small vendor OUI table - only what turns up often on site
 # ---------------------------------------------------------------------------
 $script:OuiTable = @{
     # CCTV
@@ -101,10 +110,10 @@ $script:OuiTable = @{
     '00-07-5F' = 'Bosch';     '00-1C-44' = 'Bosch'
     '00-80-45' = 'Panasonic'; '08-00-23' = 'Panasonic'
     '30-F9-ED' = 'Sony';      '54-42-49' = 'Sony'
-    # AV / 방송장비
+    # AV / broadcast
     '00-05-A6' = 'Extron';    '00-10-7F' = 'Crestron';  '00-60-9F' = 'AMX'
     '00-1D-56' = 'Kramer';    '7C-2E-0D' = 'Blackmagic';'00-04-A5' = 'Barco'
-    # 네트워크
+    # Networking
     '24-A4-3C' = 'Ubiquiti';  '78-8A-20' = 'Ubiquiti';  '74-AC-B9' = 'Ubiquiti'
     'FC-EC-DA' = 'Ubiquiti';  '68-D7-9A' = 'Ubiquiti'
     '50-C7-BF' = 'TP-Link';   'EC-08-6B' = 'TP-Link';   'A4-2B-B0' = 'TP-Link'
@@ -112,7 +121,7 @@ $script:OuiTable = @{
     '00-1B-D4' = 'Cisco';     '00-23-04' = 'Cisco';     '6C-41-6A' = 'Cisco'
     '20-4E-7F' = 'Netgear';   'A0-40-A0' = 'Netgear'
     '24-DE-C6' = 'Aruba';     '6C-F3-7F' = 'Aruba'
-    # 가상머신 (오탐 방지용 라벨)
+    # Virtual machines - labelled so they are not mistaken for hardware
     '00-50-56' = 'VMware';    '00-0C-29' = 'VMware';    '00-15-5D' = 'Hyper-V'
 }
 
@@ -120,13 +129,13 @@ function Get-Vendor {
     param([string]$Mac)
     $prefix = $Mac.Substring(0, 8).ToUpper()
     if ($script:OuiTable.ContainsKey($prefix)) { return $script:OuiTable[$prefix] }
-    return '미상'
+    return 'Unknown'
 }
 
 function Format-Mac {
     param([string]$Mac)
     $clean = ($Mac -replace '[^0-9A-Fa-f]', '').ToUpper()
-    if ($clean.Length -ne 12) { throw "MAC 형식이 잘못됐습니다: $Mac" }
+    if ($clean.Length -ne 12) { throw "Malformed MAC: $Mac" }
     return ($clean -split '(.{2})' | Where-Object { $_ }) -join '-'
 }
 
@@ -136,14 +145,14 @@ function Write-Warn2  { param([string]$m) Write-Host "    [!] $m" -ForegroundCol
 function Write-Err2   { param([string]$m) Write-Host "    [X] $m" -ForegroundColor Red }
 
 # ---------------------------------------------------------------------------
-# 사전 점검
+# Pre-flight checks
 # ---------------------------------------------------------------------------
 function Assert-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($id)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Err2 "관리자 권한이 필요합니다."
-        Write-Host  "    PowerShell 아이콘 우클릭 -> '관리자 권한으로 실행' 후 다시 돌려주십시오." -ForegroundColor Yellow
+        Write-Err2 "Administrator rights are required."
+        Write-Host  "    Right-click the PowerShell icon -> 'Run as administrator', then try again." -ForegroundColor Yellow
         exit 1
     }
 }
@@ -167,7 +176,7 @@ function Resolve-TargetInterface {
     if ($Alias) {
         $cfg = Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $Alias -ErrorAction SilentlyContinue |
                Select-Object -First 1
-        if (-not $cfg) { throw "'$Alias' 어댑터를 찾을 수 없습니다." }
+        if (-not $cfg) { throw "No adapter named '$Alias'." }
         return $cfg
     }
 
@@ -197,7 +206,7 @@ function Get-NextIp {
 }
 
 # ---------------------------------------------------------------------------
-# ARP 조작
+# ARP manipulation
 # ---------------------------------------------------------------------------
 function Clear-Neighbor {
     param([int]$IfIndex, [string]$Address)
@@ -226,39 +235,39 @@ function Invoke-MacHarvest {
         Clear-Neighbor -IfIndex $IfIndex -Address $Address
         Start-Sleep -Milliseconds (Get-Random -Minimum 40 -Maximum 220)
 
-        # ping 자체는 실패해도 상관없다. ARP 요청이 나가는 게 목적.
+        # The ping itself may well fail. Sending the ARP request is the point.
         & ping.exe -n 1 -w 400 $Address 2>&1 | Out-Null
 
         $mac = Get-NeighborMac -IfIndex $IfIndex -Address $Address
         if ($mac -and -not $found.Contains($mac)) {
             $found.Add($mac, $true)
             $lastNewAt = $i
-            Write-Host ("    + 새 장비 발견: {0}  ({1})" -f $mac, (Get-Vendor $mac)) -ForegroundColor Green
+            Write-Host ("    + new device: {0}  ({1})" -f $mac, (Get-Vendor $mac)) -ForegroundColor Green
         }
 
         $pct = [int](($i / $Times) * 100)
-        Write-Progress -Activity "MAC 수집 중" `
-                       -Status ("$i / $Times 회  |  현재 " + $found.Count + "대 발견") `
+        Write-Progress -Activity "Collecting MACs" `
+                       -Status ("pass $i of $Times  |  " + $found.Count + " found so far") `
                        -PercentComplete $pct
     }
-    Write-Progress -Activity "MAC 수집 중" -Completed
+    Write-Progress -Activity "Collecting MACs" -Completed
 
     if ($found.Count -gt 0 -and ($Times - $lastNewAt) -lt 10) {
-        Write-Warn2 "마지막 발견이 끝자락이었습니다. -Rounds 를 늘려서 한 번 더 돌려보십시오."
+        Write-Warn2 "The last device turned up right at the end. Raise -Rounds and run it again."
     }
 
     return @($found.Keys)
 }
 
 # ---------------------------------------------------------------------------
-# 메인
+# Main
 # ---------------------------------------------------------------------------
 Assert-Admin
 
 Write-Host ""
 Write-Host "===============================================" -ForegroundColor White
-Write-Host "  IP 충돌 장비 순차 세팅 도구" -ForegroundColor White
-Write-Host "  대상 IP : $Ip" -ForegroundColor White
+Write-Host "  Duplicate-IP walkthrough" -ForegroundColor White
+Write-Host "  Target IP : $Ip" -ForegroundColor White
 Write-Host "===============================================" -ForegroundColor White
 
 $tempIpAdded = $false
@@ -266,32 +275,32 @@ $ifIndex = $null
 $results = @()
 
 try {
-    # --- 어댑터 결정 -------------------------------------------------------
-    Write-Step "네트워크 어댑터 확인"
+    # --- Choose the adapter ------------------------------------------------
+    Write-Step "Checking the network adapter"
     $cfg = Resolve-TargetInterface -TargetIp $Ip -Alias $InterfaceAlias
 
     if (-not $cfg) {
         if (-not $TempIp) {
-            Write-Err2 "$Ip 와 같은 대역을 쓰는 어댑터가 없습니다."
+            Write-Err2 "No adapter is on the same subnet as $Ip."
             Write-Host ""
-            Write-Host "    현재 어댑터 목록:" -ForegroundColor Yellow
+            Write-Host "    Adapters found:" -ForegroundColor Yellow
             Get-NetIPAddress -AddressFamily IPv4 |
                 Where-Object { $_.IPAddress -notlike '127.*' } |
                 Format-Table InterfaceAlias, IPAddress, PrefixLength -AutoSize |
                 Out-String | Write-Host
-            Write-Host "    해결: -TempIp 옵션으로 임시 IP를 붙이십시오." -ForegroundColor Yellow
-            Write-Host "    예)  .\IPFix.ps1 -Ip $Ip -TempIp $((Get-NextIp $Ip 100))" -ForegroundColor Yellow
+            Write-Host "    Fix: attach a temporary address with -TempIp." -ForegroundColor Yellow
+            Write-Host "    e.g. .\IPFix.ps1 -Ip $Ip -TempIp $((Get-NextIp $Ip 100))" -ForegroundColor Yellow
             exit 1
         }
 
-        # 임시 IP를 붙일 어댑터 선택 (연결된 유선 우선)
+        # Pick the adapter for the temporary address - connected wired first
         $adapter = Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
                    Where-Object { $_.Status -eq 'Up' } |
                    Sort-Object -Property @{ Expression = { if ($_.MediaType -like '*802.3*') { 0 } else { 1 } } } |
                    Select-Object -First 1
-        if (-not $adapter) { throw "연결된 네트워크 어댑터가 없습니다. 랜선을 확인해 주십시오." }
+        if (-not $adapter) { throw "No connected network adapter. Check the cable." }
 
-        Write-Warn2 "임시 IP $TempIp 를 '$($adapter.Name)' 에 추가합니다. (종료 시 자동 제거)"
+        Write-Warn2 "Adding temporary address $TempIp to '$($adapter.Name)'. (removed on exit)"
         New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress $TempIp -PrefixLength 24 -ErrorAction Stop | Out-Null
         $tempIpAdded = $true
         Start-Sleep -Seconds 2
@@ -299,28 +308,28 @@ try {
     }
 
     $ifIndex = $cfg.InterfaceIndex
-    Write-Ok "'$($cfg.InterfaceAlias)'  ($($cfg.IPAddress)/$($cfg.PrefixLength))  사용"
+    Write-Ok "Using '$($cfg.InterfaceAlias)'  ($($cfg.IPAddress)/$($cfg.PrefixLength))"
 
-    # --- MAC 수집 ----------------------------------------------------------
+    # --- Collect MACs ------------------------------------------------------
     if ($Macs -and $Macs.Count -gt 0) {
-        Write-Step "MAC 목록을 직접 받았습니다. 스캔을 건너뜁니다."
+        Write-Step "MAC list supplied - skipping the scan."
         $macList = @()
         foreach ($m in $Macs) { $macList += (Format-Mac $m) }
     }
     else {
-        Write-Step "충돌 중인 장비 MAC 수집 (총 $Rounds 회 시도)"
-        Write-Host "    ...장비가 서로 번갈아 응답하도록 유도하는 중입니다. 잠시만." -ForegroundColor DarkGray
+        Write-Step "Collecting MACs from the devices in conflict ($Rounds passes)"
+        Write-Host "    ...coaxing the devices into answering in turn. This takes a moment." -ForegroundColor DarkGray
         $macList = Invoke-MacHarvest -IfIndex $ifIndex -Address $Ip -Times $Rounds
     }
 
     if (-not $macList -or $macList.Count -eq 0) {
-        Write-Err2 "응답한 장비가 없습니다."
-        Write-Host "    확인할 것: 랜선 연결 / PoE 전원 / 대역이 맞는지 / 방화벽" -ForegroundColor Yellow
+        Write-Err2 "Nothing answered."
+        Write-Host "    Check: cable / PoE power / correct subnet / firewall" -ForegroundColor Yellow
         exit 1
     }
 
     Write-Host ""
-    Write-Host "  --- 발견된 장비 $($macList.Count) 대 ---" -ForegroundColor White
+    Write-Host "  --- $($macList.Count) device(s) found ---" -ForegroundColor White
     $idx = 0
     foreach ($m in $macList) {
         $idx++
@@ -331,18 +340,18 @@ try {
     Write-Host ""
 
     if ($macList.Count -eq 1) {
-        Write-Warn2 "1대만 잡혔습니다. 실제로 여러 대라면 -Rounds 를 80 이상으로 올려 재시도하십시오."
+        Write-Warn2 "Only one device answered. If there should be more, raise -Rounds to 80 or higher and retry."
     }
 
     if ($ScanOnly) {
-        Write-Ok "스캔만 수행하고 종료합니다."
+        Write-Ok "Scan only - stopping here."
         return
     }
 
-    # --- 순차 처리 ---------------------------------------------------------
-    Write-Step "장비별 순차 처리 시작"
-    Write-Host "    각 단계에서 브라우저가 열리면 장비 IP를 바꾸고 저장한 뒤 Enter를 누르십시오." -ForegroundColor DarkGray
-    Write-Host "    (같은 IP로 여러 장비에 붙으므로 브라우저는 '시크릿 모드'를 권장합니다)" -ForegroundColor DarkGray
+    # --- Work through them one at a time -----------------------------------
+    Write-Step "Starting the device-by-device walkthrough"
+    Write-Host "    When the browser opens, change the device IP, save, then press Enter." -ForegroundColor DarkGray
+    Write-Host "    (Use a private browsing window - you hit the same IP for several devices)" -ForegroundColor DarkGray
 
     $i = 0
     foreach ($mac in $macList) {
@@ -352,20 +361,20 @@ try {
 
         Write-Host ""
         Write-Host ("--- [{0}/{1}] {2}  ({3})" -f $i, $macList.Count, $mac, (Get-Vendor $mac)) -ForegroundColor Cyan
-        if ($target) { Write-Host ("    배정할 IP: {0}" -f $target) -ForegroundColor Yellow }
+        if ($target) { Write-Host ("    IP to assign: {0}" -f $target) -ForegroundColor Yellow }
 
-        # 이 MAC 하나만 보이도록 고정
+        # Pin the IP to this one MAC
         Clear-Neighbor -IfIndex $ifIndex -Address $Ip
         try {
             New-NetNeighbor -InterfaceIndex $ifIndex -IPAddress $Ip `
                             -LinkLayerAddress $mac -State Permanent -ErrorAction Stop | Out-Null
-            Write-Ok "ARP 고정 완료. 이제 $Ip 는 이 장비 한 대만 가리킵니다."
+            Write-Ok "ARP entry pinned. $Ip now reaches this device only."
         }
         catch {
-            Write-Err2 "ARP 고정 실패: $($_.Exception.Message)"
+            Write-Err2 "Could not pin the ARP entry: $($_.Exception.Message)"
             $results += [pscustomobject]@{
-                순번 = $i; MAC = $mac; 제조사 = (Get-Vendor $mac)
-                배정IP = $target; 결과 = 'ARP 고정 실패'; 시각 = (Get-Date -Format 'HH:mm:ss')
+                No = $i; MAC = $mac; Vendor = (Get-Vendor $mac)
+                NewIp = $target; Result = 'ARP pin failed'; Time = (Get-Date -Format 'HH:mm:ss')
             }
             continue
         }
@@ -373,49 +382,49 @@ try {
         if (-not $NoBrowser) { Start-Process ("http://" + $Ip) | Out-Null }
 
         Write-Host ""
-        $answer = Read-Host "    IP 변경을 마쳤으면 Enter / 건너뛰려면 s / 전체 중단은 q"
+        $answer = Read-Host "    Enter when the IP is changed / s to skip / q to stop"
         if ($answer -eq 'q') {
             Clear-Neighbor -IfIndex $ifIndex -Address $Ip
-            Write-Warn2 "사용자 요청으로 중단합니다."
+            Write-Warn2 "Stopped at your request."
             break
         }
 
         Clear-Neighbor -IfIndex $ifIndex -Address $Ip
 
         if ($answer -eq 's') {
-            Write-Warn2 "건너뜀."
+            Write-Warn2 "Skipped."
             $results += [pscustomobject]@{
-                순번 = $i; MAC = $mac; 제조사 = (Get-Vendor $mac)
-                배정IP = $target; 결과 = '건너뜀'; 시각 = (Get-Date -Format 'HH:mm:ss')
+                No = $i; MAC = $mac; Vendor = (Get-Vendor $mac)
+                NewIp = $target; Result = 'skipped'; Time = (Get-Date -Format 'HH:mm:ss')
             }
             continue
         }
 
-        # 변경 검증
-        $verdict = '변경됨(미검증)'
+        # Verify the change
+        $verdict = 'changed (unverified)'
         if ($target) {
             Start-Sleep -Seconds 2
             $alive = Test-Connection -ComputerName $target -Count 2 -Quiet -ErrorAction SilentlyContinue
             if ($alive) {
-                Write-Ok "$target 응답 확인. 정상 반영됐습니다."
-                $verdict = '성공'
+                Write-Ok "$target answered. The change took."
+                $verdict = 'ok'
             }
             else {
-                Write-Warn2 "$target 가 아직 응답하지 않습니다. (재부팅 중이거나 ICMP 차단일 수 있음)"
-                $verdict = '확인 필요'
+                Write-Warn2 "$target is not answering yet. (rebooting, or ICMP blocked)"
+                $verdict = 'check by hand'
             }
         }
 
         $results += [pscustomobject]@{
-            순번 = $i; MAC = $mac; 제조사 = (Get-Vendor $mac)
-            배정IP = $target; 결과 = $verdict; 시각 = (Get-Date -Format 'HH:mm:ss')
+            No = $i; MAC = $mac; Vendor = (Get-Vendor $mac)
+            NewIp = $target; Result = $verdict; Time = (Get-Date -Format 'HH:mm:ss')
         }
     }
 
-    # --- 마무리 ------------------------------------------------------------
+    # --- Wrap up -----------------------------------------------------------
     Write-Host ""
     Write-Host "===============================================" -ForegroundColor White
-    Write-Host "  작업 요약" -ForegroundColor White
+    Write-Host "  Summary" -ForegroundColor White
     Write-Host "===============================================" -ForegroundColor White
     if ($results.Count -gt 0) {
         $results | Format-Table -AutoSize | Out-String | Write-Host
@@ -424,20 +433,20 @@ try {
             $Report = Join-Path (Get-Location) ("IPFix_" + (Get-Date -Format 'yyyyMMdd_HHmmss') + ".csv")
         }
         $results | Export-Csv -Path $Report -NoTypeInformation -Encoding UTF8
-        Write-Ok "작업 내역 저장: $Report"
+        Write-Ok "Log saved: $Report"
     }
 }
 catch {
     Write-Err2 $_.Exception.Message
 }
 finally {
-    # 남은 정적 ARP 엔트리 정리
+    # Clean up any static ARP entry left behind
     if ($ifIndex) {
         Clear-Neighbor -IfIndex $ifIndex -Address $Ip
     }
     if ($tempIpAdded) {
         Remove-NetIPAddress -IPAddress $TempIp -Confirm:$false -ErrorAction SilentlyContinue
-        Write-Host "    임시 IP $TempIp 제거 완료." -ForegroundColor DarkGray
+        Write-Host "    Temporary address $TempIp removed." -ForegroundColor DarkGray
     }
     Write-Host ""
 }

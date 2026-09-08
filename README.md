@@ -2,8 +2,6 @@
 
 **Sort out IP conflicts without unplugging a single cable.**
 
-한국어 문서: [README.ko.md](README.ko.md)
-
 ---
 
 ## Why this exists
@@ -178,11 +176,9 @@ private browsing window. Otherwise the previous device's session gets in the way
 
 ## Language
 
-Korean and English. It picks by your Windows language on first run; the button in
-the toolbar switches it and remembers the choice.
-
-Source comments are in Korean — that is where the reasoning behind the design
-lives, and translating it tends to bury it. The code itself reads fine in English.
+Korean and English, throughout — interface, reports and the built-in user guide.
+It picks by your Windows language on first run; the button in the toolbar
+switches it and remembers the choice.
 
 ---
 

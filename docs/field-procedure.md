@@ -1,185 +1,203 @@
-# 현장 IP 충돌 처리 절차서
+# Field procedure — clearing duplicate IPs
 
-> 같은 초기 IP로 출고된 장비를 전부 꽂아둔 채로, **뽑았다 꽂지 않고** 화면에서 한 대씩 정리하는 방법.
-
----
-
-## 왜 일반 IP 스캐너로는 안 보이나
-
-장비 4대가 전부 `192.168.0.13`을 쓰고 있으면, PC가 "192.168.0.13 누구야?" 하고 ARP를 뿌릴 때 **4대가 전부** 대답한다. 그런데 Windows의 ARP 테이블은 IP 하나당 MAC 하나만 저장한다. 마지막 응답이 앞의 것을 덮어쓴다.
-
-그래서 Advanced IP Scanner 같은 핑 기반 툴에는 **딱 한 대만** 보인다. 나머지 3대는 멀쩡히 살아있는데 화면에 없다.
-
-**해결의 핵심 두 가지.**
-
-1. OS의 ARP 테이블을 거치지 않고 ARP 응답을 **전부 직접 받는다** → 같은 IP에 몇 대가 물려 있는지 MAC 단위로 다 보인다
-2. MAC 하나를 정적 ARP로 **고정(격리)** 하면 그 IP로 가는 패킷은 그 장비 한 대에만 간다 → 나머지는 조용해지고, 한 대씩 접속해 IP를 바꿀 수 있다
+> How to sort out a rack of devices that all shipped with the same factory IP,
+> **without unplugging anything**, one device at a time from the screen.
 
 ---
 
-## IPFix Studio (메인 도구)
+## Why a normal IP scanner cannot see the problem
 
-창 하나 뜨는 앱이다. 스캔부터 정리·리포트까지 여기서 다 된다.
+Four devices are all using `192.168.0.13`. The PC broadcasts "who has
+192.168.0.13?" and **all four answer**. But the Windows ARP table stores one MAC
+per IP — the last reply overwrites the ones before it.
 
-### 준비 (노트북마다 한 번)
+So a ping-based tool such as Advanced IP Scanner shows **exactly one** of them.
+The other three are alive and simply not on screen.
 
-| 항목 | 내용 |
+Two things get you out of it:
+
+1. **Read every ARP reply off the wire**, bypassing the OS table — now you see,
+   MAC by MAC, how many devices are sitting on that IP.
+2. **Pin one MAC with a static ARP entry (isolation)** — traffic to that IP now
+   reaches that one device. The rest go quiet, and you can open each device in
+   turn and change its IP.
+
+---
+
+## Before you start (once per laptop)
+
+| | |
 |---|---|
-| **Npcap** | https://npcap.com — 설치 중 **"WinPcap API-compatible mode"** 반드시 체크 |
-| **파이썬** | `src/IPFixStudio.py` 로 직접 돌릴 때만 필요. `pip install scapy pillow` (pillow 는 카메라 화면 보기용, 없어도 동작) |
-| **글꼴** | `fonts` 폴더를 `src/IPFixStudio.py` 와 **같은 자리**에 두면 Pretendard 로 표시된다. 설치는 필요 없고, 프로그램이 켜져 있는 동안만 쓴다. 폴더가 없으면 맑은 고딕으로 나온다 |
-| **exe** | `build_exe.bat` 실행. **폴더형(권장)** 은 실행이 빠르고, 단일파일은 실행할 때마다 압축을 푸느라 10~30초 걸린다. 파이썬 없는 노트북에서도 돈다 (Npcap은 여전히 필요) |
+| **Npcap** | https://npcap.com — tick **"WinPcap API-compatible mode"** during install |
+| **Administrator** | isolation writes a static ARP entry, which needs it. The app asks for elevation itself |
+| **Building from source** | Python 3.12, Node.js LTS, `pip install pyinstaller scapy`, then `build.bat` |
 
-실행:
+---
 
-```
-python src\IPFixStudio.py      관리자 권한을 자동으로 요청한다
-python src\IPFixStudio.py --demo   장비 없이 화면만 둘러보기
-```
+## On site
 
-### 현장 순서
+### 1 — Scan the range (F5)
 
-**1 — 대역 스캔 (F5)**
+Pick an interface and the range fills in **from that adapter's own address**. A
+laptop on `192.168.0.50` gets `192.168.0.1-254`. Change the interface and the
+range follows.
 
-인터페이스를 고르면 **그 랜카드의 고정 IP를 기준으로 대역이 자동으로 채워진다.** 노트북이 `192.168.0.50`이면 `192.168.0.1-254`가 들어간다. 인터페이스를 바꾸면 대역도 따라 바뀐다.
+What the range box accepts:
 
-대역 칸에 넣을 수 있는 형식:
-
-| 입력 | 의미 |
+| Input | Meaning |
 |---|---|
-| `192.168.0.1-254` | 그 대역 전체 (기본값) |
-| `192.168.0.10-40` | 일부 구간만 — 장비가 어디 몰려 있는지 알 때 빠르다 |
-| `192.168.0.13` | 한 주소만 — 이 IP에 몇 대가 물려 있는지만 확인 |
-| `192.168.0.0/24` | CIDR 표기도 받는다 |
-| `192.168.0.1-20,192.168.0.64` | 쉼표로 여러 개 |
+| `192.168.0.1-254` | the whole range |
+| `192.168.0.10-40` | part of it — faster when you know where the gear sits |
+| `192.168.0.13` | one address — just how many devices are on this IP |
+| `192.168.0.0/24` | CIDR works too |
+| `192.168.0.1-20,192.168.0.64` | several, comma-separated |
 
-스캔하면 같은 IP를 쓰는 장비가 전부 잡히고, **충돌난 IP가 맨 위로** 올라온다. 대역을 나눠 보내기 때문에 **진행률이 실시간으로 표시되고**, 찾는 즉시 목록에 뜬다. 오래 걸리면 **[중지]** 로 끊을 수 있다.
+Every device sharing an IP is found, and **conflicting IPs sort to the top**.
+The range is sent in chunks, so progress is live and devices appear as they are
+found. **Stop** cuts a long scan short and keeps what was found.
 
-**충돌난 IP는 펼쳐진 채로, 단독 IP는 접힌 채로** 나온다. 접힌 것은 삼각형을 눌러 펼친다. 응답이 없는 주소는 목록에 나오지 않는다.
+**Conflicting IPs come expanded; single IPs come collapsed.** Addresses that did
+not answer are not listed — they show up under **Candidate IPs**.
 
 ```
-▼ 192.168.0.13   [충돌 4대]        4대가 이 IP를 함께 쓰는 중
-     BC-AD-28-11-22-33   Hikvision   IP 카메라 / NVR   DS-2CD2143G0-I   80/HTTP  554/RTSP  8000/HTTP
-     BC-AD-28-44-55-66   Hikvision   IP 카메라 / NVR   DS-2CD2043G2-I   80/HTTP  554/RTSP  8000/HTTP
-     90-02-A9-AA-BB-CC   Dahua       DVR / NVR         IPC-HDW2431T     80/HTTP  554/RTSP  37777/Dahua
-     E4-30-22-DE-AD-01   Hanwha      IP 카메라          XNV-6081         80/HTTP  554/RTSP
+▼ 192.168.0.13   [4 in conflict]
+    BC-AD-28-11-22-33   Hikvision   IP camera / NVR   DS-2CD2143G0-I   80/HTTP  554/RTSP  8000/HTTP
+    BC-AD-28-44-55-66   Hikvision   IP camera / NVR   DS-2CD2043G2-I   80/HTTP  554/RTSP  8000/HTTP
+    90-02-A9-AA-BB-CC   Dahua       DVR / NVR         IPC-HDW2431T     80/HTTP  554/RTSP  37777/Dahua
+    E4-30-22-DE-AD-01   Hanwha      IP camera         XNV-6081         80/HTTP  554/RTSP
 ```
 
-**2 — 장비 식별**
+### 2 — Identify the devices
 
-각 IP에 무슨 장비가 붙어 있는지 알아낸다. 장비를 한 대씩 자동으로 격리하면서 열린 포트, 웹페이지 제목, 인증 realm, ONVIF 정보를 긁어와 제조사·장비 종류·모델까지 채운다. 장비당 몇 초씩 걸리며, 중간에 **[중지]** 로 끊어도 그때까지 알아낸 정보는 남는다.
+Right-click → **Identify device**. Each device is isolated briefly while open
+ports, the web page title, the auth realm and ONVIF data are collected, which
+fills in vendor, device type and model. It takes a few seconds per device;
+stopping part-way keeps whatever was learned.
 
-**3 — 한 대씩 처리**
+### 3 — Work through them one at a time
 
-장비를 선택하고 **[이 장비만 격리]** → **[장비 웹 열기]**. 그 IP는 이제 그 장비 한 대만 가리킨다. 웹에서 IP를 바꾸고 **[완료 처리]** 를 누르면 격리가 자동으로 풀리고 다음 미처리 장비로 커서가 넘어간다.
+Select a device → **Isolate this device only** → open it in a browser. That IP
+now points at that one device. Change its IP, save, then **Release isolation**
+and move on.
 
-우클릭으로도 같은 동작이 다 된다. (격리 / 웹 열기 / 식별 / 화면 보기 / 완료 / 건너뜀 / 대기로 되돌리기 / MAC 복사)
+**Use a private browsing window.** You will be hitting the same IP for several
+different devices, and the previous device's session gets in the way otherwise.
 
-**4 — 남기기**
+### 4 — Leave a record
 
-파일 메뉴에서 **CSV** 또는 **HTML 리포트**로 저장하면 그대로 현장 문서가 된다. **세션 저장**을 해두면 중단했다가 다음 날 이어서 할 수 있다.
+**Export** writes the results out (CSV / JSON / XML), and **Report** produces a
+commissioning workbook: findings, device list, switch port layout, PoE power and
+free IPs. **History** keeps the last 30 completed scans so you can compare a
+later visit against this one — what appeared, what went missing, what moved.
 
-### 카메라 화면 보기
+---
 
-장비를 고르고 **[화면 보기]**. 계정을 한 번 넣으면 프로그램이 켜져 있는 동안 기억한다.
+## Switch port lookup (SNMP)
 
-ONVIF 표준으로 먼저 시도하고, 안 되면 제조사별로 알려진 주소(하이크비전·다후아·한화·액시스 등)를 차례로 두드린다. **어느 카메라가 어디를 보고 있는지** 바로 확인할 수 있어, 채널 번호와 실제 위치를 맞출 때 편하다. 받은 화면은 파일로 저장할 수도 있다.
+A managed switch remembers which MAC came in on which port. **Switch port**
+reads that table over SNMP v2c and attaches a port number to every device in the
+list — read-only; nothing on the switch is changed.
 
-> 계정은 **메모리에만** 두고 세션 파일에는 저장하지 않는다. 창 안에서 바로 보려면 `pip install pillow` 가 필요하고, 없으면 기본 이미지 뷰어로 열린다.
+It also flags ports that are **linked slower than the rest of the switch** and
+ports running **half duplex**. Both look fine in a speed column and are slow in
+practice. Gigabit uses all eight wires; one loose wire drops the link to 100M
+silently, with no other symptom.
 
-### 격리는 어디까지 영향을 주나
+---
 
-격리는 **그 IP 주소 하나에만** 걸린다. `192.168.0.13`을 격리해도 인터넷, 회사망, 다른 장비 접속은 아무 영향이 없다. PC가 `192.168.0.13`으로 보내는 통신만 지정한 그 장비 한 대로 가고, 같은 IP를 쓰는 나머지 장비는 조용해진다.
+## How far isolation reaches
 
-**딱 하나 주의할 것** — 격리를 안 푼 상태에서 그 IP를 나중에 다른 장비가 쓰게 되면 접속이 안 된다. PC가 아직 옛 MAC을 기억하고 있기 때문이다. 그래서 격리는 세 가지 경우에 자동으로 풀린다:
+Isolation applies to **one IP address only**. Isolating `192.168.0.13` has no
+effect on the internet, the office network, or any other device. Only traffic
+the PC sends to `192.168.0.13` is pinned to the device you chose; the others
+sharing that IP go quiet.
 
-1. 그 장비를 **완료 처리**했을 때
-2. **다른 장비를 격리**했을 때 (앞의 것이 자동으로 풀림)
-3. **창을 닫았을 때**
+**The one thing to watch** — if you leave isolation on and that IP is later
+taken by a different device, you will not reach it, because the PC still
+remembers the old MAC. So isolation is released automatically when:
 
-여기에 더해 정적 ARP를 메모리에만 올리기 때문에, 프로그램이 강제로 죽어 정리를 못 하더라도 **재부팅하면 저절로 사라진다.** 그래도 찜찜하면 관리자 PowerShell에서 직접 지울 수 있다:
+1. you release it,
+2. you isolate a different device (the previous one is released), or
+3. you close the window.
+
+The static ARP entry lives in memory only, so even if the program is killed
+before it can clean up, **a reboot clears it**. To remove one by hand, from an
+administrator PowerShell:
 
 ```powershell
 Remove-NetNeighbor -IPAddress 192.168.0.13 -Confirm:$false
 ```
 
-### 주의
-
-- **관리자 권한**이어야 격리가 동작한다. 앱이 알아서 UAC를 띄운다.
-- 같은 IP로 여러 장비에 붙으므로 브라우저는 **시크릿 모드**를 쓸 것. 안 그러면 앞 장비 세션이 남아 로그인이 꼬인다.
-- 창을 닫으면 남은 정적 ARP는 **자동 정리**된다. 그래도 불안하면 관리자 PowerShell에서:
-  ```powershell
-  Remove-NetNeighbor -IPAddress 192.168.0.13 -Confirm:$false
-  ```
+Leftover entries from a crash are also cleaned up the next time the app starts.
 
 ---
 
-## 먼저 시도해볼 것 — 제조사 검색 툴 (30초)
+## Try this first — the vendor tools (30 seconds)
 
-장비가 한 브랜드로 통일돼 있으면 여기서 끝난다. IP를 무시하고 L2 브로드캐스트로 찾기 때문에 IP가 전부 겹쳐도 다 뜨고, **일괄 IP 변경**까지 된다.
+If the site is all one brand, this may be the whole job. These tools find gear
+by L2 broadcast and ignore the IP, so overlapping addresses do not hide anything,
+and most of them can **change IPs in bulk**.
 
-| 제조사 | 툴 | 일괄 변경 |
+| Vendor | Tool | Bulk change |
 |---|---|---|
-| 하이크비전 | **SADP** | 지원 |
-| 다후아 | **ConfigTool** | 지원 |
-| 한화비전 | **Device Manager** | 지원 |
-| 아이디스 | IDIS Discovery | 지원 |
-| 액시스 | AXIS IP Utility | 지원 |
-| 유니뷰 | EZTools | 지원 |
-| **브랜드 혼재** | **ONVIF Device Manager** | 개별 |
+| Hikvision | **SADP** | yes |
+| Dahua | **ConfigTool** | yes |
+| Hanwha Vision | **Device Manager** | yes |
+| IDIS | IDIS Discovery | yes |
+| Axis | AXIS IP Utility | yes |
+| Uniview | EZTools | yes |
+| **Mixed brands** | **ONVIF Device Manager** | one at a time |
 
-브랜드가 섞여 있거나 AV·네트워크 장비까지 물려 있으면 IPFix Studio를 쓴다.
+Use Quiet Scanner when the brands are mixed, or when AV and network gear are on
+the same switch.
 
 ---
 
-## 보조 도구
+## Side scripts
 
-Npcap을 못 깔거나 명령줄이 편할 때 쓴다.
+For when Npcap cannot be installed, or the command line is simply faster.
 
-| 파일 | 용도 | 요구사항 |
+| File | Purpose | Needs |
 |---|---|---|
-| **src/IPFixStudio.py** | 메인 앱 (스캔·식별·격리·리포트) | Npcap + scapy |
-| **IPFixStudio.ico** | 앱 아이콘 (exe 빌드에 쓰임) | — |
-| **ArpDupScan.py** | 명령줄 정밀 스캐너. `--sweep` 으로 대역 충돌 색출 | Npcap + scapy |
-| **IPFix.ps1** | Npcap 없이 순정 PowerShell만으로. MAC 수집이 확률 방식이라 100%는 아님 | 관리자 권한만 |
-| **build_exe.bat** | exe 빌드 | 인터넷 연결 |
+| **tools/ArpDupScan.py** | command-line scanner; `--sweep` finds conflicts across a range | Npcap + scapy |
+| **tools/IPFix.ps1** | stock PowerShell, no Npcap. MAC collection is probabilistic, so not exhaustive | administrator only |
+| **tools/build_oui.py** | rebuilds `src/oui.dat.gz` from the IEEE registry | internet |
 
 ```cmd
-:: 명령줄 스캐너
-python ArpDupScan.py 192.168.0.0/24 --sweep
-python ArpDupScan.py --list-ifaces
+python tools\ArpDupScan.py 192.168.0.0/24 --sweep
+python tools\ArpDupScan.py --list-ifaces
 ```
 
 ```powershell
-# Npcap 없이 (확률 방식, -Rounds 를 올려서 재시도)
 Set-ExecutionPolicy -Scope Process Bypass -Force
-.\IPFix.ps1 -Ip 192.168.0.13 -ScanOnly -Rounds 100
-.\IPFix.ps1 -Ip 192.168.0.13          # 한 대씩 격리하며 순차 처리
+.\tools\IPFix.ps1 -Ip 192.168.0.13 -ScanOnly -Rounds 100
+.\tools\IPFix.ps1 -Ip 192.168.0.13
 ```
 
 ---
 
-## 문제 생겼을 때
+## When something goes wrong
 
-| 증상 | 원인 / 조치 |
+| Symptom | Cause / what to do |
 |---|---|
-| 인터페이스 목록이 비어 있음 | Npcap 미설치. "WinPcap API-compatible mode" 체크해서 재설치 |
-| "scapy 없음" | `pip install scapy` |
-| 격리 버튼이 안 먹음 | 관리자 권한이 아님. 앱을 닫고 관리자 권한으로 재실행 |
-| 응답한 장비가 없음 | 랜선 / PoE 전원 / 대역 불일치 / 인터페이스 선택 오류 |
-| 장비 종류가 "미확인" | [장비 식별]을 아직 안 돌림. 또는 웹·ONVIF를 닫아둔 장비 |
-| 격리했는데 여전히 여러 대 반응 | 스위치가 스토밍 제어 중일 수 있음. 스위치 직결로 시도 |
-| 새 IP로 검증이 안 됨 | 장비 재부팅 중이거나 모든 포트를 닫은 상태. 웹으로 직접 확인 |
-| 브라우저 로그인이 꼬임 | 시크릿 모드로 열 것 |
-| 화면 보기가 실패함 | 계정·비번 확인. ONVIF나 스냅샷이 꺼져 있거나 카메라가 아닌 장비일 수 있음 |
+| Interface list is empty | Npcap not installed. Reinstall with "WinPcap API-compatible mode" ticked |
+| "scapy missing" | `pip install scapy` |
+| Isolate does nothing | Not running as administrator. Close and restart elevated |
+| Nothing answered | Cable, PoE power, wrong range, or the wrong interface selected |
+| Device type stays "Unidentified" | Identify has not been run, or the device has no web/ONVIF service |
+| Isolated, but several devices still answer | The switch may be doing storm control. Try connecting directly to the switch |
+| The new IP will not verify | The device is rebooting, or has closed every port. Check it in a browser |
+| Browser login gets confused | Use a private window |
+| Snapshot preview fails | Check the credentials. ONVIF or snapshots may be disabled, or it is not a camera |
+| Switch port lookup finds nothing | SNMP v2c read is not enabled, or the community string is wrong |
 
 ---
 
-## 다음 현장부터는 애초에 안 겪는 법
+## Not having the problem next time
 
-| 방법 | 내용 |
+| Approach | What it means |
 |---|---|
-| **DHCP 먼저** | 라우터 DHCP를 켜두고 장비를 꽂는다. 공장초기화 시 DHCP로 뜨는 장비가 꽤 많다 |
-| **관리형 PoE 스위치** | 포트를 하나씩만 켜서 순차 처리. SSH 스크립트로 완전 자동화 가능 |
-| **입고 시 사전 세팅** | 창고에서 미리 IP를 박아 라벨 붙여 반출. 현장 시간이 가장 많이 줄어든다 |
-| **MAC 라벨 관리** | IPFix Studio의 CSV 리포트를 현장별로 보관해두면 추후 추적이 쉽다 |
+| **DHCP first** | Leave the router's DHCP on while gear is connected. A surprising amount of factory-reset equipment comes up on DHCP |
+| **Managed PoE switch** | Bring up one port at a time and work through them in order. Fully scriptable over SSH |
+| **Set up on intake** | Assign and label IPs in the warehouse before the gear ships. This saves the most site time of anything here |
+| **Keep the records** | File the commissioning report per site; tracing a device a year later becomes trivial |

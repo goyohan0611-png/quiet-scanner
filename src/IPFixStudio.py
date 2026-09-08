@@ -233,15 +233,17 @@ def hex_mac(mac):
 def vendor_of(mac):
     """Find the vendor from the MAC prefix. Narrow assignments (36/28-bit) come first."""
     digits = hex_mac(mac)
+    # Hand back nothing rather than a word — the screen and the report each say
+    # "unknown" in the reader's own language.
     if len(digits) < 6:
-        return "미상"
+        return ""
     table = _oui_table()
     for width in (9, 7, 6):
         name = table.get(digits[:width])
         if name:
             return name
     # Minimal table for when the registry could not be read
-    return OUI_FALLBACK.get(digits[:6], "미상")
+    return OUI_FALLBACK.get(digits[:6], "")
 
 
 class DeviceBook:
@@ -321,9 +323,9 @@ class DeviceBook:
 
     def _payload(self):
         return {
-            "note": ("Quiet Scanner 장비 사전. MAC 앞자리로 제조사와 장비 종류를 알아봅니다. "
-                     "prefixes 에 MAC 앞자리를 콜론 없이 적습니다. "
-                     "전체 MAC 12자리를 적으면 그 장비 한 대만 가리킵니다."),
+            "note": ("Quiet Scanner device book. Vendor and device type are worked out "
+                     "from the MAC prefix. Write prefixes without separators; a full "
+                     "12-digit MAC matches that one device only."),
             "version": 1,
             "entries": self.entries,
         }
@@ -922,10 +924,12 @@ def export_rows(path, rows, fmt="json", target="", columns=None):
         # The CSV carries only the columns picked on screen. Laying out identification-only
         # fields — NetBIOS, mDNS, UPnP, serial, TTL, status — in Excel makes it a poor handover sheet.
         labels = {
-            "ip": "IP", "mac": "MAC", "vendor": "제조사", "kind": "장비 종류",
-            "model": "모델", "name": "이름", "ms": "응답(ms)", "os": "OS",
-            "ports": "열린 포트", "swport": "스위치 포트", "vlan": "VLAN",
-            "seen": "확인 시각",
+            "ip": "IP", "mac": "MAC",
+            "vendor": T("제조사", "Vendor"), "kind": T("장비 종류", "Device type"),
+            "model": T("모델", "Model"), "name": T("이름", "Name"),
+            "ms": T("응답(ms)", "Reply (ms)"), "os": "OS",
+            "ports": T("열린 포트", "Open ports"), "swport": T("스위치 포트", "Switch port"),
+            "vlan": "VLAN", "seen": T("확인 시각", "Seen at"),
         }
         chosen = [key for key in (columns or ["ip", "vendor", "kind", "model", "name", "ms", "os", "ports"])
                   if key in labels]
@@ -2234,7 +2238,7 @@ def onvif_snapshot_uri(ip, user, pw, bases=None, log=None):
             for xaddr in xaddrs:
                 add(xaddr.strip())
             if xaddrs:
-                say("ONVIF Media 서비스 확인")
+                say(T("ONVIF Media 서비스 확인", "Found the ONVIF Media service"))
         except Exception:
             pass
         # Non-standard, but some devices take Media requests on the Device service too.
@@ -2315,15 +2319,15 @@ def grab_snapshot(dev, user, pw, log=None):
     try:
         uri = onvif_snapshot_uri(ip, user, pw, bases, say)
         if uri:
-            say("ONVIF 스냅샷 주소 확인")
+            say(T("ONVIF 스냅샷 주소 확인", "Found the ONVIF snapshot URL"))
             try:
                 data = http_get_auth(uri, user, pw)
                 if looks_like_image(data):
                     return data, "ONVIF"
             except Exception as e:
-                errors.append("ONVIF 주소 응답 실패: %s" % e)
+                errors.append(T("ONVIF 주소 응답 실패: %s", "ONVIF URL did not answer: %s") % e)
     except Exception as e:
-        errors.append("ONVIF 조회 실패: %s" % e)
+        errors.append(T("ONVIF 조회 실패: %s", "ONVIF query failed: %s") % e)
 
     # Second choice: the known per-vendor paths
     paths = list(SNAP_PATHS.get(dev.get("vendor"), [])) + GENERIC_SNAP
@@ -2337,7 +2341,7 @@ def grab_snapshot(dev, user, pw, log=None):
             except Exception as e:
                 errors.append("%s: %s" % (urllib.parse.urlsplit(url).netloc, e))
                 continue
-    detail = errors[-1] if errors else "스냅샷 주소를 찾지 못했습니다"
+    detail = errors[-1] if errors else T("스냅샷 주소를 찾지 못했습니다", "No snapshot URL found")
     return None, detail[:180]
 
 
@@ -4251,30 +4255,30 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
 
 def main():
     """For checking the engine. The real UI comes up from electron/."""
-    parser = argparse.ArgumentParser(description="%s 엔진" % APP_NAME)
-    parser.add_argument("mac", nargs="?", help="MAC 하나를 넣으면 무슨 장비인지 알려줍니다.")
+    parser = argparse.ArgumentParser(description="%s engine" % APP_NAME)
+    parser.add_argument("mac", nargs="?", help="pass one MAC to see what the device is")
     args = parser.parse_args()
 
-    print("%s v%s — 엔진" % (APP_NAME, APP_VER))
+    print("%s v%s - engine" % (APP_NAME, APP_VER))
     table = _oui_table()
-    print("  제조사 등록부 : %s" % ("{:,}개".format(len(table)) if table else "읽지 못했습니다"))
+    print("  vendor registry : %s" % ("{:,} prefixes".format(len(table)) if table else "could not be read"))
     loaded = BOOK.load()
-    print("  장비 사전     : %s" % (
-        "%d개 앞자리 (%s)" % (len(BOOK.index), os.path.basename(BOOK.loaded_from))
-        if loaded else "없습니다"))
+    print("  device book     : %s" % (
+        "%d prefixes (%s)" % (len(BOOK.index), os.path.basename(BOOK.loaded_from))
+        if loaded else "not found"))
 
     if args.mac:
         info = describe(args.mac)
         print()
         print("  %s" % dash_mac(args.mac))
-        print("    제조사 : %s" % info["vendor"])
-        print("    종류   : %s" % (info["kind"] or "(포트 스캔으로 판단)"))
+        print("    vendor : %s" % (info["vendor"] or "unknown"))
+        print("    type   : %s" % (info["kind"] or "(decided by port scan)"))
         if info["note"]:
-            print("    메모   : %s" % info["note"])
+            print("    note   : %s" % info["note"])
         return
 
     print()
-    print("  화면은 일렉트론에서 띄웁니다:  cd electron && npm start")
+    print("  The window comes up from Electron:  cd electron && npm start")
 
 
 if __name__ == "__main__":

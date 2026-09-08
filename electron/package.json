@@ -1,7 +1,7 @@
 {
   "name": "quiet-scanner-electron",
   "version": "3.0.0",
-  "description": "IP 충돌 현장 정리 도구",
+  "description": "Field tool for clearing duplicate IPs",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

@@ -1,5 +1,5 @@
 {
-  "note": "Quiet Scanner 기본 장비 사전. MAC 앞자리로 제조사와 장비 종류를 알아봅니다. prefixes 에 MAC 앞자리를 콜론 없이 적으면 됩니다. 전체 MAC(12자리)을 적으면 그 장비 하나만 가리킵니다. 제조사 목록의 뿌리는 Wireshark manuf (GPL-2.0-or-later) 입니다.",
+  "note": "Quiet Scanner device book. Vendor and device type are worked out from the MAC prefix. Write prefixes without separators; a full 12-digit MAC matches that one device only. The vendor list is rooted in Wireshark's manuf file (GPL-2.0-or-later).",
   "version": 1,
   "entries": [
     {

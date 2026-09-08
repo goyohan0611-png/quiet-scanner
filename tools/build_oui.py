@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""IEEE 등록부에서 oui.dat.gz 를 다시 만든다.
+"""Rebuild oui.dat.gz from the IEEE registry.
 
-왜 필요한가:
-    처음 쓰던 표는 와이어샤크 manuf 의 옛 사본이었다. 2020년 이후 배정된
-    앞자리가 통째로 빠져 있어서, 현장에서 하이크비전 CC-13-F3, 시스코
-    84-5A-3E 같은 흔한 장비가 전부 "미상" 으로 떴다. MA-L 39,505개 중
-    8,611개(22%)가 없었다.
+Why this exists:
+    The first table shipped here was an old copy of Wireshark's manuf file.
+    Every prefix assigned after 2020 was missing from it, so common gear on
+    site - Hikvision CC-13-F3, Cisco 84-5A-3E - came up as "Unknown".
+    8,611 of the 39,505 MA-L blocks (22%) were absent.
 
-쓰는 법:
-    python tools/build_oui.py            # 받아서 만들고 oui.dat.gz 덮어쓰기
+Usage:
+    python tools/build_oui.py            # download, build, overwrite oui.dat.gz
 
-파일 꼴:
-    앞자리(소문자 16진, 구분자 없음)\t제조사이름
-    앞자리는 6자리(MA-L) · 7자리(MA-M) · 9자리(MA-S) 세 가지다.
-    IPFixStudio.vendor_of() 가 9 → 7 → 6 순으로 좁은 것부터 본다.
+File format:
+    prefix (lower-case hex, no separators)\tvendor name
+    Prefixes come in three widths: 6 (MA-L), 7 (MA-M) and 9 (MA-S) digits.
+    IPFixStudio.vendor_of() tries 9, then 7, then 6 - narrowest first.
 """
 import csv, gzip, io, os, re, sys, urllib.request
 
@@ -27,8 +27,8 @@ SOURCES = [
     ("https://standards-oui.ieee.org/oui36/oui36.csv", 9),
 ]
 
-# 현장에서 자주 보는 회사는 이름을 짧게 고정한다. 목록 칸이 좁고,
-# "Hangzhou Hikvision Digital Technology Co.,Ltd." 는 읽을 사람이 없다.
+# Vendors seen constantly on site get a short fixed name. The column is narrow,
+# and nobody reads "Hangzhou Hikvision Digital Technology Co.,Ltd.".
 BRANDS = [
     (r"hikvision", "Hikvision"),
     (r"\bdahua\b", "Dahua"),
@@ -74,7 +74,7 @@ BRANDS = [
     (r"\bamazon\b", "Amazon"),
 ]
 
-# 회사 이름 끝에 붙는 법인 표기. 이름을 알아보는 데 도움이 안 된다.
+# Corporate suffixes. They add nothing to recognising a name.
 SUFFIX = re.compile(
     r"[,\s]*(?:"
     r"co\.?|corp\.?|corporation|company|inc\.?|incorporated|ltd\.?|limited|"
@@ -85,14 +85,14 @@ SUFFIX = re.compile(
 
 
 def short(name):
-    """긴 법인명을 목록 칸에 들어갈 이름으로 줄인다."""
+    """Shorten a long legal name into something that fits the column."""
     text = re.sub(r"\s+", " ", (name or "").replace('"', " ")).strip()
     low = text.lower()
     for pattern, brand in BRANDS:
         if re.search(pattern, low):
             return brand
-    text = text.split(",")[0].strip()          # 쉼표 뒤는 대개 법인 표기다
-    for _ in range(3):                          # "Co., Ltd." 처럼 겹쳐 붙는다
+    text = text.split(",")[0].strip()          # what follows a comma is usually the legal suffix
+    for _ in range(3):                          # they stack up, as in "Co., Ltd."
         stripped = SUFFIX.sub("", text).strip(" .,")
         if stripped == text:
             break
@@ -102,7 +102,7 @@ def short(name):
 
 
 def fetch(url):
-    # 사용자 에이전트를 안 붙이면 IEEE 가 418 로 잘라 버린다.
+    # Without a user agent the IEEE server answers 418 and cuts the transfer.
     request = urllib.request.Request(url, headers={"User-Agent": "QuietScanner-oui-build/1.0"})
     with urllib.request.urlopen(request, timeout=120) as fh:
         return fh.read().decode("utf-8", "replace")
@@ -110,8 +110,8 @@ def fetch(url):
 
 def main():
     table = {}
-    # 옛 표를 먼저 깐다. 손으로 다듬은 이름과 특수 주소(멀티캐스트 등)를
-    # 살리기 위해서다. IEEE 에서 새로 들어오는 것은 빈 자리만 채운다.
+    # Lay down the old table first, to keep the hand-tidied names and the
+    # special addresses (multicast and friends). New IEEE entries only fill gaps.
     if os.path.isfile(OUT):
         with gzip.open(OUT, "rt", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -134,12 +134,12 @@ def main():
                 continue
             table[key] = short(name)
             added += 1
-        print(f"{url.rsplit('/', 1)[-1]}: 처리 완료")
+        print(f"{url.rsplit('/', 1)[-1]}: done")
 
     with gzip.open(OUT, "wt", encoding="utf-8", newline="\n") as fh:
         for key in sorted(table):
             fh.write(f"{key}\t{table[key]}\n")
-    print(f"{before:,} → {len(table):,} (새로 {added:,}개)  {OUT}")
+    print(f"{before:,} -> {len(table):,} ({added:,} new)  {OUT}")
 
 
 if __name__ == "__main__":
