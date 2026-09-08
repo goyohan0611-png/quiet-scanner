@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Quiet Scanner — 현장 IP 충돌 정리 도구
+# Quiet Scanner — field IP conflict cleanup tool
 # Copyright (C) 2026 고요한
-#
-# 이 프로그램은 자유 소프트웨어입니다. 자유 소프트웨어 재단이 공표한 GNU 일반
-# 공중 사용 허가서 제2판 또는 그 이후 판의 조건에 따라 재배포하거나 수정할 수
-# 있습니다. 아무런 보증도 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를
-# 보십시오.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -17,26 +12,26 @@
 # details. You should have received a copy of the GNU General Public License
 # along with this program; if not, see <https://www.gnu.org/licenses/>.
 """
-Quiet Scanner - 현장 IP 충돌 정리 앱
+Quiet Scanner - field IP conflict cleanup app
 
-같은 초기 IP로 출고된 장비들이 한 스위치에 물려 있을 때,
-장비를 뽑았다 꽂지 않고 브라우저 화면에서 전부 정리하기 위한 도구.
+For when a pile of devices that all shipped with the same factory IP sit on one
+switch, and you want to sort them out from a browser window instead of unplugging and replugging each one.
 
-  1) 대역을 훑어 충돌난 IP를 전부 찾아낸다        (ARP 응답을 OS 거치지 않고 직접 수신)
-  2) 각 IP에 어떤 장비가 붙어 있는지 정체를 파낸다 (MAC 격리 -> 포트/웹/ONVIF 조회)
-  3) 한 대씩 격리한 채로 IP를 바꾸고 진행 상황을 추적한다
-  4) 결과를 CSV / HTML 리포트로 남긴다
+  1) Sweep the subnet and find every conflicting IP     (ARP replies caught directly, not via the OS)
+  2) Dig out what device is behind each IP              (MAC isolation -> port/web/ONVIF lookup)
+  3) Change IPs one device at a time, isolated, and track the progress
+  4) Leave the result behind as a CSV / HTML report
 
-필요한 것 (Windows):
-    1) Npcap 설치      https://npcap.com   ("WinPcap API-compatible mode" 체크)
+What you need (Windows):
+    1) Install Npcap   https://npcap.com   (tick "WinPcap API-compatible mode")
     2) pip install scapy
-    3) 관리자 권한으로 실행
+    3) Run as administrator
 
-실행:
-    python IPFixStudio.py            # 창이 뜬다
-    python IPFixStudio.py --demo     # 장비 없이 화면만 둘러보기
+Run:
+    python IPFixStudio.py            # the window comes up
+    python IPFixStudio.py --demo     # walk through the UI with no devices present
 
-    exe 로 뽑으려면 build_exe.bat 실행
+    To build an exe, run build_exe.bat
 """
 
 import argparse
@@ -67,18 +62,18 @@ APP_NAME = "Quiet Scanner"
 APP_VER = "3.0"
 
 # ---------------------------------------------------------------------------
-# scapy (데모 모드에서는 없어도 실행됨)
+# scapy (demo mode runs fine without it)
 # ---------------------------------------------------------------------------
-# scapy 는 임포트만으로도 Npcap DLL 을 열고 인터페이스를 훑기 때문에
-# Windows 에서 수 초가 걸린다. 창부터 띄우고 백그라운드에서 불러온다.
-SCAPY_OK = None      # None = 아직 안 불러봄 / True / False
+# Just importing scapy opens the Npcap DLL and walks every interface, which
+# costs several seconds on Windows. Put the window up first, load it in the background.
+SCAPY_OK = None      # None = not tried yet / True / False
 SCAPY_ERR = ""
 ARP = Ether = srp = conf = None
 IP = TCP = sr1 = None
 
 
 def ensure_scapy():
-    """scapy 를 실제로 불러온다. 이미 불렀으면 즉시 반환."""
+    """Actually load scapy. Returns immediately if it is already loaded."""
     global SCAPY_OK, SCAPY_ERR, ARP, Ether, srp, conf, IP, TCP, sr1
     if SCAPY_OK is not None:
         return SCAPY_OK
@@ -96,7 +91,7 @@ def ensure_scapy():
 
 
 # ---------------------------------------------------------------------------
-# 등록부 파일을 못 읽었을 때 쓰는 최소 표
+# Minimal table used when the registry file cannot be read
 # ---------------------------------------------------------------------------
 OUI_FALLBACK = {
     "4447cc": "Hikvision", "bcad28": "Hikvision", "c056e3": "Hikvision",
@@ -129,33 +124,34 @@ OUI_FALLBACK = {
 
 
 # ---------------------------------------------------------------------------
-# 제조사 조회 — 두 겹으로 본다
+# Vendor lookup — two layers
 #
-#   1겹. IEEE 공식 등록부 (oui.dat.gz, 58,000여 개)
-#        MAC 앞자리로 "어느 회사가 만들었나" 까지만 알려준다.
+#   Layer 1. The official IEEE registry (oui.dat.gz, some 58,000 entries)
+#            From the MAC prefix it tells you only "which company built it".
 #
-#   2겹. 장비 사전 (장비사전.json)
-#        쓰는 사람이 직접 채우는 표다. 제조사뿐 아니라 장비 종류, 기본 계정,
-#        RTSP 경로까지 적어둘 수 있다. 1겹을 덮어쓴다.
+#   Layer 2. The device book (device-book.json)
+#            A table the operator fills in by hand. Not just the vendor —
+#            device type, default credentials, even the RTSP path. Overrides layer 1.
 #
-#        현장에서 처음 보는 장비를 한 번 등록해두면 다음부터는 스캔하자마자
-#        이름이 뜬다. 파일로 주고받을 수 있어 팀끼리, 나아가 쓰는 사람들끼리
-#        같이 채워 나갈 수 있다.
+#            Register a device you have never seen before once on site and from
+#            then on its name shows up the moment you scan. The file can be passed
+#            around, so a team — and eventually the wider user base — fills it in together.
 # ---------------------------------------------------------------------------
 
 OUI_FILE = "oui.dat.gz"
 BOOK_FILE = "device-book.json"
-# 현장에서 직접 등록한 것은 따로 담는다.
+# Entries registered on site go in a separate file.
 #
-# 사전 하나에 다 담으면, 배포본 사전과 "우리 현장 녹화기" 같은 회사 사정이
-# 같은 파일에 섞인다. 그 파일을 공개 저장소에 올리는 순간 조달 정보가 같이
-# 나간다. 사람이 매번 조심해서 막을 일이 아니다 — 파일을 갈라 둔다.
+# Put it all in one book and the shipped book gets mixed in the same file with
+# company business like "our site's recorder". The moment that file goes up to a
+# public repo the procurement details go with it. Not something a person should
+# have to remember to avoid every time — split the files instead.
 BOOK_MINE_FILE = "device-book.local.json"
 
 _OUI_CACHE = None
 
 
-# v3.0 까지 쓰던 한국어 파일 이름. 공개하면서 영어로 바꿨다.
+# The Korean file names used up through v3.0. Renamed to English for the public release.
 OLD_NAMES = {
     "장비사전.내것.json": "device-book.local.json",
     "스캔기록.json": "scan-history.json",
@@ -165,15 +161,16 @@ OLD_NAMES = {
 
 
 def migrate_old_names():
-    """옛 이름으로 쌓여 있던 기록을 새 이름으로 한 번 옮긴다.
+    """Move records piled up under the old names over to the new names, once.
 
-    이름만 바꾸고 말면 이미 쌓인 것이 통째로 안 읽힌다. 스캔 기록과 포트
-    속도 이력이 날아가는 것도 아깝지만, 진짜 위험한 것은 격리 기록이다 —
-    그건 PC 에 박아둔 정적 ARP 를 되돌리는 유일한 단서다. 못 읽으면 그 IP 는
-    재부팅할 때까지 엉뚱한 MAC 에 묶인 채로 잊힌다.
+    Rename and stop there and everything already accumulated goes unread. Losing
+    the scan history and the port speed history is a waste, but the real danger is
+    the isolation record — that is the only clue for undoing the static ARP entries
+    pinned into the PC. If it cannot be read, that IP stays bound to the wrong MAC,
+    forgotten, until a reboot.
 
-    새 이름이 이미 있으면 건드리지 않는다. 옮기다 실패해도 프로그램은
-    그냥 돌아야 한다 — 기록 때문에 스캔이 못 도는 일은 없어야 한다.
+    If the new name already exists, leave it alone. A failed move must not stop the
+    program — a record must never be the reason a scan cannot run.
     """
     moved = []
     for old, new in OLD_NAMES.items():
@@ -189,29 +186,29 @@ def migrate_old_names():
 
 
 def app_dir():
-    """설정과 사전을 두는 자리. exe 로 묶였으면 exe 옆, 아니면 소스 옆."""
+    """Where settings and books live. Next to the exe when frozen, next to the source otherwise."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def bundle_dir():
-    """PyInstaller 로 묶였을 때 딸려온 파일이 풀리는 자리."""
+    """Where PyInstaller unpacks the files bundled with a frozen build."""
     return getattr(sys, "_MEIPASS", "") or app_dir()
 
 
 def _oui_table():
-    """IEEE 등록부를 처음 쓸 때 한 번만 읽어 들인다.
+    """Read the IEEE registry once, the first time it is needed.
 
-    tools/build_oui.py 로 다시 만든다. 옛 표는 2020년 이후 배정분이
-    통째로 빠져 있어 흔한 장비가 "미상" 으로 떴다.
+    Rebuild it with tools/build_oui.py. The old table was missing every
+    assignment made after 2020, so common devices came up as "unknown".
     """
     global _OUI_CACHE
     if _OUI_CACHE is not None:
         return _OUI_CACHE
     table = {}
-    # exe 옆을 먼저 본다. IEEE 등록부는 계속 늘어나므로, 새 파일을 exe 옆에
-    # 떨궈 넣기만 하면 다시 빌드하지 않고도 갱신되게 한다.
+    # Look next to the exe first. The IEEE registry keeps growing, so dropping a
+    # newer file beside the exe updates it without a rebuild.
     for base in (app_dir(), bundle_dir()):
         path = os.path.join(base, OUI_FILE)
         if not os.path.isfile(path):
@@ -234,7 +231,7 @@ def hex_mac(mac):
 
 
 def vendor_of(mac):
-    """MAC 앞자리로 제조사를 찾는다. 좁은 등록(36·28비트)을 먼저 본다."""
+    """Find the vendor from the MAC prefix. Narrow assignments (36/28-bit) come first."""
     digits = hex_mac(mac)
     if len(digits) < 6:
         return "미상"
@@ -243,27 +240,27 @@ def vendor_of(mac):
         name = table.get(digits[:width])
         if name:
             return name
-    # 등록부를 못 읽었을 때를 대비한 최소 표
+    # Minimal table for when the registry could not be read
     return OUI_FALLBACK.get(digits[:6], "미상")
 
 
 class DeviceBook:
-    """장비 사전. MAC 앞자리로 제조사와 장비 종류를 알아본다.
+    """The device book. Works out vendor and device type from the MAC prefix.
 
-    한 항목이 앞자리 여러 개를 거느릴 수 있다(prefixes). 사람이 직접 넣는
-    항목은 앞자리 하나(prefix)만 적어도 된다. 전체 MAC 12자리를 적으면
-    그 장비 한 대만 가리킨다 — 이건 제조사 앞자리보다 우선한다.
+    One entry can carry several prefixes (prefixes). An entry a person adds by
+    hand can name just one prefix (prefix). Write all 12 MAC digits and it points
+    at that one device — and that wins over a vendor prefix.
 
-    담는 것은 제조사와 장비 종류뿐이다. 계정이나 스트림 주소는 넣지 않는다.
-    펌웨어마다 달라서 틀린 값은 없느니만 못하고, 남과 주고받을 파일에
-    계정을 적을 이유도 없다.
+    It holds vendor and device type, nothing else. No credentials, no stream URLs.
+    Those vary by firmware, and a wrong value is worse than none; there is also no
+    reason to write credentials into a file meant to be passed around.
     """
 
     FIELDS = ("vendor", "kind", "note")
 
     def __init__(self):
         self.entries = []       # [{vendor, kind, note, prefixes:[...]}]
-        self.index = {}         # 앞자리 -> 항목
+        self.index = {}         # prefix -> entry
         self.loaded_from = ""
 
     @property
@@ -272,10 +269,10 @@ class DeviceBook:
 
     @property
     def mine_path(self):
-        """현장에서 등록한 것이 쌓이는 자리. 공개 저장소에는 올리지 않는다."""
+        """Where entries registered on site pile up. This one does not go to a public repo."""
         return os.path.join(app_dir(), BOOK_MINE_FILE)
 
-    # -- 읽고 쓰기 --------------------------------------------------------
+    # -- read and write ---------------------------------------------------
 
     def _reindex(self):
         self.index = {}
@@ -300,9 +297,9 @@ class DeviceBook:
         return out
 
     def load(self):
-        """내 사전 -> 옆에 놓인 기본 사전 -> 프로그램에 딸려온 기본 사전 순으로 찾는다.
+        """Look in this order: my book -> the default book beside it -> the bundled default book.
 
-        내 사전이 앞이라 배포본을 새로 덮어써도 현장에서 등록한 것은 안 날아간다.
+        My book comes first, so overwriting the shipped book does not wipe out what was registered on site.
         """
         for path in (self.mine_path, self.path,
                      os.path.join(bundle_dir(), BOOK_FILE)):
@@ -332,10 +329,11 @@ class DeviceBook:
         }
 
     def save(self):
-        """언제나 내 사전에 쓴다. 배포본(장비사전.json)은 건드리지 않는다.
+        """Always write to my book. The shipped book (device-book.json) is never touched.
 
-        배포본에 덮어쓰면 다음에 그 파일을 저장소에 올릴 때 현장에서 등록한
-        것이 딸려 올라간다. 프로그램이 쓰는 파일과 배포하는 파일을 갈라 둔다.
+        Overwrite the shipped book and what was registered on site rides along the
+        next time that file goes up to the repo. Keep the file the program writes
+        apart from the file that gets distributed.
         """
         where = self.mine_path
         tmp = where + ".tmp"
@@ -349,7 +347,7 @@ class DeviceBook:
             json.dump(self._payload(), fh, ensure_ascii=False, indent=2)
 
     def import_from(self, path, replace=False):
-        """받은 사전을 합친다. 같은 앞자리는 새 것으로 덮어쓴다."""
+        """Merge in a book someone sent. A prefix already present is overwritten by the new one."""
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         incoming = [self._clean(x) for x in data.get("entries", [])]
@@ -377,10 +375,10 @@ class DeviceBook:
             self._reindex()
         return added, updated
 
-    # -- 조회 -------------------------------------------------------------
+    # -- lookup -----------------------------------------------------------
 
     def match(self, mac):
-        """가장 정확한 것부터 찾는다. 전체 MAC 등록이 제조사 앞자리보다 우선."""
+        """Try the most specific first. A full-MAC entry wins over a vendor prefix."""
         digits = hex_mac(mac)
         if len(digits) < 6:
             return None
@@ -397,16 +395,16 @@ class DeviceBook:
                 return digits[:width]
         return ""
 
-    # -- 편집 -------------------------------------------------------------
+    # -- editing ----------------------------------------------------------
 
     def upsert(self, prefix, vendor="", kind="", note=""):
-        """앞자리 하나를 등록하거나 고친다.
+        """Register or edit a single prefix.
 
-        이미 있는 앞자리를 고칠 때 조심할 게 하나 있다. 기본 사전은 브랜드마다
-        앞자리를 묶어서 담는다 — 예를 들어 Hikvision 항목 하나에 앞자리 37개가
-        들어 있다. 그 항목을 그대로 고치면 하이크비전 장비 전부의 이름이 바뀐다.
-        그래서 여러 앞자리를 묶은 항목을 만나면 이 앞자리만 떼어내 새 항목으로
-        만든다. 나머지 36개는 원래대로 둔다.
+        One thing to watch when editing a prefix that already exists. The default
+        book groups prefixes per brand — the Hikvision entry alone holds 37 of them.
+        Edit that entry in place and every Hikvision device gets renamed. So when
+        an entry bundling several prefixes turns up, split this one prefix out into
+        a new entry. The other 36 stay as they were.
         """
         digits = hex_mac(prefix)
         if len(digits) < 6:
@@ -424,10 +422,10 @@ class DeviceBook:
         self.entries.append({"vendor": vendor, "kind": kind, "note": note,
                              "prefixes": [digits]})
         self._reindex()
-        return hit is None      # 사전에 아예 없던 앞자리였는가
+        return hit is None      # was this prefix absent from the book entirely?
 
     def lookup(self, prefix):
-        """그 앞자리가 사전에 이미 있는지, 있다면 뭐라고 적혀 있는지."""
+        """Whether that prefix is already in the book, and if so what it says."""
         digits = hex_mac(prefix)
         hit = self.index.get(digits)
         if hit is None:
@@ -447,7 +445,7 @@ class DeviceBook:
         return True
 
     def rows(self):
-        """화면에 뿌릴 평평한 목록: (앞자리, 제조사, 종류, 메모)."""
+        """A flat list for the screen: (prefix, vendor, kind, note)."""
         out = []
         for item in self.entries:
             for prefix in item["prefixes"]:
@@ -460,13 +458,13 @@ BOOK = DeviceBook()
 
 
 def describe(mac):
-    """MAC 하나로 알 수 있는 것. 사전이 IEEE 등록부를 덮어쓴다."""
+    """What a single MAC tells you. The book overrides the IEEE registry."""
     info = {"vendor": vendor_of(mac), "kind": "", "note": "",
             "from_book": False, "exact": False}
     hit = BOOK.match(mac)
     if hit:
         info["from_book"] = True
-        # 전체 MAC(12자리)으로 등록했다면 사람이 그 장비를 콕 집은 것이다.
+        # Registered by full MAC (12 digits) means a person pinned that exact device.
         info["exact"] = len(BOOK.matched_prefix(mac)) >= 12
         if hit.get("vendor"):
             info["vendor"] = hit["vendor"]
@@ -501,7 +499,7 @@ def norm_mac(mac):
 
 
 def dash_mac(mac):
-    """AA-BB-CC-DD-EE-FF 꼴로. 구분자가 아예 없는 12자리도 끊어 준다."""
+    """Into AA-BB-CC-DD-EE-FF form. A bare 12-digit string with no separators gets split too."""
     digits = hex_mac(mac)
     if len(digits) == 12 and ":" not in mac and "-" not in mac:
         return "-".join(digits[i:i + 2] for i in range(0, 12, 2)).upper()
@@ -509,14 +507,14 @@ def dash_mac(mac):
 
 
 # ---------------------------------------------------------------------------
-# 말
+# Wording
 #
-# 화면 문구는 electron/renderer/i18n.js 가 가지고 있고, 여기 있는 것은
-# 엔진이 직접 만들어 로그창에 띄우는 문구다. 화면에서 언어를 바꾸면
-# set_lang 으로 이쪽에도 알려준다.
+# The UI strings live in electron/renderer/i18n.js; what is here is the wording
+# the engine builds itself and throws into the log pane. When the language is
+# switched on screen, set_lang tells this side about it too.
 #
-# 주석은 한국어로 둔다. 주석은 우리가 나중에 읽으려고 쓴 것이고,
-# 옮기면 "왜 이렇게 만들었는지" 가 묻히기 쉽다.
+# The comments were kept in Korean for a long time — they are written for us to
+# read later, and translating them buries "why it was built this way" too easily.
 # ---------------------------------------------------------------------------
 
 LANG = "ko"
@@ -529,11 +527,11 @@ def set_lang(code):
 
 
 def T(ko, en):
-    """사람이 읽는 문구 하나. 한국어를 먼저 적는다 — 우리가 원본이다."""
+    """One human-readable string. Korean goes first — that is the original."""
     return en if LANG == "en" else ko
 
 
-# 장비 종류 이름표. 사전 파일과 guess_kind 가 한국어로 뱉는 것을 옮긴다.
+# Device kind labels. Translates what the book file and guess_kind emit in Korean.
 KIND_EN = {
     "AV 장비": "AV equipment",
     "IP 카메라": "IP camera",
@@ -602,17 +600,17 @@ KIND_EN = {
 
 
 def kind_en(text):
-    """장비 종류를 영어로. 사람이 직접 적어 넣은 종류는 그대로 둔다."""
+    """Device kind into English. A kind someone typed in by hand is left alone."""
     return KIND_EN.get(text or "", text or "")
 
 
 def kind_show(text):
-    """지금 언어로 보여줄 장비 종류."""
+    """The device kind as it should show in the current language."""
     return kind_en(text) if LANG == "en" else (text or "")
 
 
 # ---------------------------------------------------------------------------
-# 상태 저장소
+# State store
 # ---------------------------------------------------------------------------
 class Store:
     def __init__(self, demo=False):
@@ -622,23 +620,23 @@ class Store:
         self.ifindex = None
         self.cidr = ""
         self.busy = False
-        self.cancel = threading.Event()   # 작업 중지 요청
+        self.cancel = threading.Event()   # request to stop the running job
         self.progress = {"phase": "대기", "pct": 0, "msg": "", "cur": 0, "total": 0}
         self.devices = {}          # "ip|mac" -> dict
-        self.order = []            # 표시 순서 유지
-        self.isolated = None       # 현재 격리된 key
-        self.mymac = ""            # 첫 랜카드 MAC (옛 이름 유지)
-        self.mymacs = set()        # 고른 랜카드 전부의 MAC — 자기 포트를 못 끄게 막는다
+        self.order = []            # keeps display order
+        self.isolated = None       # key currently isolated
+        self.mymac = ""            # MAC of the first NIC (old name kept)
+        self.mymacs = set()        # MACs of every selected NIC — stops you shutting your own port
         self.logs = []
         self.last_scan = ""
-        self.scanned = []          # **세 번의 확인을 다 거친** 주소만 들어간다
-        # 스캔이 끝까지 갔는가. 터졌거나 중지했으면 False 로 남는다.
-        # 빈 IP 목록은 이 깃발 없이는 아무 뜻이 없다 — 안 훑은 주소와
-        # 훑었는데 조용한 주소가 화면에서 똑같이 보이기 때문이다.
+        self.scanned = []          # only addresses that went through **all three checks**
+        # Did the scan run to the end? Stays False if it blew up or was stopped.
+        # A list of free IPs means nothing without this flag — an address never
+        # swept and an address swept but silent look identical on screen.
         self.scan_done = False
-        self.cred = None           # 카메라 계정 (메모리에만 둔다)
+        self.cred = None           # camera credentials (kept in memory only)
 
-    # -- 로그 --------------------------------------------------------------
+    # -- log ---------------------------------------------------------------
     def log(self, msg, level="info"):
         with self.lock:
             self.logs.append({"t": now(), "msg": msg, "level": level})
@@ -651,7 +649,7 @@ class Store:
             self.progress = {"phase": phase, "pct": pct, "msg": msg,
                              "cur": cur, "total": total}
 
-    # -- 장비 --------------------------------------------------------------
+    # -- devices -----------------------------------------------------------
     def key(self, ip, mac):
         return "%s|%s" % (ip, norm_mac(mac))
 
@@ -663,8 +661,8 @@ class Store:
                 self.devices[k] = {
                     "key": k, "ip": ip, "mac": norm_mac(mac),
                     "vendor": seen["vendor"], "kind": seen["kind"],
-                    # 제조사 앞자리(OUI)는 같은 회사 제품군일 뿐 장비 한 대의 정체가
-                    # 아니다. 전체 MAC으로 직접 등록한 경우에만 확정으로 표시한다.
+                    # A vendor prefix (OUI) only says "same company's product line", not
+                    # what this one box is. Mark it confirmed only when registered by full MAC.
                     "kind_confidence": "confirmed" if seen["kind"] and seen["exact"]
                                        else ("estimated" if seen["kind"] else ""),
                     "book": seen["from_book"], "book_exact": seen["exact"],
@@ -679,8 +677,8 @@ class Store:
                     "swhost": "",
                     "poeIndex": "", "poeStatus": 0, "poeWatt": 0.0,
                     "note": "", "identified": False,
-                    # 어느 랜카드로 잡혔는지. 카드를 둘 이상 골라 훑을 때
-                    # 격리·검사를 엉뚱한 카드로 하면 실패한다.
+                    # Which NIC picked it up. With two or more NICs selected for the
+                    # sweep, doing isolation or probing on the wrong one just fails.
                     "ifname": self.iface or "", "ifindex": self.ifindex,
                     "seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
@@ -688,7 +686,7 @@ class Store:
             return self.devices[k]
 
     def by_ip(self):
-        """IP별로 묶어서 반환. 충돌(2대 이상) 우선 정렬."""
+        """Return grouped by IP. Conflicts (2 or more devices) sort first."""
         with self.lock:
             groups = {}
             for k in self.order:
@@ -752,7 +750,7 @@ STORE = None
 
 
 # ---------------------------------------------------------------------------
-# 시스템 유틸
+# System utilities
 # ---------------------------------------------------------------------------
 def is_admin():
     try:
@@ -781,7 +779,7 @@ def run_ps(script, timeout=20):
 
 
 def ipv4_prefixes():
-    """Windows가 알고 있는 IPv4 주소별 프리픽스 길이(/24 같은 값)를 읽는다."""
+    """Read the prefix length (a value like /24) Windows knows for each IPv4 address."""
     script = (
         "$ErrorActionPreference='SilentlyContinue'; "
         "Get-NetIPAddress -AddressFamily IPv4 | "
@@ -810,7 +808,7 @@ def ipv4_prefixes():
 
 
 def ip_cidr(ip, prefix):
-    """주소 하나와 프리픽스에서 실제 네트워크 표기(예: 192.168.0.0/23)를 만든다."""
+    """Build the real network notation (e.g. 192.168.0.0/23) from one address and a prefix."""
     try:
         return str(ipaddress.ip_network("%s/%d" % (ip, prefix), strict=False))
     except (TypeError, ValueError):
@@ -818,13 +816,13 @@ def ip_cidr(ip, prefix):
 
 
 def list_ifaces():
-    """사용 가능한 네트워크 인터페이스 목록. (느릴 수 있으니 스레드에서 호출)"""
+    """List of usable network interfaces. (Can be slow — call it from a thread.)"""
     out = []
     if not ensure_scapy():
         return out
     try:
-        # Npcap/Scapy는 인터페이스와 IP를 캐시한다. 제어판에서 IP를 바꾼 뒤에도
-        # 새로고침 버튼이 현재 값을 보여주도록 매번 Windows 정보를 다시 읽는다.
+        # Npcap/Scapy caches interfaces and IPs. Re-read the Windows data every time
+        # so the refresh button shows current values even after an IP change in Control Panel.
         conf.ifaces.reload()
         prefixes = ipv4_prefixes()
         for _, nif in conf.ifaces.data.items():
@@ -850,8 +848,8 @@ def list_ifaces():
                 })
             out.append({
                 "name": nif.name,
-                # Windows의 제어판 표시 이름은 코드 페이지에 따라 깨질 수 있다.
-                # Npcap GUID는 ASCII이고 Scapy가 실제로 패킷을 보낼 때 요구하는 값이다.
+                # The Control Panel display name can come out mangled depending on the code page.
+                # The Npcap GUID is ASCII, and it is what Scapy actually wants when sending packets.
                 "scapyName": getattr(nif, "network_name", nif.name),
                 "desc": getattr(nif, "description", nif.name) or nif.name,
                 "ips": ips,
@@ -873,14 +871,14 @@ def iface_info(name):
 
 
 # ---------------------------------------------------------------------------
-# ARP 고정 / 해제
+# ARP pin / unpin
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# 결과 저장과 스캔 비교
+# Saving results and comparing scans
 #
-# 비교는 시공 검수에 쓴다. 들어가기 전에 한 번 찍어두고, 작업이 끝난 뒤 다시
-# 스캔하면 "내가 뭘 붙였고 뭐가 사라졌는지" 가 그대로 나온다.
-# 장비를 알아보는 기준은 IP 가 아니라 MAC 이다 — IP 는 바뀌어도 MAC 은 안 바뀐다.
+# The comparison is for handover inspection. Take one snapshot before you go in,
+# scan again when the work is done, and "what I added and what disappeared" falls out.
+# Devices are keyed by MAC, not IP — an IP changes, a MAC does not.
 # ---------------------------------------------------------------------------
 
 HISTORY_FILE = "scan-history.json"
@@ -888,7 +886,7 @@ HISTORY_LIMIT = 30
 
 
 def export_rows(path, rows, fmt="json", target="", columns=None):
-    """스캔 결과를 파일로 남긴다."""
+    """Write the scan result out to a file."""
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     fmt = (fmt or "json").lower()
 
@@ -921,8 +919,8 @@ def export_rows(path, rows, fmt="json", target="", columns=None):
         return path
 
     if fmt == "csv":
-        # CSV는 화면에서 고른 칸만 담는다. 장비를 파악할 때만 쓰는 NetBIOS·mDNS·
-        # UPnP·시리얼·TTL·상태를 Excel에 늘어놓으면 현장 인수표로 쓰기 어렵다.
+        # The CSV carries only the columns picked on screen. Laying out identification-only
+        # fields — NetBIOS, mDNS, UPnP, serial, TTL, status — in Excel makes it a poor handover sheet.
         labels = {
             "ip": "IP", "mac": "MAC", "vendor": "제조사", "kind": "장비 종류",
             "model": "모델", "name": "이름", "ms": "응답(ms)", "os": "OS",
@@ -931,8 +929,8 @@ def export_rows(path, rows, fmt="json", target="", columns=None):
         }
         chosen = [key for key in (columns or ["ip", "vendor", "kind", "model", "name", "ms", "os", "ports"])
                   if key in labels]
-        # 화면에서는 IP와 MAC이 한 칸처럼 보이지만 Excel에서는 각각 정렬·필터할 수
-        # 있어야 하므로 항상 나란한 두 칸으로 쓴다.
+        # On screen IP and MAC look like one cell, but in Excel each has to be sortable
+        # and filterable on its own, so always write them as two side-by-side columns.
         cols = []
         for key in chosen:
             if key == "ip":
@@ -959,7 +957,7 @@ def _history_path():
 
 
 def load_scan_history():
-    """완료된 스캔 기록을 최신순으로 읽는다. 깨진 기록은 비워서 안전하게 시작한다."""
+    """Read finished scan records, newest first. A corrupt record starts empty, safely."""
     try:
         with open(_history_path(), "r", encoding="utf-8") as fh:
             rows = json.load(fh).get("records", [])
@@ -969,7 +967,7 @@ def load_scan_history():
 
 
 def save_scan_history(devices, target="", iface=""):
-    """현재 장비 목록을 비교용으로 남긴다. 최근 30회만 보관한다."""
+    """Keep the current device list for comparison. Only the last 30 runs are held."""
     record = {
         "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
         "savedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -994,7 +992,7 @@ def find_scan_history(record_id):
 
 
 def compare_device_maps(base, now):
-    """MAC 기준으로 두 스캔을 비교한다. IP 변경은 장비 교체로 취급하지 않는다."""
+    """Compare two scans by MAC. An IP change is not treated as a device swap."""
     added = [{"mac": key, **value} for key, value in now.items() if key not in base]
     gone = [{"mac": key, **value} for key, value in base.items() if key not in now]
     moved = [{"mac": key, "from": base[key].get("ip", ""), "to": value.get("ip", "")}
@@ -1004,21 +1002,21 @@ def compare_device_maps(base, now):
 
 
 # ---------------------------------------------------------------------------
-# 포트 속도 이력 — "예전엔 1G였는데 지금 100M입니다"
+# Port speed history — "this used to be 1G, now it is 100M"
 # ---------------------------------------------------------------------------
-# 기가 링크는 랜선 8가닥을 전부 쓴다. 그중 한 가닥만 끝이 헐거워도 링크는
-# 안 끊기고 조용히 100M 로 내려앉는다. 화면에는 아무 증상이 없다. 카메라가
-# 가끔 끊긴다는 민원이 몇 달 뒤에 올라온다.
+# A gigabit link uses all 8 conductors in the cable. Let one of them go loose at
+# the end and the link does not drop — it quietly falls back to 100M. Nothing
+# shows on screen. The complaint that a camera cuts out now and then arrives months later.
 #
-# 그래서 포트 속도를 매번 적어 두고, 예전보다 느려졌으면 사람이 찾기 전에
-# 먼저 말한다.
+# So write the port speed down every time, and if it is slower than it used to be,
+# say so before anyone has to go looking.
 
 PORT_HISTORY_FILE = "port-history.json"
-# 포트 조회는 이제 각자 스레드에서 돈다. 스위치 두 대를 동시에 읽으면 이
-# 파일을 동시에 고치게 되고, 그러면 한쪽 기록이 통째로 날아간다.
+# Port lookups now run each in their own thread. Read two switches at once and both
+# rewrite this file at once, and one switch's history is wiped out whole.
 PORT_HISTORY_LOCK = threading.RLock()
-PORT_HISTORY_SWITCHES = 40        # 스위치 몇 대까지 기억할지
-PORT_HISTORY_PORTS = 512          # 스위치 한 대에 포트 몇 개까지
+PORT_HISTORY_SWITCHES = 40        # how many switches to remember
+PORT_HISTORY_PORTS = 512          # how many ports per switch
 
 
 def _port_history_path():
@@ -1026,15 +1024,15 @@ def _port_history_path():
 
 
 def load_port_history():
-    """스위치별 포트 이력. 깨졌으면 빈 것으로 시작한다 — 기록 때문에 툴이 죽으면 안 된다."""
+    """Per-switch port history. Corrupt means start empty — a record must never kill the tool."""
     try:
         with open(_port_history_path(), "r", encoding="utf-8") as fh:
             data = json.load(fh)
         switches = data.get("switches") if isinstance(data, dict) else None
         if not isinstance(switches, dict):
             return {}
-        # 값이 dict 가 아닌 줄이 하나라도 섞여 있으면(손으로 고쳤거나 쓰다 말았거나)
-        # 나중에 정리하다 터진다. 여기서 걸러 둔다.
+        # One row whose value is not a dict (hand-edited, or a write cut short) blows up
+        # later during cleanup. Filter it out here.
         return {key: row for key, row in switches.items() if isinstance(row, dict)}
     except (OSError, ValueError, AttributeError, TypeError):
         return {}
@@ -1047,7 +1045,7 @@ def _save_port_history(switches):
             json.dump({"switches": switches}, fh, ensure_ascii=False, indent=1)
         os.replace(tmp, _port_history_path())
     except OSError:
-        # 기록을 못 남기는 건 참을 수 있다. 스캔까지 같이 죽는 건 못 참는다.
+        # Failing to write the record is survivable. Taking the scan down with it is not.
         try:
             os.remove(tmp)
         except OSError:
@@ -1055,16 +1053,16 @@ def _save_port_history(switches):
 
 
 def port_key(info):
-    """포트를 식별할 이름. 이름이 있으면 이름, 없으면 번호.
+    """The name that identifies a port. The name if it has one, otherwise the number.
 
-    이름을 먼저 쓰는 이유는 스위치를 재부팅하거나 모듈을 뺐다 꽂으면 ifIndex 가
-    통째로 밀릴 수 있어서다. GigabitEthernet1/0/12 는 안 밀린다.
+    The name comes first because rebooting the switch or pulling and reseating a module
+    can shift every ifIndex. GigabitEthernet1/0/12 does not shift.
     """
     return (info.get("name") or "").strip() or "#%s" % info.get("index", "")
 
 
 def port_number(info):
-    """포트 이름에서 사람이 부르는 번호를 뽑는다. GigabitEthernet1/0/12 -> 12."""
+    """Pull the number people actually say out of the port name. GigabitEthernet1/0/12 -> 12."""
     name = (info.get("name") or "").strip()
     if name:
         bits = re.findall(r"\d+", name)
@@ -1077,14 +1075,14 @@ def port_number(info):
 
 
 def compare_port_speeds(host, ports, remember=True, name=""):   # noqa: C901
-    """포트 속도를 기록하고, 예전보다 느려진 포트를 돌려준다.
+    """Record port speeds and hand back the ports that got slower than they used to be.
 
-    기준을 '지난번' 이 아니라 **여태 본 최고 속도** 로 잡는다. 지난번과 비교하면
-    1G 이던 포트가 100M 로 떨어지는 그 한 번만 알리고, 그다음부터는 100M 이 새
-    기준이 되어 조용해진다. 랜선은 고칠 때까지 계속 나가 있으니 최고를 붙든다.
+    The baseline is not "last time" but **the fastest speed ever seen**. Compare against
+    last time and you get one warning as a 1G port drops to 100M, and after that 100M is
+    the new baseline and it goes quiet. The bad cable stays bad until fixed, so hold the max.
 
-    물린 장비가 통째로 바뀌었으면 기준을 새로 잡는다. 1G 카메라 빼고 100M
-    카메라를 꽂은 것을 고장이라고 부르면 안 된다.
+    If the attached device changed entirely, reset the baseline. Pulling a 1G camera and
+    plugging in a 100M one must not be called a fault.
     """
     with PORT_HISTORY_LOCK:
         return _compare_port_speeds(host, ports, remember, name)
@@ -1109,23 +1107,23 @@ def _compare_port_speeds(host, ports, remember, name):
         was = old.get(key) if isinstance(old.get(key), dict) else {}
         best = int(was.get("best") or 0)
         best_at = was.get("bestAt") or ""
-        okay = int(was.get("okSpeed") or 0)     # 사람이 '이 속도가 정상' 이라 한 값
+        okay = int(was.get("okSpeed") or 0)     # the value a person declared "this speed is normal"
         was_macs = [m for m in (was.get("macs") or []) if isinstance(m, str)]
 
-        # 장비가 통째로 바뀌었으면 예전 속도를 들이대지 않는다. 사람이 눌러 둔
-        # '정상' 도 같이 지운다 — 그건 그때 물려 있던 장비를 보고 한 판단이다.
+        # If the device changed entirely, do not hold the old speed against it. Clear the
+        # "normal" a person marked too — that judgement was about the device attached then.
         #
-        # 링크가 살아 있는데 MAC 이 하나도 안 보이면 그건 '아무것도 없다' 가
-        # 아니라 'MAC 표를 못 읽었다' 이다. 그걸 교체로 치면 멀쩡한 포트의
-        # 기준이 날아가고, 반대로 빈 목록으로 예전 목록을 덮으면 다음 판에
-        # 진짜 교체를 못 알아본다. 못 읽었으면 예전 것을 그대로 지킨다.
+        # A live link with not one MAC visible does not mean "nothing there", it means
+        # "could not read the MAC table". Count that as a swap and a healthy port loses
+        # its baseline; overwrite the old list with the empty one and the next round
+        # misses a real swap. If it could not be read, keep what was there before.
         swapped = bool(macs and was_macs) and not (set(macs) & set(was_macs))
         if swapped:
             best, best_at, okay = 0, "", 0
         keep_macs = macs[:16] if macs else was_macs[:16]
 
-        # 사람이 "이 속도가 정상" 이라 해 둔 뒤에 그보다 빨라진 적이 있으면,
-        # 그 포트는 더 낼 수 있다는 것이 증명된 것이다. 봐주기를 거둔다.
+        # If the port has since run faster than the speed a person called "normal",
+        # it has proven it can do more. Withdraw the pass.
         if speed > okay > 0:
             okay = 0
 
@@ -1147,14 +1145,14 @@ def _compare_port_speeds(host, ports, remember, name):
             "poeWatt": round(float(info.get("poeWatt") or 0), 1),
             "best": best, "bestAt": best_at, "okSpeed": okay,
             "firstAt": was.get("firstAt") or now, "seenAt": now,
-            "macs": keep_macs,          # 업링크 뒤 수백 개를 다 적을 이유는 없다
+            "macs": keep_macs,          # no reason to write down all several hundred behind an uplink
         }
 
     if remember:
-        # 이번에 본 포트만 남기고 나머지를 지우면 안 된다. 이름 walk 가 중간에
-        # 끊겨 포트 열 개가 이름 없이 올라온 판 한 번이면, 그 포트들의 1G 기준이
-        # 통째로 사라진다. 그러면 고장난 포트가 영원히 조용해진다.
-        # 오래 안 보인 것만 덜어낸다.
+        # Do not keep only the ports seen this round and drop the rest. One round where
+        # the name walk got cut off and ten ports came back nameless wipes out those
+        # ports' 1G baseline entirely. After that the broken port stays quiet forever.
+        # Only trim what has not been seen for a long time.
         merged = dict(old)
         merged.update(fresh)
         if len(merged) > PORT_HISTORY_PORTS:
@@ -1177,10 +1175,10 @@ def _compare_port_speeds(host, ports, remember, name):
 
 
 def accept_port_speed(host, key):
-    """이 속도가 정상이라고 못 박는다. 기준을 지금 속도로 내린다.
+    """Nail down that this speed is normal. Drops the baseline to the current speed.
 
-    100M 짜리 장비를 일부러 물려 놓은 포트가 영원히 빨갛게 남으면, 사람은
-    곧 빨간색 전체를 무시하게 된다. 무시당하는 경고는 없는 것만 못하다.
+    Leave a port with a deliberately attached 100M device red forever and people soon
+    start ignoring every red. A warning that gets ignored is worse than no warning.
     """
     with PORT_HISTORY_LOCK:
         store = load_port_history()
@@ -1194,9 +1192,9 @@ def _accept(store, slot, key):
     row = slot["ports"].get(key)
     if not isinstance(row, dict):
         return False
-    # 기록된 속도가 0 이면 '링크가 없을 때 읽은 판' 이다. 그걸 정상이라고
-    # 못 박으면 기준(best)만 0 으로 날아가고 봐주기는 저장되지도 않는다.
-    # 그래놓고 화면에는 "기록했습니다" 가 뜬다 — 고장이 영원히 조용해진다.
+    # A recorded speed of 0 means "read while the link was down". Nail that down as
+    # normal and the baseline (best) drops to 0 while the pass is not even stored.
+    # And the screen says "recorded" — the fault goes quiet forever.
     speed = int(row.get("speed") or 0)
     if speed <= 0:
         return False
@@ -1208,16 +1206,16 @@ def _accept(store, slot, key):
 
 
 # ---------------------------------------------------------------------------
-# 격리 기록 — 비정상 종료 뒷정리
+# Isolation record — cleaning up after an abnormal exit
 #
-# 격리는 윈도우 ARP 표에 "이 IP 는 이 MAC 이다" 를 못박는 것이다. 정상 종료 때는
-# 다시 뽑지만, 작업관리자로 죽이거나 프로그램이 뻗으면 못이 박힌 채 남는다.
-# 그러면 그 PC 는 그 IP 로 계속 그 장비 한 대만 붙고, 쓴 사람은 이유를 모른다.
+# Isolating means nailing "this IP is this MAC" into the Windows ARP table. On a clean exit
+# the nail comes back out, but kill it from Task Manager or let the program crash and it stays in.
+# That PC then only ever reaches that one device on that IP, and whoever uses it has no idea why.
 #
-# 그래서 박을 때마다 파일에 적어두고, 다음 실행 때 남아 있는 것을 뽑는다.
-# 우리가 적어둔 것만 건드린다 — 회사에서 일부러 걸어둔 정적 ARP 는 손대지 않는다.
+# So write every nail to a file, and pull whatever is left over on the next run.
+# Only touch what we wrote — a static ARP entry the company put there on purpose is left alone.
 #
-# (못은 메모리에만 박히므로 재부팅해도 사라진다. 다만 그걸 아는 사람이 없다.)
+# (The nail lives in memory only, so a reboot clears it. Nobody knows that, though.)
 # ---------------------------------------------------------------------------
 
 PIN_FILE = "isolation.json"
@@ -1263,11 +1261,11 @@ def pin_forget(ip):
 
 
 def pin_sweep(log=None):
-    """지난번에 남긴 격리를 걷어낸다. 시작할 때 한 번 부른다.
+    """Clear out isolations left over from last time. Called once at startup.
 
-    기록을 먼저 비우면 안 된다. 관리자 권한 없이 켰다면 못 지우는데, 기록이
-    이미 사라져서 다음 판에는 시도조차 안 한다. 그 IP 는 재부팅할 때까지
-    엉뚱한 MAC 으로 고정된 채 남는다. 정말 지워진 것만 기록에서 뺀다.
+    Do not empty the record first. Started without administrator rights, the entry cannot
+    be removed — and with the record already gone, the next run does not even try. That IP
+    stays pinned to the wrong MAC until a reboot. Drop from the record only what really went.
     """
     with _pin_lock:
         pins = _pin_read()
@@ -1299,7 +1297,7 @@ def pin_sweep(log=None):
 
 
 def arp_pin(ip, mac, ifindex, ifname):
-    """해당 IP를 지정한 MAC 장비 하나에만 묶는다."""
+    """Bind that IP to the one device with the given MAC, and nothing else."""
     if STORE.demo:
         return True, "demo"
 
@@ -1307,9 +1305,9 @@ def arp_pin(ip, mac, ifindex, ifname):
         if not ifindex:
             return False, "인터페이스 인덱스를 알 수 없습니다"
 
-        # 1순위: netsh. PowerShell 과 결과는 같은데 훨씬 빠르다 — powershell.exe
-        # 는 뜨는 데만 0.5~1.5초가 걸리고, 검사 한 번에 pin·unpin 으로 두 번
-        # 부른다. 기사가 장비 하나 눌러놓고 기다리는 그 시간의 큰 몫이었다.
+        # First choice: netsh. Same result as PowerShell but far faster — powershell.exe
+        # takes 0.5~1.5s just to start up, and one probe calls it twice, pin and unpin.
+        # That was a big share of the time a tech spends waiting after clicking a device.
         run_cmd(["netsh", "interface", "ipv4", "delete", "neighbors",
                  str(ifindex), ip])
         rc, out, err = run_cmd(["netsh", "interface", "ipv4", "add",
@@ -1318,9 +1316,9 @@ def arp_pin(ip, mac, ifindex, ifname):
             pin_remember(ip, mac, ifindex, ifname)
             return True, ""
 
-        # 2순위: PowerShell. netsh 문법이 안 먹는 판이 있다.
-        # (New-NetNeighbor 에는 -Store 옵션이 없다. 기본이 메모리 저장이라
-        #  재부팅하면 저절로 사라진다)
+        # Second choice: PowerShell. There are boxes where the netsh syntax does not take.
+        # (New-NetNeighbor has no -Store option. It stores to memory by default, so it
+        #  disappears on its own at reboot.)
         ps = (
             "Remove-NetNeighbor -InterfaceIndex {i} -IPAddress {ip} "
             "-Confirm:$false -ErrorAction SilentlyContinue; "
@@ -1341,19 +1339,19 @@ def arp_pin(ip, mac, ifindex, ifname):
 
 
 def arp_unpin(ip, ifindex, ifname, remember=True):
-    """격리를 푼다. 어느 방식으로 걸렸든 확실히 걷어낸다.
+    """Release the isolation. Clears it for certain, whichever way it was set.
 
-    성공했다고 무조건 대답하면 안 된다. 관리자 권한이 없으면 두 명령 다
-    조용히 실패하는데, 그러면 이 PC 는 그 IP 를 계속 정해진 MAC 으로만
-    보낸다 — 장비를 옮기거나 바꿔도 엉뚱한 데로 간다. 재부팅해야 풀린다.
-    그걸 "풀었습니다" 라고 적으면 아무도 찾아볼 생각을 안 한다.
+    Do not just answer "success" regardless. Without administrator rights both commands
+    fail silently, and this PC keeps sending that IP only to the fixed MAC — move or swap
+    the device and traffic still goes to the wrong place. It takes a reboot to clear.
+    Write "released" for that and nobody will ever think to go looking.
     """
     if remember:
         pin_forget(ip)
     if STORE.demo:
         return True, "demo"
     if os.name == "nt":
-        # netsh 를 먼저. PowerShell 은 뜨는 데만 1초가 넘는다.
+        # netsh first. PowerShell takes over a second just to start.
         rc = -1
         if ifindex:
             rc, out, err = run_cmd(["netsh", "interface", "ipv4", "delete",
@@ -1366,14 +1364,14 @@ def arp_unpin(ip, ifindex, ifname, remember=True):
         if rc2 == 0 and not err2.strip():
             return True, ""
         if not _still_pinned(ip, ifindex):
-            return True, ""       # 둘 다 투덜댔지만 실제로는 없어졌다
+            return True, ""       # both complained, but it is actually gone
         return False, (err2.strip() or out2.strip() or "지우지 못했습니다")[:200]
     rc, out, err = run_cmd(["ip", "neigh", "del", ip, "dev", ifname])
     return (rc == 0), (err.strip() or out.strip())
 
 
 def _still_pinned(ip, ifindex):
-    """그 IP 가 아직 고정(Permanent)으로 남아 있는지 본다. 못 읽으면 False."""
+    """Check whether that IP is still pinned (Permanent). False if it cannot be read."""
     if os.name != "nt" or not ifindex:
         return False
     rc, out, _err = run_cmd(["netsh", "interface", "ipv4", "show", "neighbors",
@@ -1388,16 +1386,16 @@ def _still_pinned(ip, ifindex):
 
 
 # ---------------------------------------------------------------------------
-# 스캔
+# Scanning
 # ---------------------------------------------------------------------------
 RANGE_RE = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d{1,3})\s*-\s*(\d{1,3})$")
 MAX_TARGETS = 4096
 
 
 def parse_target(text):
-    """'192.168.0.1-254' / '192.168.0.0/24' / '192.168.0.13' 을 IP 목록으로 편다.
+    """Expand '192.168.0.1-254' / '192.168.0.0/24' / '192.168.0.13' into a list of IPs.
 
-    scapy 는 대시 범위 표기를 확장해 주지 않으므로 여기서 직접 편다.
+    scapy does not expand the dash range notation, so do it here.
     """
     t = (text or "").strip()
     if not t:
@@ -1415,7 +1413,7 @@ def parse_target(text):
         if a > b:
             a, b = b, a
         a, b = max(0, min(255, a)), max(0, min(255, b))
-        ipaddress.IPv4Address("%s.%d" % (base, a))   # 형식 검증
+        ipaddress.IPv4Address("%s.%d" % (base, a))   # format check
         return ["%s.%d" % (base, i) for i in range(a, b + 1)]
 
     if "/" in t:
@@ -1430,10 +1428,10 @@ def parse_target(text):
 
 def arp_sweep(target, iface, timeout=1.5, retry=1, chunk=64,
               on_progress=None, on_found=None):
-    """대상에 ARP를 뿌리고 응답한 (IP, MAC)을 전부 수집.
+    """Spray ARP at the targets and collect every (IP, MAC) that answers.
 
-    한 번에 다 보내면 진행 상황을 알 수 없으므로 여러 묶음으로 나눠 보낸다.
-    묶음이 끝날 때마다 찾은 것을 바로 넘겨줘서 화면에 실시간으로 뜬다.
+    Send it all at once and there is no way to show progress, so it goes out in chunks.
+    Each finished chunk hands over what it found right away, so the screen fills live.
     """
     if not ensure_scapy():
         raise RuntimeError(T("scapy를 불러오지 못했습니다: %s",
@@ -1472,7 +1470,7 @@ def arp_sweep(target, iface, timeout=1.5, retry=1, chunk=64,
 
 
 def parse_ports(text):
-    """"80,443,8000-8010" 같은 입력을 포트 목록으로 바꾼다."""
+    """Turn input like "80,443,8000-8010" into a port list."""
     if not text or not str(text).strip():
         return list(SCAN_PORTS)
     out = []
@@ -1540,15 +1538,15 @@ def _decode(b):
 
 
 def clean_title(text):
-    """웹페이지 제목을 사람이 읽는 글자로 되돌린다.
+    """Turn a web page title back into characters a person can read.
 
-    제목에는 HTML 특수문자가 그대로 박혀 있는 경우가 흔하다. 시놀로지가
-    "RackStation&nbsp;-&nbsp;Synology" 처럼 준다. 그걸 풀지 않으면 목록에
-    &nbsp; 가 글자 그대로 뜬다. 줄바꿈과 겹친 공백도 여기서 정리한다.
+    Titles often come with HTML entities left in raw. Synology hands over
+    "RackStation&nbsp;-&nbsp;Synology". Leave that unescaped and the list shows
+    a literal &nbsp;. Line breaks and runs of spaces get tidied here too.
     """
     if not text:
         return ""
-    # &nbsp; 는 풀어놓으면 보통 공백이 아니라서(U+00A0) 따로 갈아 끼운다
+    # unescaped &nbsp; is not an ordinary space (U+00A0), so swap it out separately
     out = html.unescape(text).replace("\u00a0", " ")
     return re.sub(r"\s+", " ", out).strip()
 
@@ -1566,7 +1564,7 @@ def http_probe(ip, port, timeout=3.0):
             if m:
                 info["title"] = clean_title(_decode(m.group(1)))[:80]
     except urllib.error.HTTPError as e:
-        # 401/403 도 정보가 많다 (realm 에 모델명이 박혀 있는 경우가 흔함)
+        # 401/403 carry plenty too (the realm often has the model name in it)
         try:
             info["server"] = e.headers.get("Server", "") or ""
             auth = e.headers.get("WWW-Authenticate", "") or ""
@@ -1602,7 +1600,7 @@ SCOPE_RE = re.compile(r"onvif://www\.onvif\.org/(\w+)/([^\s<]+)")
 
 
 def onvif_probe(ip, timeout=2.0):
-    """유니캐스트 WS-Discovery. 응답하면 카메라 계열이 거의 확실하다."""
+    """Unicast WS-Discovery. An answer all but confirms it is in the camera family."""
     out = {}
     s = None
     try:
@@ -1627,17 +1625,17 @@ def onvif_probe(ip, timeout=2.0):
 
 
 # ---------------------------------------------------------------------------
-# 장비를 알아보는 다른 통로들
+# Other channels for identifying a device
 #
-# 포트를 두드려 보는 것 말고도, 장비가 스스로 자기 이름을 알려주는 길이 몇 개
-# 있다. 답해주는 장비는 공짜로 정확한 정보를 주므로 먼저 물어보고, 입을 다무는
-# 장비만 포트를 두드린다.
+# Besides knocking on ports, there are a few ways a device will tell you its own
+# name. A device that answers gives you accurate information for free, so ask first
+# and only knock on ports for the ones that stay silent.
 #
-#   역DNS      IP -> 이름          망에 DNS 서버가 있을 때
-#   NetBIOS    137/UDP             윈도우 PC, NVR, 공유 장비
-#   mDNS       224.0.0.251:5353    애플·프린터·AV 장비 (Bonjour)
-#   SSDP       239.255.255.250     공유기·카메라·미디어 장비 (UPnP)
-#   핑         응답시간과 TTL       거리와 OS 짐작
+#   reverse DNS  IP -> name          when the network has a DNS server
+#   NetBIOS      137/UDP             Windows PCs, NVRs, shared devices
+#   mDNS         224.0.0.251:5353    Apple, printers, AV gear (Bonjour)
+#   SSDP         239.255.255.250     routers, cameras, media devices (UPnP)
+#   ping         round-trip and TTL  guesses distance and OS
 # ---------------------------------------------------------------------------
 
 MDNS_GROUP = "224.0.0.251"
@@ -1647,7 +1645,7 @@ SSDP_PORT = 1900
 
 
 def reverse_name(ip, timeout=1.0):
-    """역DNS. 망에 DNS 서버가 있으면 IP 로 이름을 얻는다."""
+    """Reverse DNS. If the network has a DNS server, an IP gets you a name."""
     old = socket.getdefaulttimeout()
     try:
         socket.setdefaulttimeout(timeout)
@@ -1660,7 +1658,7 @@ def reverse_name(ip, timeout=1.0):
 
 
 def _tcp_time(ip, ports, timeout=1.0):
-    """열린 포트에 붙는 데 걸린 시간(ms). ICMP 가 막힌 곳에서 쓴다."""
+    """Time (ms) to connect to an open port. Used where ICMP is blocked."""
     for port in (ports or [80, 443, 554]):
         start = time.time()
         try:
@@ -1672,7 +1670,7 @@ def _tcp_time(ip, ports, timeout=1.0):
 
 
 def os_from_ttl(ttl):
-    """TTL 은 남은 홉 수다. 출발값을 되짚으면 OS 를 짐작할 수 있다."""
+    """TTL is the hops remaining. Work back to the starting value and you can guess the OS."""
     if ttl is None:
         return ""
     start = 64 if ttl <= 64 else (128 if ttl <= 128 else 255)
@@ -1680,13 +1678,13 @@ def os_from_ttl(ttl):
 
 
 def ping_once(ip, timeout_ms=800, ports=None):
-    """응답시간(ms)과 TTL 을 얻는다.
+    """Get the round-trip time (ms) and the TTL.
 
-    TTL 은 남은 홉 수라 처음 값을 짐작할 수 있다. 128 에서 출발하면 윈도우,
-    64 면 리눅스·임베디드(카메라 대부분), 255 면 네트워크 장비인 경우가 많다.
+    TTL is the hops remaining, so the starting value can be guessed. Starting at 128
+    usually means Windows, 64 Linux/embedded (most cameras), 255 network gear.
 
-    핑이 막혀 있거나(카메라 중에 ICMP 를 꺼둔 것이 있다) ping 명령 자체가
-    없으면, 열린 포트에 붙는 시간으로 대신 잰다. 그때는 TTL 을 알 수 없다.
+    If ping is blocked (some cameras have ICMP switched off) or the ping command is
+    missing, measure the connect time to an open port instead. No TTL that way.
     """
     if os.name == "nt":
         cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
@@ -1714,13 +1712,13 @@ def ping_once(ip, timeout_ms=800, ports=None):
 
 
 def tcp_ttl(ip, ports, timeout=1.2):
-    """열린 포트에 SYN 하나를 던져 응답 패킷의 TTL 을 읽는다.
+    """Throw one SYN at an open port and read the TTL off the reply packet.
 
-    윈도우 PC 는 방화벽이 핑을 기본으로 막는다. 그래서 ping 으로는 TTL 이
-    안 나오는데, 정작 웹 포트는 열려 있는 경우가 많다. 그럴 때 SYN 을 보내고
-    돌아온 SYN-ACK 의 TTL 을 읽으면 같은 값을 얻는다.
+    Windows PCs block ping by default at the firewall. So ping yields no TTL, while
+    the web port is often wide open. Send a SYN there and read the TTL off the
+    SYN-ACK that comes back and you get the same value.
 
-    scapy(=Npcap) 가 있어야 한다. 없으면 조용히 포기한다.
+    Needs scapy (= Npcap). Without it, give up quietly.
     """
     if not ports or not ensure_scapy():
         return {"ttl": None, "os": ""}
@@ -1736,7 +1734,7 @@ def tcp_ttl(ip, ports, timeout=1.2):
 
 
 def netbios_name(ip, timeout=0.8):
-    """NetBIOS 이름 조회(137/UDP). 윈도우 PC 와 NVR 이 잘 답한다."""
+    """NetBIOS name lookup (137/UDP). Windows PCs and NVRs answer this readily."""
     query = (b"\x82\x28\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
              b"\x20CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\x00\x00\x21\x00\x01")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1760,7 +1758,7 @@ def netbios_name(ip, timeout=0.8):
         raw = data[pos:pos + 15].decode("cp949", "ignore").strip()
         kind = data[pos + 15]
         flags = int.from_bytes(data[pos + 16:pos + 18], "big")
-        names.append((raw, kind, bool(flags & 0x8000)))   # 0x8000 = 그룹 이름
+        names.append((raw, kind, bool(flags & 0x8000)))   # 0x8000 = group name
         pos += 18
 
     name = next((n for n, k, g in names if not g and k == 0x00), "")
@@ -1769,17 +1767,17 @@ def netbios_name(ip, timeout=0.8):
 
 
 def _mdns_query(name, qtype=12):
-    """mDNS 질의 한 통을 만든다. qtype 12 = PTR."""
+    """Build one mDNS query. qtype 12 = PTR."""
     header = b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"
     body = b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\x00"
     return header + body + qtype.to_bytes(2, "big") + b"\x00\x01"
 
 
 def _dns_names(data):
-    """응답 안에 들어 있는 이름 조각을 긁어모은다.
+    """Scrape out the name fragments sitting inside a response.
 
-    압축 포인터까지 제대로 따라가려면 파서를 다 짜야 하는데, 우리는 '이 장비가
-    뭐라고 부르는가' 만 알면 되므로 읽을 수 있는 이름만 주워 담는다.
+    Following compression pointers properly would mean writing a whole parser, and all
+    we need is "what does this device call itself", so just pick up the readable names.
     """
     out, pos = [], 12
     while pos < len(data):
@@ -1794,9 +1792,9 @@ def _dns_names(data):
     return out
 
 
-# 장비 이름으로 볼 만한 글자인지 가린다.
-# mDNS 응답에는 이름 말고도 TXT 기록이 섞여 온다 — "mac_address=00:11:32:.." 같은.
-# 우리가 만든 조각내기는 그런 것까지 주워 담기 때문에 여기서 걸러야 한다.
+# Decides whether a string is worth treating as a device name.
+# mDNS responses carry TXT records mixed in with the names — things like "mac_address=00:11:32:..".
+# Our fragment scraper picks those up too, so they have to be filtered here.
 HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,62}$")
 
 
@@ -1807,21 +1805,21 @@ def looks_like_hostname(text):
     if name.lower() in ("local", "_tcp", "_udp", "arpa", "in-addr", "ip6"):
         return False
     if name.startswith("_"):
-        return False              # 서비스 종류지 장비 이름이 아니다
+        return False              # a service type, not a device name
     if "=" in name or "|" in name:
-        return False              # TXT 기록 조각
+        return False              # fragment of a TXT record
     if re.fullmatch(r"[0-9a-fA-F]{2}([-:][0-9a-fA-F]{2}){5}", name):
-        return False              # MAC 을 이름이라고 내놓는 장비가 있다
+        return False              # some devices hand out their MAC as the name
     if re.fullmatch(r"[0-9.]+", name):
-        return False              # IP 주소
+        return False              # an IP address
     return True
 
 
 def mdns_sweep(timeout=2.0):
-    """망 전체에 대고 한 번 물어본다. 답한 장비들의 IP -> 이름.
+    """Ask the whole network once. IP -> name for every device that answers.
 
-    장비마다 찾아가는 게 아니라 멀티캐스트로 한 번 외치는 것이라,
-    장비가 몇 대든 이 함수 한 번이면 된다.
+    It shouts once over multicast rather than visiting each device, so one call
+    covers the lot no matter how many devices there are.
     """
     found = {}
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1856,7 +1854,7 @@ def mdns_sweep(timeout=2.0):
 
 
 def ssdp_sweep(timeout=2.5):
-    """UPnP 로 한 번 외친다. 답한 장비의 IP -> {이름, 제조사, 모델, 시리얼}."""
+    """Shout once over UPnP. IP -> {name, vendor, model, serial} for whoever answers."""
     request = ("M-SEARCH * HTTP/1.1\r\n"
                "HOST: {0}:{1}\r\n"
                'MAN: "ssdp:discover"\r\n'
@@ -1869,7 +1867,7 @@ def ssdp_sweep(timeout=2.5):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         sock.settimeout(0.4)
-        for _ in range(2):                      # UDP 라 한 통은 흘릴 수 있다
+        for _ in range(2):                      # it is UDP, one datagram can just be dropped
             try:
                 sock.sendto(request, (SSDP_GROUP, SSDP_PORT))
             except OSError:
@@ -1890,7 +1888,7 @@ def ssdp_sweep(timeout=2.5):
     finally:
         sock.close()
 
-    # 장비가 알려준 주소를 열어보면 이름·모델·시리얼이 들어 있다.
+    # Open the URL the device handed over and it holds the name, model and serial.
     out = {}
     for ip, url in replies.items():
         info = {"name": "", "vendor": "", "model": "", "serial": ""}
@@ -1907,16 +1905,16 @@ def ssdp_sweep(timeout=2.5):
                 if m:
                     info["model"] = html.unescape(m.group(1).strip())
         except Exception:
-            pass                                 # 못 열어도 IP 는 건졌다
+            pass                                 # even if it will not open, we still got the IP
         if any(info.values()):
             out[ip] = info
     return out
 
 
-# 아래 값들은 "달리 부를 말이 없어서" 붙인 이름이다. 포트나 제조사만 보고
-# 뭉뚱그린 것이라, 장비 사전이 아는 이름이 있으면 그쪽이 늘 낫다.
-# 예: 시놀로지 NAS 는 80·443·5000 이 열려 있어 '웹 관리 장비' 로 뭉뚱그려지는데,
-#     사전은 이미 'NAS' 라고 알고 있다.
+# The values below are names given "because there was nothing better to call it".
+# They are lumped together from ports or vendor alone, so if the device book knows a
+# name, that one is always better. Example: a Synology NAS has 80, 443 and 5000 open
+# and gets lumped in as "web-managed device" — the book already knows it is a "NAS".
 WEAK_KINDS = {
     "웹 관리 장비", "네트워크 장비", "네트워크 장비 (스위치/AP 추정)",
     "영상 장비 (카메라 계열)", "AV 장비", "미확인", "",
@@ -1981,11 +1979,11 @@ def pick_model(title, realm, server, onvif):
 
 
 def generic_model_name(value):
-    """모델명이 아니라 장비의 역할만 말하는 넓은 표현인지 판단한다."""
+    """Decide whether this is a broad phrase naming the device's role rather than a model."""
     text = clean_title(value).lower()
     if not text:
         return True
-    # AX6000M 같은 형식 번호가 있으면, 역할명(router)도 같이 있어도 모델명이다.
+    # With a type number like AX6000M in it, it is a model name even if a role word (router) is there too.
     if re.search(r"\d", text):
         return False
     return any(word in text for word in (
@@ -1995,24 +1993,24 @@ def generic_model_name(value):
 
 
 def preferred_model(current, candidate):
-    """기존의 구체 모델명을 웹 제목 같은 일반 이름이 덮어쓰지 못하게 한다."""
+    """Stop a generic name like a web page title from overwriting a specific model already held."""
     current = clean_title(current)
     candidate = clean_title(candidate)
     if not candidate:
         return current
     if not current:
         return candidate
-    # 예: SSDP의 'ipTIME AX6000M'은 HTTP 인증 영역의 'ipTIME Router'보다 낫다.
+    # Example: SSDP's 'ipTIME AX6000M' beats 'ipTIME Router' from the HTTP auth realm.
     if generic_model_name(candidate) and not generic_model_name(current):
         return current
     if generic_model_name(current) and not generic_model_name(candidate):
         return candidate
-    # 서로 같은 급이면 먼저 얻은 값을 보존한다. 스캔 결과가 검사로 퇴화하지 않는다.
+    # Same class either way: keep what came first. A probe never degrades the scan result.
     return current
 
 
 def kind_family(kind):
-    """표현은 달라도 같은 장비 범주인 경우를 한 묶음으로 본다."""
+    """Treat different wordings for the same device category as one group."""
     value = (kind or "").lower()
     if "공유기" in value or "라우터" in value or "router" in value:
         return "router"
@@ -2020,7 +2018,7 @@ def kind_family(kind):
 
 
 def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
-    """장비 하나의 정체를 파낸다. 필요하면 ARP로 격리한 상태에서 조사."""
+    """Dig out what one device is. Probes it isolated by ARP when that is needed."""
     ip, mac = dev["ip"], dev["mac"]
     pinned = False
     if isolate and not STORE.demo:
@@ -2036,7 +2034,7 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
         ov = {}
 
         if STORE.demo:
-            # 데모에서는 실제 네트워크로 나가지 않는다
+            # in demo mode nothing goes out on the real network
             time.sleep(0.35)
             ports = dev.get("ports") or []
             http["title"] = dev.get("title") or ""
@@ -2045,12 +2043,12 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
             if STORE.cancel.is_set():
                 return dev
 
-            # 여기서부터는 전부 "답이 오길 기다리는" 일이다. 서로 기다릴 이유가
-            # 하나도 없는데 예전에는 줄을 세워 놨다 — 웹 최대 15초, 그다음
-            # ONVIF 2초, 그다음 이름 묶음. 카메라가 아니면 ONVIF 2초는 통째로
-            # 버리는 시간이었다. 한 번에 보내고 제일 느린 하나만큼만 기다린다.
+            # From here on it is all "wait for an answer" work. None of it has any reason
+            # to wait on the rest, and yet it used to be queued up — web up to 15s, then
+            # ONVIF 2s, then the name batch. On anything that is not a camera those ONVIF
+            # 2s were pure waste. Fire them all at once and wait only for the slowest.
             def web():
-                # 열려 있는 웹 포트 중 앞의 둘만 본다. 하나가 답하면 그걸 쓴다.
+                # Only the first two open web ports. Whichever answers first is the one we use.
                 live = [p for p in (80, 8080, 8000, 443, 8443) if p in ports][:2]
                 best = {"title": "", "server": "", "realm": ""}
                 if not live:
@@ -2087,8 +2085,8 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
                 "nbname": (got.get("nbt") or {}).get("name", ""),
                 "nbgroup": (got.get("nbt") or {}).get("group", ""),
             }
-            # 핑이 막혀 TTL 을 못 얻었는데 열린 포트가 있으면, SYN 으로 다시 잰다.
-            # 윈도우 PC 는 기본 방화벽이 핑만 막고 웹 포트는 열어두는 일이 흔하다.
+            # Ping blocked so no TTL, but there are open ports: measure again with a SYN.
+            # A Windows PC's default firewall commonly blocks only ping and leaves web ports open.
             if extra["ttl"] is None and ports:
                 extra.update(tcp_ttl(ip, ports))
                 if extra["ttl"] is not None:
@@ -2105,7 +2103,7 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
             dev["realm"] = http.get("realm", "")
             dev["onvif"] = ov.get("hardware", "") or ov.get("name", "")
             if STORE.demo and dev.get("model"):
-                pass  # 데모 시드 모델명 유지
+                pass  # keep the demo seed's model name
             else:
                 scanned_model = pick_model(dev["title"], dev["realm"],
                                            dev["server"], ov)
@@ -2113,14 +2111,14 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
             found = guess_kind(dev["vendor"], ports, dev["title"],
                                dev["server"], dev["realm"], ov)
             if dev.get("book_exact") and dev.get("kind"):
-                pass                      # 전체 MAC 으로 콕 집어 등록한 장비 — 사람 말이 이긴다
+                pass                      # registered by full MAC, pinned to this box — the person wins
             elif dev.get("kind") and kind_family(dev["kind"]) == kind_family(found):
-                pass                      # '공유기'와 '공유기 / 라우터'처럼 같은 뜻이면 기존 표현을 지킨다
+                pass                      # same meaning, like "Router" vs "Router / gateway" — keep the existing wording
             elif found not in WEAK_KINDS:
                 dev["kind"] = found
                 dev["kind_confidence"] = "estimated"
             elif dev.get("book") and dev.get("kind"):
-                pass                      # 뭉뚱그린 짐작보다 사전이 아는 이름이 낫다
+                pass                      # a name the book knows beats a lumped-together guess
             elif found and found != "미확인":
                 dev["kind"] = found
                 dev["kind_confidence"] = "estimated"
@@ -2135,7 +2133,7 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
 
 
 # ---------------------------------------------------------------------------
-# 카메라 화면 미리보기 (ONVIF 스냅샷)
+# Camera preview (ONVIF snapshot)
 # ---------------------------------------------------------------------------
 SNAP_PATHS = {
     "Hikvision": ["/ISAPI/Streaming/channels/101/picture",
@@ -2170,7 +2168,7 @@ B64_ENC = ("http://docs.oasis-open.org/wss/2004/01/"
 
 
 def _wsse_header(user, pw):
-    """ONVIF 인증 헤더 (UsernameToken Digest)."""
+    """ONVIF auth header (UsernameToken Digest)."""
     import base64
     import hashlib
     nonce = os.urandom(16)
@@ -2194,7 +2192,7 @@ def _xml_esc(s):
 
 
 def _soap_url(url, body, user, pw, timeout=6):
-    """지정된 ONVIF 서비스 URL에 SOAP 요청을 보낸다."""
+    """Send a SOAP request to the given ONVIF service URL."""
     env = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<s:Envelope %s>%s<s:Body>%s</s:Body></s:Envelope>'
            % (ONVIF_NS, _wsse_header(user, pw) if user else "", body))
@@ -2213,7 +2211,7 @@ MEDIA_XADDR_RE = re.compile(
 
 
 def onvif_snapshot_uri(ip, user, pw, bases=None, log=None):
-    """ONVIF Device 서비스에서 Media 서비스 주소를 찾아 스냅샷 URI를 얻는다."""
+    """Find the Media service address via the ONVIF Device service and get the snapshot URI."""
     def say(msg):
         if log:
             log(msg)
@@ -2239,9 +2237,9 @@ def onvif_snapshot_uri(ip, user, pw, bases=None, log=None):
                 say("ONVIF Media 서비스 확인")
         except Exception:
             pass
-        # 비표준이지만 Device 서비스에서 Media 요청을 함께 받는 장비도 있다.
+        # Non-standard, but some devices take Media requests on the Device service too.
         add(device_url)
-        # 일부 구형 장비는 Capabilities 없이 아래 고정 경로만 제공한다.
+        # Some older devices offer no Capabilities at all, only the fixed paths below.
         for path in ("/onvif/media_service", "/onvif/Media", "/onvif/services"):
             add(base.rstrip("/") + path)
 
@@ -2267,7 +2265,7 @@ def onvif_snapshot_uri(ip, user, pw, bases=None, log=None):
 
 
 def http_get_auth(url, user, pw, timeout=8):
-    """Digest / Basic 어느 쪽이든 되는 방식으로 받아온다."""
+    """Fetch it with whichever works, Digest or Basic."""
     pm = urllib.request.HTTPPasswordMgrWithDefaultRealm()
     pm.add_password(None, url, user or "", pw or "")
     opener = urllib.request.build_opener(
@@ -2284,16 +2282,16 @@ def looks_like_image(b):
 
 
 def camera_bases(dev):
-    """스냅샷을 시도할 HTTP/HTTPS 주소들. SDK 포트(예: 8000)는 제외한다."""
+    """The HTTP/HTTPS addresses to try a snapshot on. SDK ports (8000, for instance) are excluded."""
     ports = set(dev.get("ports") or [])
     candidates = []
     for port, scheme in ((80, "http"), (443, "https"), (8080, "http"),
                          (8443, "https")):
-        # 포트 스캔 결과를 우선하되, 80/443은 흔한 기본값이라 항상 한 번 시도한다.
+        # The port scan result comes first, but 80/443 are such common defaults they always get one try.
         if port in ports or port in (80, 443):
             host = dev["ip"] if port in (80, 443) else "%s:%d" % (dev["ip"], port)
             candidates.append("%s://%s" % (scheme, host))
-    # 장비가 응답한 일반 웹 포트도 빠뜨리지 않는다. 8000은 Hikvision SDK 포트라 제외한다.
+    # Do not miss the ordinary web ports the device answered on. 8000 is the Hikvision SDK port, so it is out.
     for port in sorted(ports - {80, 443, 8000, 554, 8554, 37777, 34567}):
         if port <= 0 or port > 65535:
             continue
@@ -2303,7 +2301,7 @@ def camera_bases(dev):
 
 
 def grab_snapshot(dev, user, pw, log=None):
-    """카메라 한 장면을 가져온다. (bytes, 어떻게 가져왔는지) 를 돌려준다."""
+    """Grab one frame from the camera. Returns (bytes, how it was fetched)."""
     ip = dev["ip"]
 
     def say(m):
@@ -2313,7 +2311,7 @@ def grab_snapshot(dev, user, pw, log=None):
     bases = camera_bases(dev)
     errors = []
 
-    # 1순위: ONVIF 표준
+    # First choice: the ONVIF standard
     try:
         uri = onvif_snapshot_uri(ip, user, pw, bases, say)
         if uri:
@@ -2327,7 +2325,7 @@ def grab_snapshot(dev, user, pw, log=None):
     except Exception as e:
         errors.append("ONVIF 조회 실패: %s" % e)
 
-    # 2순위: 제조사별로 알려진 주소
+    # Second choice: the known per-vendor paths
     paths = list(SNAP_PATHS.get(dev.get("vendor"), [])) + GENERIC_SNAP
     for base in bases:
         for path in paths:
@@ -2344,7 +2342,7 @@ def grab_snapshot(dev, user, pw, log=None):
 
 
 # ---------------------------------------------------------------------------
-# 백그라운드 작업
+# Background jobs
 # ---------------------------------------------------------------------------
 DEMO_SEED = [
     ("192.168.0.13", [("bc:ad:28:11:22:33", [80, 554, 8000], "IP CAMERA", "DS-2CD2143G0-I"),
@@ -2362,15 +2360,15 @@ DEMO_SEED = [
 
 
 # ---------------------------------------------------------------------------
-# 스위치 포트 찾기 (SNMP)
+# Finding the switch port (SNMP)
 #
-# 현장에서 제일 오래 걸리는 일이 "이 카메라가 랙 어느 포트에 물렸나" 다.
-# 스위치는 자기가 배운 MAC 표(어느 포트에서 어느 MAC 이 들어왔는지)를
-# SNMP 로 알려준다. 그 표를 읽어와 우리 목록의 MAC 과 맞추면
-# "이 카메라 = 3번 스위치 12번 포트" 가 바로 나온다.
+# The longest job on site is "which port in the rack is this camera on".
+# A switch will hand over the MAC table it learned (which MAC came in on which
+# port) over SNMP. Read that table, match it against the MACs in our list, and
+# "this camera = switch 3, port 12" falls straight out.
 #
-# 라이브러리는 안 쓴다. SNMP v2c 는 UDP 한 통이면 되고, 필요한 것은
-# BER 인코딩 몇 줄뿐이라 외부 의존성을 늘릴 이유가 없다.
+# No library. SNMP v2c is one UDP datagram and all it needs is a few lines of
+# BER encoding, so there is no reason to add an external dependency.
 # ---------------------------------------------------------------------------
 
 SNMP_PORT = 161
@@ -2378,12 +2376,12 @@ SNMP_PORT = 161
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
 OID_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"          # dot1dTpFdbPort
-OID_Q_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"    # dot1qTpFdbPort (VLAN 별)
+OID_Q_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"    # dot1qTpFdbPort (per VLAN)
 OID_BASE_PORT_IF = "1.3.6.1.2.1.17.1.4.1.2"      # dot1dBasePortIfIndex
 
-# MAC 표를 한 건도 못 읽었을 때, 스위치가 무엇까지 내주는지 확인하는 목록.
-# 값이 전부 0 이면 스위치가 브리지 MIB 자체를 안 내주는 것이다 (저가형에서 흔하다).
-# ifName 만 숫자가 나오면 SNMP 는 되는데 MAC 표만 없는 것이다.
+# When not a single MAC-table row could be read, this list checks how far the switch will go.
+# All zeroes means the switch does not serve the bridge MIB at all (common on cheap gear).
+# A number on ifName only means SNMP works and just the MAC table is missing.
 SNMP_PROBE = [
     ("dot1qTpFdbPort", "1.3.6.1.2.1.17.7.1.2.2.1.2"),
     ("dot1qTpFdbStatus", "1.3.6.1.2.1.17.7.1.2.2.1.3"),
@@ -2395,40 +2393,40 @@ SNMP_PROBE = [
 OID_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"           # ifName
 OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"             # ifDescr
 OID_IF_HIGH_SPEED = "1.3.6.1.2.1.31.1.1.1.15"    # ifHighSpeed (Mbps)
-OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"             # ifSpeed (bps, 옛 장비용)
-OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"         # ifAlias (포트에 적어둔 설명)
+OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"             # ifSpeed (bps, for older gear)
+OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"         # ifAlias (the description written on the port)
 
 # --- PoE (POWER-ETHERNET-MIB, RFC 3621) ------------------------------------
-# 포트마다 전원을 얼마나 물려 보내고 있는지, 그리고 그 전원을 껐다 켤 수 있다.
-# 표의 번호는 (그룹.포트) 두 마디다. 스택 안 한 스위치는 그룹이 거의 1 이다.
-OID_POE_ADMIN  = "1.3.6.1.2.1.105.1.1.1.3"       # pethPsePortAdminEnable (1 켬 / 2 끔)
+# How much power each port is pushing out, and the ability to power-cycle it.
+# The table index is two parts (group.port). On a non-stacked switch the group is nearly always 1.
+OID_POE_ADMIN  = "1.3.6.1.2.1.105.1.1.1.3"       # pethPsePortAdminEnable (1 on / 2 off)
 OID_POE_STATUS = "1.3.6.1.2.1.105.1.1.1.6"       # pethPsePortDetectionStatus
 OID_POE_CLASS  = "1.3.6.1.2.1.105.1.1.1.10"      # pethPsePortPowerClassifications
-OID_POE_MAIN_CAP = "1.3.6.1.2.1.105.1.3.1.1.2"   # pethMainPsePower (총 용량 W)
-OID_POE_MAIN_USE = "1.3.6.1.2.1.105.1.3.1.1.4"   # pethMainPseConsumptionPower (지금 쓰는 W)
-# 포트별 실제 소비 전력은 표준에 없다. 시스코는 따로 내준다 (mW).
+OID_POE_MAIN_CAP = "1.3.6.1.2.1.105.1.3.1.1.2"   # pethMainPsePower (total capacity, W)
+OID_POE_MAIN_USE = "1.3.6.1.2.1.105.1.3.1.1.4"   # pethMainPseConsumptionPower (W drawn right now)
+# Per-port actual power draw is not in the standard. Cisco serves it separately (mW).
 OID_POE_CISCO_W = "1.3.6.1.4.1.9.9.402.1.2.1.7"  # cpeExtPsePortPwrConsumption
 
-# --- 포트 관리 (IF-MIB) ----------------------------------------------------
-OID_IF_TYPE  = "1.3.6.1.2.1.2.2.1.3"             # ifType (6 = 이더넷)
-OID_IF_PHYS  = "1.3.6.1.2.1.2.2.1.6"             # ifPhysAddress (스위치 자신의 MAC)
-OID_IF_ADMIN = "1.3.6.1.2.1.2.2.1.7"             # ifAdminStatus (1 켬 / 2 잠금)
-OID_IF_OPER  = "1.3.6.1.2.1.2.2.1.8"             # ifOperStatus (1 링크 있음 / 2 없음)
+# --- Port management (IF-MIB) ----------------------------------------------
+OID_IF_TYPE  = "1.3.6.1.2.1.2.2.1.3"             # ifType (6 = ethernet)
+OID_IF_PHYS  = "1.3.6.1.2.1.2.2.1.6"             # ifPhysAddress (the switch's own MAC)
+OID_IF_ADMIN = "1.3.6.1.2.1.2.2.1.7"             # ifAdminStatus (1 up / 2 locked)
+OID_IF_OPER  = "1.3.6.1.2.1.2.2.1.8"             # ifOperStatus (1 link up / 2 no link)
 IF_TYPE_ETHERNET = 6
 
-# --- 듀플렉스 (EtherLike-MIB) ----------------------------------------------
-# 현장에서 제일 안 잡히는 고장이 이것이다. 속도는 1G 라고 뜨는데 실제로는
-# 파일 하나 옮기는 데 몇 분이 걸린다. 링크는 붙어 있고, 핑도 가고, 화면에는
-# 아무 빨간색도 없다. 원인은 양끝의 듀플렉스가 안 맞는 것이다.
+# --- Duplex (EtherLike-MIB) ------------------------------------------------
+# This is the hardest fault on site to catch. The speed reads 1G, and moving one
+# file takes minutes. The link is up, ping goes through, nothing on screen is red.
+# The cause is a duplex mismatch between the two ends.
 #
-# 한쪽을 손으로 "100M 전이중" 으로 박아 두면, 그 상대편은 협상 상대가 없어서
-# 속도만 겨우 알아채고 듀플렉스는 규칙대로 '반이중' 으로 내려앉는다. 그러면
-# 반이중 쪽은 늦은 충돌(late collision)이 나고, 전이중 쪽은 깨진 프레임을 본다.
-# 둘 다 링크는 안 끊는다. 그래서 사람 눈에는 "그냥 느리다" 로만 보인다.
+# Hard-set one end to "100M full" and the far end, with nobody to negotiate with,
+# barely works out the speed and falls back to 'half' the way the rules say. Then
+# the half side gets late collisions and the full side sees corrupted frames.
+# Neither drops the link. So to a person it just looks like "it's slow".
 #
-# 값은 1 모름 / 2 반이중 / 3 전이중. 0 은 우리가 '못 읽었다' 는 뜻으로 쓴다 —
-# 이 MIB 를 아예 안 내주는 스위치가 많은데, 그걸 '전이중' 으로 채우면 이 도구가
-# 확인하지도 않은 것을 확인했다고 말하게 된다.
+# Values are 1 unknown / 2 half / 3 full. We use 0 to mean 'could not read' —
+# plenty of switches do not serve this MIB at all, and filling that in as 'full'
+# would have this tool claim it confirmed something it never checked.
 OID_DUPLEX     = "1.3.6.1.2.1.10.7.2.1.19"       # dot3StatsDuplexStatus
 OID_LATE_COLL  = "1.3.6.1.2.1.10.7.2.1.8"        # dot3StatsLateCollisions
 DUPLEX_UNKNOWN, DUPLEX_HALF, DUPLEX_FULL = 1, 2, 3
@@ -2437,7 +2435,7 @@ POE_STATUS = {1: ("꺼짐", "disabled"), 2: ("장비 찾는 중", "searching"),
               3: ("급전 중", "delivering"), 4: ("고장", "fault"),
               5: ("시험", "test"), 6: ("고장(기타)", "otherFault")}
 
-# 클래스별 최대 전력. 실제 소비를 못 읽을 때 이걸로 어림한다.
+# Max power per class. Used to estimate when the real draw cannot be read.
 POE_CLASS_WATT = {1: 15.4, 2: 4.0, 3: 7.0, 4: 15.4, 5: 30.0}
 
 
@@ -2473,7 +2471,7 @@ def _ber_oid(dotted):
 
 
 def _read_tlv(buf, i):
-    """(태그, 값, 다음위치) 를 돌려준다."""
+    """Returns (tag, value, next position)."""
     tag = buf[i]
     length = buf[i + 1]
     i += 2
@@ -2520,7 +2518,7 @@ def _snmp_ask(sock, addr, community, pdu_tag, oid, request_id, timeout):
         _, _, i = _read_tlv(body, 0)                    # version
         _, _, i = _read_tlv(body, i)                    # community
         tag, pdu, _ = _read_tlv(body, i)
-        if tag != 0xA2:                                 # GetResponse 만 받는다
+        if tag != 0xA2:                                 # only GetResponse is accepted
             continue
         _, rid, j = _read_tlv(pdu, 0)
         if _int_of(rid) != request_id:
@@ -2540,7 +2538,7 @@ def _snmp_ask(sock, addr, community, pdu_tag, oid, request_id, timeout):
 def snmp_get(ip, community, oid, timeout=1.5):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # 커뮤니티가 틀리면 스위치는 대꾸를 안 한다. 그것도 '없음'으로 받는다.
+        # Wrong community and the switch says nothing back. Take that as 'none' too.
         try:
             _, value, err = _snmp_ask(sock, (ip, SNMP_PORT), community, 0xA0, oid,
                                       random.randint(1, 0x7FFFFFFF), timeout)
@@ -2551,9 +2549,9 @@ def snmp_get(ip, community, oid, timeout=1.5):
         tag, body = value
         if tag == 0x04:
             return body.decode("utf-8", "replace").strip()
-        # 0x02 INTEGER 말고도 숫자로 오는 것들이 있다. ifHighSpeed 는 Gauge32
-        # (0x42) 다 — 이걸 안 챙기면 속도가 바이트뭉치로 나와서 어디선가 0 이 된다.
-        if tag in (0x02, 0x41, 0x42, 0x43, 0x46):   # INTEGER·Counter32·Gauge32·TimeTicks·Counter64
+        # Numbers arrive as more than just 0x02 INTEGER. ifHighSpeed is a Gauge32
+        # (0x42) — miss that and the speed comes back as a byte blob and turns into 0 somewhere.
+        if tag in (0x02, 0x41, 0x42, 0x43, 0x46):   # INTEGER, Counter32, Gauge32, TimeTicks, Counter64
             return _int_of(body)
         return body
     finally:
@@ -2564,11 +2562,11 @@ SNMP_WALK_TRUNCATED = set()
 
 
 def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
-    """GETNEXT 를 반복해 하위 항목을 전부 읽는다. {OID: (태그, 값)}.
+    """Repeat GETNEXT to read every entry below root. {OID: (tag, value)}.
 
-    limit 에서 잘리면 그 사실을 SNMP_WALK_TRUNCATED 에 남긴다. MAC 표가
-    잘리면 업링크에 달린 MAC 이 빠져서 "장비 한 대뿐인 포트" 로 보인다 —
-    그 상태로 잠그면 그 아래가 통째로 내려간다. 조용히 넘어가면 안 된다.
+    If it gets cut off at limit, record that in SNMP_WALK_TRUNCATED. A truncated MAC
+    table drops the MACs behind an uplink, so that port looks like "one device only" —
+    lock it in that state and everything below goes down. This must not pass silently.
     """
     SNMP_WALK_TRUNCATED.discard(root)
     out = {}
@@ -2584,16 +2582,16 @@ def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
                     sock, (ip, SNMP_PORT), community, 0xA1, current,
                     random.randint(1, 0x7FFFFFFF), timeout)
             except (socket.timeout, OSError):
-                # 윈도우는 닫힌 UDP 포트에 ICMP 도달불가를 돌려주고, 그것이
-                # ConnectionResetError 로 올라온다. 통째로 터뜨릴 이유가 없다.
+                # Windows answers a closed UDP port with ICMP unreachable, and that
+                # surfaces as ConnectionResetError. No reason to blow the whole thing up.
                 break
             except (IndexError, ValueError):
-                # 엉뚱한 곳에서 온 짧은 패킷. 무시하고 여기까지 읽은 것을 쓴다.
+                # A short packet from somewhere else. Ignore it and use what was read so far.
                 break
-            # 표의 끝에서 멈춰야 한다. 멈출 이유는 셋이다.
-            #  - 오류가 왔다 / 우리 표 밖으로 넘어갔다
-            #  - endOfMibView·noSuchObject 같은 '없다' 표시가 왔다 (태그 0x80~0x82)
-            #  - OID 가 앞으로 안 나갔다 (일부 장비가 같은 자리를 되돌려준다)
+            # Stop at the end of the table. There are three reasons to stop.
+            #  - an error came back / we walked past our table
+            #  - a 'not there' marker came back, like endOfMibView or noSuchObject (tags 0x80~0x82)
+            #  - the OID did not move forward (some devices hand back the same spot)
             if err or oid is None or not oid.startswith(root + "."):
                 break
             if value is None or value[0] in (0x80, 0x81, 0x82):
@@ -2608,7 +2606,7 @@ def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
 
 
 def _mac_from_oid_tail(tail):
-    """OID 꼬리의 십진 6마디를 MAC 문자열로."""
+    """Six decimal parts off the tail of an OID into a MAC string."""
     parts = [int(x) for x in tail.split(".") if x != ""]
     if len(parts) != 6 or any(p > 255 for p in parts):
         return ""
@@ -2616,9 +2614,9 @@ def _mac_from_oid_tail(tail):
 
 
 def snmp_port_map(ip, community="public", timeout=1.5, log=None):
-    """스위치에서 MAC -> 포트 표를 읽어온다.
+    """Read the MAC -> port table off the switch.
 
-    돌려주는 것: {"name": 스위치 이름, "ports": {mac: {...}}, "count": n}
+    What comes back: {"name": switch name, "ports": {mac: {...}}, "count": n}
     """
     say = log or (lambda *a, **k: None)
     name = snmp_get(ip, community, OID_SYS_NAME, timeout)
@@ -2632,7 +2630,7 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
                 "string, and make sure SNMP v2c read is enabled on the switch.") % ip)
         name = descr.splitlines()[0][:40]
 
-    # 다리 포트 번호 -> 인터페이스 번호 -> 사람이 읽는 포트 이름
+    # bridge port number -> interface index -> the port name a person reads
     base = {k.rsplit(".", 1)[-1]: _int_of(v[1])
             for k, v in snmp_walk(ip, community, OID_BASE_PORT_IF, timeout).items()}
     names = {}
@@ -2644,19 +2642,19 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
         if names:
             break
 
-    # 포트 속도. 기가 포트에 100M 으로 붙은 장비를 찾으려는 것이 목적이다.
-    # 케이블 네 쌍 중 하나만 나가도 링크는 안 끊기고 조용히 100M 으로 떨어진다.
-    # 눈으로는 절대 못 찾는데, 스위치는 알고 있다.
+    # Port speed. The point is to find devices sitting at 100M on a gigabit port.
+    # Lose one of the cable's four pairs and the link does not drop, it quietly falls to 100M.
+    # You will never find that by eye, but the switch knows.
     speeds = {}
     for k, v in snmp_walk(ip, community, OID_IF_HIGH_SPEED, timeout).items():
-        speeds[k.rsplit(".", 1)[-1]] = _int_of(v[1])          # 이미 Mbps
-    if not speeds:                                            # 옛 장비는 ifSpeed 만 준다
+        speeds[k.rsplit(".", 1)[-1]] = _int_of(v[1])          # already in Mbps
+    if not speeds:                                            # older gear only serves ifSpeed
         for k, v in snmp_walk(ip, community, OID_IF_SPEED, timeout).items():
             speeds[k.rsplit(".", 1)[-1]] = _int_of(v[1]) // 1000000
 
-    # 듀플렉스도 여기서 같이 읽는다. 이 값이 장비 목록까지 따라가야, 카메라
-    # 한 줄만 보고도 "속도는 1G 인데 반이중" 을 알아챌 수 있다. 포트 관리 창을
-    # 따로 열어야만 보이면 그 고장은 영영 안 잡힌다.
+    # Read duplex here as well. This value has to ride along into the device list, so that
+    # one line for a camera is enough to spot "1G speed but half duplex". If it only shows
+    # after opening the port management window, that fault never gets caught.
     duplexes = {}
     try:
         for k, v in snmp_walk(ip, community, OID_DUPLEX, timeout).items():
@@ -2684,11 +2682,11 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
                       "duplex": duplexes.get(str(ifindex)) or 0,
                       "alias": aliases.get(str(ifindex), "")}
 
-    # 요즘 스위치는 VLAN 별 표(dot1q)를, 옛날 것은 통합 표(dot1d)를 준다.
+    # Modern switches serve the per-VLAN table (dot1q), older ones the combined table (dot1d).
     #
-    # 꼬리 생김새를 7마디(VLAN 1 + MAC 6)로 못박아 두면 안 된다. 제조사마다
-    # 앞에 뭘 더 붙이는 곳이 있어서, 그러면 표를 읽고도 한 줄도 못 건진다.
-    # MAC 은 언제나 **끝의 여섯 마디**다. 그 앞은 전부 VLAN 자리로 본다.
+    # Do not hard-code the tail shape as 7 parts (VLAN 1 + MAC 6). Some vendors prepend
+    # extra parts, and then the table reads fine but not one row survives.
+    # The MAC is always **the last six parts**. Everything before it is treated as VLAN.
     q_table = snmp_walk(ip, community, OID_Q_FDB_PORT, timeout)
     raw_sample = []
     for oid, value in q_table.items():
@@ -2710,9 +2708,9 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
             remember(_mac_from_oid_tail(oid[len(OID_FDB_PORT) + 1:]),
                      _int_of(value[1]))
 
-    # 한 건도 못 읽었으면, 스위치가 무엇까지 내주는지 세어서 로그에 남긴다.
-    # 커뮤니티가 틀린 것과 "이 스위치는 MAC 표를 SNMP 로 안 내준다" 는 것을
-    # 구분해야 한다. 앞은 고칠 수 있고 뒤는 못 고친다.
+    # If nothing at all came back, count how far the switch will go and log it.
+    # A wrong community and "this switch does not serve its MAC table over SNMP" have
+    # to be told apart. The first is fixable, the second is not.
     probe_line = ""
     if not ports:
         counts = []
@@ -2725,16 +2723,16 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
         if raw_sample:
             probe_line += T("  |  본 그대로: ", "  |  raw: ") + ", ".join(raw_sample)
 
-    # 기준 속도는 "제일 빠른 포트" 가 아니라 "제일 흔한 속도" 다.
-    # 10G SFP 업링크가 하나 꽂혀 있으면 최고가 10000 이 되고, 그러면 멀쩡한
-    # 1G 포트가 전부 느린 것으로 잡힌다. 대다수가 쓰는 속도가 그 스위치의
-    # 본래 속도다.
+    # The reference speed is "the most common speed", not "the fastest port".
+    # One 10G SFP uplink plugged in makes the max 10000, and then every healthy
+    # 1G port gets flagged slow. The speed most of them run at is that switch's
+    # native speed.
     top = common_speed([info["speed"] for info in ports.values()])
     for info in ports.values():
         info["slow"] = bool(top >= 1000 and 0 < info["speed"] <= top // 4)
 
-    # 두 말의 낱말 차례가 달라서 자리번호(%s) 대신 이름표를 쓴다.
-    # PoE — 스위치가 어느 포트에 전원을 주고 있는지. 못 읽어도 그냥 넘어간다.
+    # The two languages order the words differently, so use named fields, not positional (%s).
+    # PoE — which ports the switch is powering. If it cannot be read, just move on.
     poe_main = {"used": 0.0, "capacity": 0.0}
     try:
         poe = read_poe(ip, community, timeout)
@@ -2770,22 +2768,22 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
 
 
 # ---------------------------------------------------------------------------
-# PoE — 포트 전원 보기와 껐다 켜기
+# PoE — viewing port power and cycling it
 #
-# 현장에서 제일 많이 하는 일 중 하나가 "먹통 된 카메라 전원 뽑았다 꽂기" 다.
-# PoE 로 물려 있으면 그 전원은 스위치가 주고 있으므로, 스위치한테 껐다 켜라고
-# 하면 사다리를 안 타도 된다.
+# One of the most common jobs on site is "unplug the dead camera and plug it back in".
+# If it is on PoE, the switch is the one supplying that power, so telling the switch to
+# cycle it saves climbing the ladder.
 #
-# 위험한 동작이므로 규칙을 셋 둔다.
-#   1. 끄기만 하는 기능은 만들지 않는다. 언제나 껐다 다시 켜는 한 동작뿐이다.
-#   2. 중간에 무슨 일이 생겨도 마지막에 반드시 다시 켠다 (finally).
-#   3. 껐는지 읽어서 확인한다. 못 껐으면 쓰기 권한이 없는 것이므로 바로 멈춘다.
-# 어느 포트를 건드리면 안 되는지(내 PC, 업링크)는 부르는 쪽이 막는다.
+# It is a dangerous operation, so there are three rules.
+#   1. No off-only function. It is always one action: off, then back on.
+#   2. Whatever happens in between, it comes back on at the end (finally).
+#   3. Read back to confirm it went off. If it did not, there is no write access — stop right there.
+# Which ports must not be touched (my own PC, the uplink) is the caller's job to block.
 # ---------------------------------------------------------------------------
 
 
 def _snmp_set_int(ip, community, oid, value, timeout=1.5):
-    """정수 한 개를 쓴다. 스위치가 돌려준 값을 그대로 돌려준다."""
+    """Write one integer. Hands back whatever value the switch returned."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         varbind = _tlv(0x30, _ber_oid(oid) + _ber_int(value))
@@ -2811,7 +2809,7 @@ def _snmp_set_int(ip, community, oid, value, timeout=1.5):
             _, err, j = _read_tlv(pdu_body, j)
             _, _, j = _read_tlv(pdu_body, j)
             if _int_of(err):
-                # 3 = badValue, 4 = readOnly, 6 = noAccess, 16/17 = 권한 없음
+                # 3 = badValue, 4 = readOnly, 6 = noAccess, 16/17 = not authorized
                 raise RuntimeError(T("스위치가 쓰기를 거부했습니다 (오류 %d). "
                                      "읽기 전용 커뮤니티일 수 있습니다.",
                                      "The switch refused the write (error %d). "
@@ -2829,7 +2827,7 @@ def _snmp_set_int(ip, community, oid, value, timeout=1.5):
 
 
 def read_poe(ip, community="public", timeout=1.5):
-    """포트별 PoE 상태를 읽는다. {포트번호: {...}} 와 스위치 전체 소비 전력."""
+    """Read PoE state per port. {port number: {...}} plus the switch's total draw."""
     def tail(oid, root):
         return oid[len(root) + 1:]
 
@@ -2848,7 +2846,7 @@ def read_poe(ip, community="public", timeout=1.5):
         info["class"] = _int_of(value[1])
         info["watt"] = POE_CLASS_WATT.get(info["class"], 0.0)
 
-    # 시스코는 포트별 실제 소비를 mW 로 내준다. 있으면 어림값을 덮는다.
+    # Cisco serves real per-port draw in mW. Where present, it overrides the estimate.
     for oid, value in snmp_walk(ip, community, OID_POE_CISCO_W, timeout).items():
         index = tail(oid, OID_POE_CISCO_W)
         if index in ports:
@@ -2865,23 +2863,23 @@ def read_poe(ip, community="public", timeout=1.5):
 
 
 def poe_index_for(port_no, poe_ports):
-    """우리가 아는 포트 번호에 맞는 PoE 표의 번호(그룹.포트)를 찾는다."""
+    """Find the PoE table index (group.port) matching the port number we know."""
     want = str(port_no)
-    if want in poe_ports:                     # 번호가 한 마디인 스위치
+    if want in poe_ports:                     # switches whose index is a single part
         return want
     for index in poe_ports:
-        if index.rsplit(".", 1)[-1] == want:  # 보통은 "1.12" 처럼 그룹이 앞에 붙는다
+        if index.rsplit(".", 1)[-1] == want:  # usually the group is prepended, like "1.12"
             return index
     return ""
 
 
 def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
-    """한 포트의 PoE 를 껐다 켠다. 카메라 전원을 뽑았다 꽂는 것과 같다."""
+    """Cycle PoE on one port. Same as unplugging the camera's power and plugging it back in."""
     say = log or (lambda _m: None)
     admin_oid = "%s.%s" % (OID_POE_ADMIN, poe_index)
 
-    # 켜져 있다(admin)는 것과 실제로 전원을 주고 있다(status 3)는 것은 다르다.
-    # 아무것도 안 물린 포트를 껐다 켜는 것은 의미가 없고, 잘못 짚었다는 뜻이다.
+    # "Enabled" (admin) and "actually delivering power" (status 3) are not the same thing.
+    # Cycling a port with nothing on it is pointless and means you picked the wrong one.
     if snmp_get(ip, community, "%s.%s" % (OID_POE_STATUS, poe_index), timeout) != 3:
         raise RuntimeError(T("이 포트는 지금 PoE 로 전원을 주고 있지 않습니다.",
                              "This port is not delivering PoE right now."))
@@ -2889,14 +2887,14 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
         raise RuntimeError(T("이 포트의 PoE 가 이미 꺼져 있습니다.",
                              "PoE on this port is already switched off."))
 
-    # 보낸 순간부터 "껐을 수도 있다" 로 친다. 확인을 받은 뒤에 이 깃발을 세우면,
-    # 껐는데 확인 답장만 잃어버린 경우에 되돌리기를 건너뛴다 — 카메라는 꺼진 채로
-    # 남고 화면에는 "못 껐습니다" 가 뜬다. 기사는 찾아볼 생각조차 안 하게 된다.
+    # From the moment it is sent, treat it as "might be off". Raise this flag only after
+    # confirmation and a lost confirmation reply skips the restore — the camera stays off
+    # and the screen says "could not switch off". The tech never thinks to go looking.
     turned_off = True
     restore_failed = False
     try:
         got = _snmp_set_int(ip, community, admin_oid, 2, timeout)
-        # 쓴 값을 다시 읽어 확인한다. 답만 받고 실제로는 안 바뀌는 장비가 있다.
+        # Read the written value back. Some devices answer and change nothing.
         if got != 2 or snmp_get(ip, community, admin_oid, timeout) != 2:
             raise RuntimeError(T("전원을 끄지 못했습니다. 쓰기 권한이 있는 "
                                  "커뮤니티인지 확인하십시오.",
@@ -2906,7 +2904,7 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
               "Port %s powered off — waiting %.0f seconds.") % (poe_index, wait))
         time.sleep(max(1.0, wait))
     finally:
-        # 무슨 일이 있어도 다시 켠다. 여기서 실패하면 사람이 가야 한다.
+        # Whatever happens, switch it back on. Fail here and somebody has to go there.
         if turned_off:
             for attempt in range(3):
                 try:
@@ -2917,8 +2915,8 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
                     pass
                 time.sleep(1.0)
             else:
-                # 여기까지 왔으면 사람이 가야 한다. 성공이라고 말하면 기사가
-                # 1분을 기다린 뒤에야 장비가 죽은 걸 알게 된다.
+                # Getting here means somebody has to go there. Report success and the
+                # tech only finds out the device is dead after waiting a minute.
                 restore_failed = True
 
     if restore_failed:
@@ -2935,25 +2933,25 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
 
 
 # ---------------------------------------------------------------------------
-# 포트 관리 — 스위치의 물리 포트를 전부 보고, 안 쓰는 포트를 잠근다
+# Port management — see every physical port on the switch and lock the unused ones
 #
-# 준공 때 "안 쓰는 포트는 잠가 두었는가" 가 점검 항목이다. 랙에 랜선 하나만
-# 꽂으면 아무나 망에 들어올 수 있기 때문이다. 스위치 웹에서 포트를 하나씩
-# 눌러 끄는 일을 여기서 한 번에 한다.
+# "Are the unused ports locked?" is a handover checklist item, because one patch cable
+# into the rack lets anyone onto the network. Clicking each port off one at a time in
+# the switch's web UI is what this does in one go.
 #
-# 잠그는 것은 PoE 껐다 켜기와 성격이 다르다. 껐다 켜는 것은 몇 초 뒤 저절로
-# 돌아오지만, 잠그는 것은 잠긴 채로 두는 것이 목적이라 자동 복구가 없다.
-# 관리 경로가 지나는 포트를 잠그면 SNMP 자체가 안 닿아 현장에 가야 한다.
-# 그래서 어느 포트를 못 잠그는지는 부르는 쪽이 반드시 막아야 한다.
+# Locking is a different animal from a PoE cycle. A cycle comes back on its own after a
+# few seconds; locking is meant to stay locked, so there is no automatic restore.
+# Lock the port the management path runs through and SNMP itself stops reaching — that
+# is a site visit. So which ports must not be locked is strictly the caller's job to block.
 # ---------------------------------------------------------------------------
 
 
-# 마지막으로 읽은 스위치 전체 PoE 전력. {스위치IP: {"used":..,"capacity":..}}
+# Last-read total PoE power for the switch. {switch IP: {"used":..,"capacity":..}}
 LAST_POE_MAIN = {}
 
 
 def switch_name(ip, community="public", timeout=1.5):
-    """스위치 이름(sysName). 없으면 설명 첫 줄, 그것도 없으면 IP 를 쓴다."""
+    """The switch name (sysName). Falls back to the first line of the description, then the IP."""
     name = snmp_get(ip, community, OID_SYS_NAME, timeout)
     if name is None:
         descr = snmp_get(ip, community, OID_SYS_DESCR, timeout)
@@ -2962,11 +2960,11 @@ def switch_name(ip, community="public", timeout=1.5):
 
 
 def _blank_port(index):
-    """포트 한 칸의 기본값. 못 읽은 항목이 무엇으로 남는지가 여기서 정해진다.
+    """Defaults for one port row. What an unread field is left as gets decided here.
 
-    duplex 0 은 '못 읽었다' 이다. 1(모름)·2(반이중)·3(전이중)은 스위치가 한 말이고
-    0 은 스위치가 아무 말도 안 한 것이다. 이 둘을 섞으면 EtherLike-MIB 를 아예
-    안 내주는 스위치가 전부 '정상' 으로 보인다.
+    duplex 0 means 'could not read'. 1 (unknown), 2 (half), 3 (full) are what the switch
+    said; 0 is the switch saying nothing at all. Mix the two and every switch that does
+    not serve EtherLike-MIB looks perfectly healthy.
     """
     return {"index": index, "name": "", "alias": "", "speed": 0,
             "admin": 0, "oper": 0, "poeIndex": "", "poeStatus": 0,
@@ -2975,7 +2973,7 @@ def _blank_port(index):
 
 
 def read_switch_ports(ip, community="public", timeout=1.5):
-    """스위치의 물리 포트를 전부 읽는다. {ifIndex: {...}}."""
+    """Read every physical port on the switch. {ifIndex: {...}}."""
     def by_index(root):
         return {oid.rsplit(".", 1)[-1]: value
                 for oid, value in snmp_walk(ip, community, root, timeout).items()}
@@ -2983,9 +2981,9 @@ def read_switch_ports(ip, community="public", timeout=1.5):
     types = by_index(OID_IF_TYPE)
     ports = {}
     for index, value in types.items():
-        if _int_of(value[1]) == IF_TYPE_ETHERNET:      # VLAN·루프백은 뺀다
+        if _int_of(value[1]) == IF_TYPE_ETHERNET:      # VLAN and loopback are excluded
             ports[index] = _blank_port(index)
-    if not ports:                                      # ifType 을 안 주는 장비도 있다
+    if not ports:                                      # some gear does not serve ifType
         for index in by_index(OID_IF_ADMIN):
             ports[index] = _blank_port(index)
 
@@ -3008,11 +3006,11 @@ def read_switch_ports(ip, community="public", timeout=1.5):
             if index in ports:
                 ports[index]["speed"] = _int_of(value[1]) // 1000000
 
-    # 듀플렉스. dot3StatsIndex 는 ifIndex 와 같은 번호를 쓴다.
+    # Duplex. dot3StatsIndex uses the same numbering as ifIndex.
     #
-    # 이 표를 통째로 안 내주는 스위치가 흔하다. 그러면 전부 0 인 채로 남고,
-    # 화면과 리포트는 듀플렉스 이야기를 아예 꺼내지 않는다. "확인 못 함" 을
-    # "이상 없음" 으로 바꿔 적지 않기 위해서다.
+    # Plenty of switches do not serve this table at all. Then everything stays 0, and the
+    # screen and the report never bring duplex up. That is so "could not check" never
+    # gets written down as "nothing wrong".
     try:
         for index, value in by_index(OID_DUPLEX).items():
             if index in ports:
@@ -3020,12 +3018,12 @@ def read_switch_ports(ip, community="public", timeout=1.5):
     except Exception:
         pass
 
-    # 늦은 충돌. 반이중으로 앉은 포트에서만 물어본다.
+    # Late collisions. Only asked about on ports that settled at half duplex.
     #
-    # 표를 통째로 훑으면 48포트짜리에서 왕복이 48번 더 든다. 반이중이 아닌
-    # 포트의 늦은 충돌은 어차피 볼 일이 없으니, 걸린 포트만 하나씩 묻는다.
-    # 이 숫자가 0 보다 크면 짐작이 아니라 증거다 — 듀플렉스가 실제로 안 맞아서
-    # 지금 프레임이 깨지고 있다는 뜻이다.
+    # Walking the whole table costs 48 extra round trips on a 48-port switch. Late
+    # collisions on a port that is not half duplex are of no interest anyway, so ask
+    # one at a time only for the ports that are. A number above 0 here is evidence, not
+    # a guess — the duplex really is mismatched and frames are being corrupted right now.
     half = [i for i, p in ports.items() if p["duplex"] == DUPLEX_HALF]
     for index in half[:24]:
         try:
@@ -3035,11 +3033,11 @@ def read_switch_ports(ip, community="public", timeout=1.5):
         if isinstance(got, int) and not isinstance(got, bool):
             ports[index]["lateColl"] = got
 
-    # 포트마다 어느 MAC 이 들어오는지. 업링크(여러 개)와 내 포트를 여기서 가린다.
+    # Which MACs come in on each port. This is what tells uplinks (several MACs) and my own port apart.
     #
-    # 번호가 안 맞을 수 있다. 스위치가 dot1dBasePortIfIndex 를 안 주면 MAC 표의
-    # "다리 포트 번호" 와 여기 ifIndex 가 다른 체계일 수 있기 때문이다. 그래서
-    # 번호로 한 번, 포트 이름으로 한 번 — 두 갈래로 맞춰 본다.
+    # The numbers may not line up. If the switch does not serve dot1dBasePortIfIndex, the
+    # MAC table's "bridge port number" and the ifIndex here can be different numbering
+    # schemes. So match twice — once by number, once by port name.
     fdb = {}
     try:
         fdb = read_fdb(ip, community, timeout)
@@ -3059,9 +3057,9 @@ def read_switch_ports(ip, community="public", timeout=1.5):
             if names_seen:
                 break
         for index, macs in fdb.items():
-            # 번호가 있다고 바로 믿으면 안 된다. 다리 포트 번호와 ifIndex 가
-            # 다른 체계인데 우연히 겹치면, 업링크의 MAC 목록이 엉뚱한 포트에
-            # 붙는다. 그러면 진짜 업링크는 비어 보여서 잠글 수 있게 된다.
+            # Do not trust a number just because it exists. If bridge port number and
+            # ifIndex are different schemes that happen to collide, the uplink's MAC list
+            # lands on the wrong port. Then the real uplink looks empty and becomes lockable.
             named = names_seen.get(index, "")
             target = ""
             if index in ports and (not named or ports[index].get("name") in ("", named)):
@@ -3073,8 +3071,8 @@ def read_switch_ports(ip, community="public", timeout=1.5):
 
     try:
         poe = read_poe(ip, community, timeout)
-        # 스위치 전체 공급/소비 전력. 리포트가 이걸 또 읽으러 가면 PoE MIB 가 없는
-        # 스위치에서 한 번 더 통째로 멈춘다. 여기서 읽은 것을 그대로 남겨 둔다.
+        # Switch-wide supply/draw. If the report goes and reads this again, a switch with no
+        # PoE MIB stalls the whole thing a second time. Keep what was read here.
         LAST_POE_MAIN[ip] = dict(poe.get("main") or {}, at=time.time())
         for index, info in ports.items():
             found = poe_index_for(index, poe["ports"])
@@ -3083,20 +3081,20 @@ def read_switch_ports(ip, community="public", timeout=1.5):
                 info["poeStatus"] = poe["ports"][found]["status"]
                 info["poeWatt"] = poe["ports"][found]["watt"]
                 info["poeAdmin"] = poe["ports"][found]["admin"] or 0
-                # 리포트에 "어림 15.4W" 와 "실측 4.2W" 를 구분해서 적기 위한 것.
-                # 고객이 전력을 물으면 그 둘은 완전히 다른 대답이다.
+                # So the report can write "estimated 15.4W" and "measured 4.2W" differently.
+                # When the customer asks about power, those two are completely different answers.
                 info["poeClass"] = poe["ports"][found]["class"]
                 info["poeEstimated"] = poe["ports"][found]["estimated"]
     except Exception:
-        # 이번에 못 읽었으면 지난번 값을 그대로 두면 안 된다. 리포트가 옛 숫자를
-        # 지금 소비 전력이라고 적는다. 지워서 '모른다' 로 만든다.
+        # Could not read it this time: do not leave last time's value sitting there. The
+        # report would print the old number as the current draw. Clear it to 'unknown'.
         LAST_POE_MAIN.pop(ip, None)
 
     return ports
 
 
 def set_poe_admin(ip, community, poe_index, on, timeout=1.5):
-    """PoE 급전을 켜거나 끈 채로 둔다. 껐다 켜기(poe_restart)와 달리 그대로 남는다."""
+    """Switch PoE on or off and leave it there. Unlike a cycle (poe_restart), it stays."""
     oid = "%s.%s" % (OID_POE_ADMIN, poe_index)
     want = 1 if on else 2
     _snmp_set_int(ip, community, oid, want, timeout)
@@ -3109,16 +3107,16 @@ def set_poe_admin(ip, community, poe_index, on, timeout=1.5):
 
 
 def set_port_admin(ip, community, ifindex, up, timeout=1.5):
-    """포트를 잠그거나(up=False) 푼다(up=True). 쓴 값을 되읽어 확인한다."""
+    """Lock (up=False) or unlock (up=True) a port. Reads the written value back to confirm."""
     oid = "%s.%s" % (OID_IF_ADMIN, ifindex)
     want = 1 if up else 2
     _snmp_set_int(ip, community, oid, want, timeout)
     got = snmp_get(ip, community, oid, timeout)
     if got == want:
         return True
-    # 여기가 갈린다. 답이 아예 없으면(None) 잠그기가 먹혀서 우리 길이 끊겼을
-    # 수도 있다. "안 바뀌었다" 고 말하면 기사가 다시 누르고, 이미 끊긴 줄도
-    # 모른 채 계속 일한다. 제일 큰 사고를 제일 조용한 문구로 덮는 셈이다.
+    # This is the fork. No answer at all (None) may mean the lock took and cut our own
+    # path. Say "it did not change" and the tech clicks again and keeps working, never
+    # realising the link is already gone — the worst accident buried under the quietest wording.
     if got is None and not up:
         raise RuntimeError(
             T("포트 %s 를 잠근 뒤 스위치가 답하지 않습니다. 잠금이 먹혀서 관리 "
@@ -3134,17 +3132,17 @@ def set_port_admin(ip, community, ifindex, up, timeout=1.5):
 
 
 def read_port_link(ip, community, ifindex, timeout=1.5):
-    """포트 하나의 지금 상태만 싸게 읽는다. 링크가 붙기를 기다릴 때 쓴다.
+    """Cheaply read just the current state of one port. Used while waiting for a link to come up.
 
-    포트를 풀어도 통신이 곧바로 살아나지는 않는다. 랜선 양끝이 속도를 다시
-    맞추는 데(오토니고) 2~3초, 그다음 스위치가 루프를 확인하는 동안(STP)
-    포트는 링크가 붙은 채로도 데이터를 안 흘린다 — 기본 설정이면 여기서만
-    30초까지 간다. 그동안 화면이 "풀었습니다" 하고 끝나 버리면, 기사는
-    카메라가 안 올라온다며 멀쩡한 포트를 다시 만지게 된다.
+    Unlocking a port does not bring traffic back straight away. The two ends take 2~3s to
+    settle on a speed again (autonegotiation), and then, while the switch checks for a loop
+    (STP), the port passes no data even with the link up — 30 seconds on default settings.
+    If the screen says "unlocked" and stops there in the meantime, the tech starts poking
+    a perfectly good port because the camera has not come back.
     """
-    # 못 읽은 값은 None 으로 둔다. 0 으로 적으면 안 된다 — ifOperStatus 에 0 은
-    # 없으므로 화면이 그걸 '링크 없음' 으로 읽고, 그 포트는 '빈 포트' 가 되어
-    # '빈 포트 전부 잠그기' 의 대상이 된다. 카메라가 물린 포트가 그렇게 잠긴다.
+    # Leave unread values as None, never 0 — ifOperStatus has no 0, so the UI reads it as
+    # "no link", that port becomes an "unused port", and "lock every unused port" takes it.
+    # That is how a port with a camera on it gets locked.
     out = {"admin": None, "oper": None, "speed": None, "duplex": None,
            "read": False}
     for field, root in (("admin", OID_IF_ADMIN), ("oper", OID_IF_OPER),
@@ -3155,7 +3153,7 @@ def read_port_link(ip, community, ifindex, timeout=1.5):
             got = None
         if isinstance(got, int) and not isinstance(got, bool):
             out[field] = got
-    if out["speed"] is None:                 # 옛 장비는 ifSpeed(bps) 만 준다
+    if out["speed"] is None:                 # older gear only serves ifSpeed (bps)
         try:
             slow = snmp_get(ip, community, "%s.%s" % (OID_IF_SPEED, ifindex), timeout)
         except Exception:
@@ -3167,7 +3165,7 @@ def read_port_link(ip, community, ifindex, timeout=1.5):
 
 
 def read_own_macs(ip, community="public", timeout=1.5):
-    """스위치 자신의 MAC 들. 이게 보이는 포트는 관리 경로라 건드리면 안 된다."""
+    """The switch's own MACs. A port where these show up is the management path — hands off."""
     out = set()
     for _, value in snmp_walk(ip, community, OID_IF_PHYS, timeout).items():
         if value[0] == 0x04 and len(value[1]) == 6:
@@ -3177,11 +3175,11 @@ def read_own_macs(ip, community="public", timeout=1.5):
 
 
 def read_fdb(ip, community="public", timeout=1.5):
-    """스위치의 MAC 표만 읽는다. {ifIndex 문자열: [mac, ...]}.
+    """Read just the switch's MAC table. {ifIndex string: [mac, ...]}.
 
-    포트 관리 화면이 "이 포트를 잠가도 되는가" 를 스스로 판단하려면, 우리
-    장비 목록이 아니라 스위치가 아는 것을 봐야 한다. 스캔을 안 돌린 상태에서도
-    업링크와 내 포트를 알아볼 수 있어야 하기 때문이다.
+    For the port management screen to work out "may I lock this port" on its own, it has
+    to look at what the switch knows, not at our device list — it has to recognise the
+    uplink and my own port even when no scan has been run.
     """
     base = {k.rsplit(".", 1)[-1]: _int_of(v[1])
             for k, v in snmp_walk(ip, community, OID_BASE_PORT_IF, timeout).items()}
@@ -3208,13 +3206,13 @@ def read_fdb(ip, community="public", timeout=1.5):
 
 
 def common_speed(speeds):
-    """이 스위치의 '본래' 속도. 가장 많이 나오는 값, 같으면 빠른 쪽.
+    """This switch's 'native' speed. The most frequent value; on a tie, the faster one.
 
-    최고 속도를 기준으로 삼으면 안 되는 이유가 둘이다.
-      - 10G SFP 업링크 하나 때문에 멀쩡한 1G 포트가 전부 느린 것으로 잡힌다.
-      - CCTV 현장은 카메라가 원래 100M 인 곳이 많다. 그런 스위치에서 100M 는
-        정상이므로 경고를 띄우면 안 된다.
-    대다수가 붙어 있는 속도가 그 현장의 기준선이다.
+    Two reasons the top speed must not be the reference.
+      - One 10G SFP uplink flags every healthy 1G port as slow.
+      - On plenty of CCTV sites the cameras are 100M by design. On such a switch 100M is
+        normal and must not raise a warning.
+    The speed most of them sit at is that site's baseline.
     """
     counts = {}
     for value in speeds:
@@ -3226,15 +3224,15 @@ def common_speed(speeds):
 
 
 def apply_port_map(result):
-    """읽어온 표를 지금 목록에 붙인다. (붙은 장비 수, 느린 포트 목록)을 돌려준다.
+    """Attach the table just read to the current list. Returns (devices matched, slow ports).
 
-    스위치가 여러 대인 현장에서 조심할 게 하나 있다. 3층 스위치에 물린 카메라는
-    1층 스위치의 MAC 표에도 올라온다 — 업링크를 타고 들어오기 때문이다. 그래서
-    나중에 조회한 스위치가 앞서 찾은 진짜 자리를 업링크 포트로 덮어쓴다.
+    One thing to watch on a site with several switches. A camera hanging off the 3rd-floor
+    switch also shows up in the 1st-floor switch's MAC table — it arrives over the uplink.
+    So a switch queried later overwrites the real position found earlier with an uplink port.
 
-    한 포트에 MAC 이 하나만 보이면 그게 장비가 실제로 꽂힌 자리다. 여럿 보이면
-    그 아래 다른 스위치가 달린 업링크다. 그러니 이미 붙여둔 자리가 더 '혼자'
-    이면 그대로 둔다.
+    One MAC visible on a port means that is where the device is actually plugged in. Several
+    means it is an uplink with another switch below it. So if the position already recorded
+    is the more 'alone' one, leave it be.
     """
     crowd = {}
     for info in result["ports"].values():
@@ -3247,17 +3245,17 @@ def apply_port_map(result):
             if not info:
                 continue
             shared = crowd.get(info["portNo"], 1)
-            # 같은 스위치를 다시 읽은 것이면 언제나 새 값이 맞다 (장비가 옮겨졌을
-            # 수도 있다). 다른 스위치일 때만, 이미 아는 자리가 더 좁으면 지킨다.
-            # 스위치 구분은 IP 로 한다 — sysName 은 공장 초기값이면 겹친다.
+            # Re-reading the same switch: the new value is always right (the device may
+            # have moved). Only for a different switch, keep the known position if it is
+            # narrower. Switches are told apart by IP — sysName collides at factory defaults.
             same_switch = dev.get("swhost") == result.get("ip", "")
             if dev.get("swport") and not same_switch:
                 if (dev.get("swshared") or 1) <= shared:
-                    continue          # 이미 더 좁은 자리를 알고 있다
+                    continue          # we already know a narrower position
             dev["swshared"] = shared
             dev["swport"] = info["port"]
             dev["swname"] = result["name"]
-            # 이름(sysName)은 공장 초기값이면 두 대가 똑같다. IP 로도 기억한다.
+            # At factory defaults two switches share the same name (sysName). Remember the IP too.
             dev["swhost"] = result.get("ip", "")
             dev["swvlan"] = info.get("vlan")
             dev["swspeed"] = info.get("speed") or 0
@@ -3276,10 +3274,10 @@ def apply_port_map(result):
 
 
 # ---------------------------------------------------------------------------
-# 빈 IP
+# Free IPs
 #
-# 대역을 훑고 나면 "쓰는 IP"는 목록에 있다. 그 나머지가 비어 있는 자리다.
-# 무엇을 어디에 넣을지는 사람이 정한다 — 도구는 응답하지 않은 자리만 알려준다.
+# Once the subnet is swept, the "IPs in use" are in the list. What is left is free.
+# What goes where is a person's call — the tool only reports which addresses stayed silent.
 # ---------------------------------------------------------------------------
 
 def free_ips():
@@ -3296,7 +3294,7 @@ def free_ips():
             return 0
 
     free.sort(key=as_int)
-    # 연속된 자리는 묶어서 보여준다. 200줄보다 "13-72" 한 줄이 낫다.
+    # Show consecutive addresses as one range. One line of "13-72" beats 200 lines.
     blocks = []
     for ip in free:
         n = as_int(ip)
@@ -3308,18 +3306,18 @@ def free_ips():
                            "count": 1})
     for block in blocks:
         block.pop("start_n"), block.pop("end_n")
-    # complete 가 False 면 이 목록을 배정에 쓰면 안 된다. 화면과 CSV 가
-    # 그렇게 말하도록 같이 넘긴다.
+    # complete False means this list must not be used for assignment. Pass it along
+    # so the screen and the CSV say so.
     return {"scanned": len(scanned), "used": len(used), "free": free,
             "blocks": blocks, "complete": done}
 
 
 def export_candidate_ips(path):
-    """Excel에서 배정 계획을 바로 적을 수 있도록 후보 IP를 한 행씩 저장한다.
+    """Write candidate IPs one per row so the assignment plan can be filled in directly in Excel.
 
-    스캔이 끝까지 안 갔으면 그 사실을 파일 맨 위에 적는다. 이 CSV 는 현장에서
-    그대로 배정표로 쓰인다 — 어디서 나온 목록인지 파일만 보고 알 수 없으면
-    며칠 뒤에는 아무도 기억을 못 한다.
+    If the scan did not run to the end, say so at the top of the file. This CSV gets used
+    on site as the assignment sheet as-is — if the file alone does not say where the list
+    came from, nobody remembers a few days later.
     """
     info = free_ips()
     with open(path, "w", encoding="utf-8-sig", newline="") as fh:
@@ -3338,10 +3336,10 @@ def export_candidate_ips(path):
 
 
 def export_html(path, site="", note=""):
-    """현장 리포트 한 장. 브라우저로 열어 그대로 인쇄하거나 PDF 로 뽑는다.
+    """A one-page site report. Open it in a browser and print it, or save it as PDF.
 
-    현장에서 필요한 것은 데이터 덤프가 아니라 "무엇이 충돌했고 무엇을 손댔는지"
-    한 장이다. 그래서 충돌부터 맨 위에 놓고, 빈 IP 를 끝에 붙인다.
+    What you need on site is not a data dump, it is one page saying "what conflicted and
+    what got touched". So conflicts go at the top and the free IPs get tacked on the end.
     """
     groups = STORE.by_ip()
     conflicts = [g for g in groups if g["conflict"]]
@@ -3368,8 +3366,8 @@ def export_html(path, site="", note=""):
                 if d.get("ms") is not None:
                     facts.append("%s ms" % d["ms"])
                 if d.get("os"):
-                    facts.append(kind_show(d["os"]))   # TTL 숫자는 이미 OS 로 옮겼다
-                # 모델 칸에 이름을 끌어다 썼으면 아래에 또 쓰지 않는다
+                    facts.append(kind_show(d["os"]))   # the TTL number is already folded into OS
+                # If a name got pulled into the model column, do not repeat it below
                 shown_model = d.get("model") or (seen[0] if seen else "")
                 rest = [x for x in seen if x != shown_model]
                 sub = " · ".join(rest[:2] + facts)
@@ -3463,8 +3461,8 @@ footer{margin-top:34px;padding-top:12px;border-top:1px solid #eceef1;
                  if groups else '<p class="none">%s</p>'
                  % esc(T("발견된 장비가 없습니다.", "No devices found.")))
 
-    # 후보 IP의 실제 배정 계획은 HTML 보고서가 아니라 별도 CSV에서 관리한다.
-    # CSV는 IP 한 줄마다 용도와 메모를 채울 수 있어 Excel로 열어 쓰기 좋다.
+    # The actual assignment plan for candidate IPs lives in a separate CSV, not the HTML report.
+    # The CSV takes a purpose and a note per IP row, which works well opened in Excel.
 
     parts.append("<footer>%s v%s &nbsp;·&nbsp; %s</footer>"
                  % (esc(APP_NAME), esc(APP_VER),
@@ -3477,21 +3475,21 @@ footer{margin-top:34px;padding-top:12px;border-top:1px solid #eceef1;
 
 
 # ---------------------------------------------------------------------------
-# 준공·점검 리포트 (엑셀)
+# Handover / inspection report (Excel)
 # ---------------------------------------------------------------------------
-# openpyxl 을 쓰지 않는다. 쓰면 빌드하는 사람이 pip 를 하나 더 깔아야 하고,
-# 그걸 잊은 채로 exe 를 뽑으면 현장에서 리포트 버튼만 죽는다. xlsx 는 zip 안에
-# XML 몇 장이라 필요한 만큼만 직접 쓴다. SNMP 를 직접 짠 것과 같은 이유다.
+# No openpyxl. Using it means whoever builds has to pip install one more thing, and
+# forgetting that while cutting the exe kills just the report button out on site. An xlsx
+# is a few XML sheets in a zip, so write only what is needed. Same reason SNMP is hand-rolled.
 
-# XML 1.0 이 금지하는 제어문자. 스위치 설명(ifAlias)에 NUL 이 섞여 오거나,
-# 워드에서 붙여넣은 소견에 수직탭이 끼면 파일이 통째로 안 열린다. 고객 앞에서
-# "파일이 손상되었습니다" 를 보게 되는데, 그때 고칠 방법이 없다.
+# The control characters XML 1.0 forbids. A NUL riding in on a switch description (ifAlias),
+# or a vertical tab in a comment pasted from Word, and the whole file will not open. You get
+# to see "the file is corrupted" in front of the customer, with no way to fix it then.
 _XL_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_XL_CELL_MAX = 32000        # 엑셀 한 칸 한계는 32767 자
+_XL_CELL_MAX = 32000        # Excel's per-cell limit is 32767 characters
 
 
 def _xl_text(value):
-    """엑셀 칸에 넣어도 되는 글자로 다듬는다."""
+    """Trim it down to characters that are safe to put in an Excel cell."""
     text = _XL_BAD.sub("", str(value))
     if len(text) > _XL_CELL_MAX:
         text = text[:_XL_CELL_MAX - 1] + "…"
@@ -3508,19 +3506,19 @@ def _xl_col(n):
 
 
 _XL_FONTS = [
-    {},                                     # 0 보통
-    {"b": 1},                               # 1 굵게
-    {"b": 1, "sz": 16},                     # 2 제목
-    {"sz": 10, "color": "6B7280"},          # 3 흐린 설명
-    {"b": 1, "color": "FFFFFF"},            # 4 표 머리
-    {"b": 1, "color": "B42318"},            # 5 빨강 굵게
-    {"sz": 9, "color": "98A2B3"},           # 6 각주
-    {"b": 1, "sz": 12},                     # 7 소제목
-    {"sz": 9},                              # 8 작은 글씨
+    {},                                     # 0 normal
+    {"b": 1},                               # 1 bold
+    {"b": 1, "sz": 16},                     # 2 title
+    {"sz": 10, "color": "6B7280"},          # 3 muted caption
+    {"b": 1, "color": "FFFFFF"},            # 4 table header
+    {"b": 1, "color": "B42318"},            # 5 bold red
+    {"sz": 9, "color": "98A2B3"},           # 6 footnote
+    {"b": 1, "sz": 12},                     # 7 subheading
+    {"sz": 9},                              # 8 small text
 ]
-_XL_FILLS = [None, None,                    # 0,1 은 엑셀이 예약해 둔 자리
+_XL_FILLS = [None, None,                    # 0 and 1 are slots Excel reserves
              "44546A", "FEF0C7", "FEE4E2", "E7F1FB", "F2F4F7", "D1FADF"]
-# 이름 -> (글꼴, 채움, 테두리, 가로, 줄바꿈, 세로)
+# name -> (font, fill, border, horizontal, wrap, vertical)
 _XL_XF = [
     ("",       0, 0, 0, "",       0, ""),
     ("title",  2, 0, 0, "",       0, ""),
@@ -3595,7 +3593,7 @@ def _xl_styles():
 
 
 class XlSheet(object):
-    """엑셀 시트 한 장. 셀은 값이거나 (값, 서식이름) 이다."""
+    """One Excel sheet. A cell is either a value or (value, style name)."""
 
     def __init__(self, name):
         clean = _xl_text(name)[:31]
@@ -3611,7 +3609,7 @@ class XlSheet(object):
 
     def row(self, *cells):
         self.rows.append(list(cells))
-        return len(self.rows)          # 1부터. 엑셀 행 번호와 같다.
+        return len(self.rows)          # 1-based, same as Excel's row numbers.
 
     def blank(self, count=1):
         for _ in range(count):
@@ -3679,11 +3677,11 @@ class XlSheet(object):
 
 
 def write_xlsx(path, sheets):
-    """시트 목록을 xlsx 파일 하나로 묶는다."""
+    """Bundle a list of sheets into one xlsx file."""
     if not sheets:
         raise ValueError(T("내보낼 내용이 없습니다.", "Nothing to export."))
     names, used = [], set()
-    for sheet in sheets:                       # 시트 이름이 겹치면 엑셀이 안 연다
+    for sheet in sheets:                       # duplicate sheet names and Excel will not open it
         name, count = sheet.name, 2
         while name.lower() in used:
             name = "%s(%d)" % (sheet.name[:27], count)
@@ -3734,12 +3732,12 @@ def write_xlsx(path, sheets):
 
 
 def duplex_label(value):
-    """듀플렉스를 사람 말로. 못 읽었으면 빈 문자열 — 아무 말도 하지 않는다.
+    """Duplex in plain words. Empty string if it could not be read — say nothing at all.
 
-    여기서 0 을 '전이중' 으로 채우고 싶은 유혹이 있다. 요즘 장비는 대개
-    전이중이니 맞을 확률이 높다. 그래도 안 된다. 이 도구가 하는 말은 준공
-    문서에 그대로 실린다. 확률이 높은 추측과 확인한 사실을 같은 칸에 적으면,
-    다음에 진짜로 확인한 값도 같이 못 믿게 된다.
+    There is a temptation here to fill 0 in as 'full'. Modern gear is mostly full duplex,
+    so the odds are good. Still no. What this tool says goes straight into the handover
+    document. Put a likely guess and a confirmed fact in the same column and the next
+    genuinely confirmed value becomes untrustworthy along with it.
     """
     got = int(value or 0)
     if got == DUPLEX_HALF:
@@ -3752,17 +3750,17 @@ def duplex_label(value):
 
 
 def is_half_duplex(info):
-    """지금 링크가 붙어 있는데 반이중으로 앉은 포트인가.
+    """Is this a port with a live link that settled at half duplex?
 
-    링크가 없는 포트의 듀플렉스는 의미가 없다. 꽂히지도 않은 포트에 경고를
-    붙이면 빈 포트가 전부 빨개진다.
+    Duplex on a port with no link means nothing. Put a warning on a port with nothing
+    plugged into it and every empty port goes red.
     """
     return (int(info.get("duplex") or 0) == DUPLEX_HALF
             and int(info.get("oper") or 0) == 1)
 
 
 def speed_label(mbps):
-    """포트 속도를 사람 말로. 0 은 링크가 없다는 뜻이다."""
+    """Port speed in plain words. 0 means there is no link."""
     value = int(mbps or 0)
     if value <= 0:
         return "-"
@@ -3772,19 +3770,19 @@ def speed_label(mbps):
 
 
 def _plate_layout(ports, slow_keys):
-    """스위치 앞면 그림. 홀수는 윗줄, 짝수는 아랫줄 — 실물과 같은 배치다.
+    """A picture of the switch front. Odd on the top row, even on the bottom — the real layout.
 
-    번호가 깔끔하지 않은 장비(이름에서 번호를 못 뽑는 경우)는 그냥 순서대로
-    두 줄에 늘어놓는다. 틀린 그림을 그리느니 단순한 그림이 낫다.
+    Gear whose numbering is not clean (no number can be pulled out of the name) just gets
+    laid out across two rows in order. A simple picture beats a wrong one.
     """
     listed = sorted(ports.values(), key=port_number)
     numbers = [port_number(p) for p in listed]
-    # 번호대로 자리를 잡되, 번호가 터무니없이 크면(VLAN·루프백이 섞였거나
-    # ifIndex 가 수백만이면) 그 범위만큼 빈 칸을 그리다 문서가 터진다.
+    # Place by number, but if the numbers are absurdly large (VLAN/loopback mixed in, or
+    # ifIndex in the millions) drawing blanks across that range blows the document up.
     tidy = (bool(numbers) and len(set(numbers)) == len(numbers)
             and min(numbers) >= 1 and max(numbers) <= len(numbers) * 2 + 8)
 
-    slots = {}                      # (윗줄0/아랫줄1, 칸) -> 포트
+    slots = {}                      # (top row 0 / bottom row 1, column) -> port
     if tidy:
         for info in listed:
             no = port_number(info)
@@ -3798,38 +3796,38 @@ def _plate_layout(ports, slow_keys):
 
 
 def _plate_cell(info, slow_keys):
-    """포트 한 칸의 글자와 색."""
+    """The text and colour of one port cell."""
     no = port_number(info)
     text = str(no) if no else (info.get("name") or "")[-4:]
     if int(info.get("admin") or 1) != 1:
-        return ("%s ✕" % text, "pDown")          # 사람이 잠가 놓은 포트
+        return ("%s ✕" % text, "pDown")          # a port somebody locked
     if int(info.get("oper") or 0) != 1:
-        return (text, "pIdle")                   # 아무것도 안 꽂힘 — 테두리만
+        return (text, "pIdle")                   # nothing plugged in — outline only
     if is_half_duplex(info):
-        # 속도 저하보다 앞에 둔다. 둘 다면 이쪽이 원인일 때가 많다.
-        return ("%s½" % text, "pSlow")       # 반이중 — 양끝 설정이 안 맞음
+        # Ranked ahead of the speed drop. When both show, this is usually the cause.
+        return ("%s½" % text, "pSlow")       # half duplex — the two ends do not agree
     if port_key(info) in slow_keys:
-        return (text, "pSlow")                   # 예전보다 느려짐
+        return (text, "pSlow")                   # slower than it used to be
     if float(info.get("poeWatt") or 0) > 0:
         return (text, "pPoe")
     return (text, "pLive")
 
 
 def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
-    """준공·점검 리포트 한 부. 시트 다섯 장.
+    """One handover/inspection report. Five sheets.
 
-    현장에서 이걸 손으로 엑셀에 치고 있다. 스캔 한 번이면 다 있는 내용이다.
+    People type this into Excel by hand on site. One scan has all of it already.
     """
     switches = switches or []
-    missed = missed or []          # 못 읽은 스위치 [(IP, 이유)]
+    missed = missed or []          # switches that could not be read [(IP, reason)]
     groups = STORE.by_ip()
     conflicts = [g for g in groups if g["conflict"]]
     devices = [d for g in groups for d in g["devices"]]
     empty = free_ips()
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # 포트별로 어떤 장비가 물려 있는지. 스위치 IP + 포트 이름으로 묶는다
-    # (이름만으로 묶으면 스위치 두 대의 같은 번호 포트가 섞인다).
+    # Which device hangs off which port. Keyed by switch IP + port name
+    # (key on the name alone and the same-numbered port on two switches merges).
     by_port = {}
     for dev in devices:
         if dev.get("swport"):
@@ -3842,7 +3840,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
             shown.append(T("외 %d대", "+%d more") % (len(found) - limit))
         return ", ".join(shown)
 
-    # ---- 1. 점검 소견 ------------------------------------------------------
+    # ---- 1. Findings -------------------------------------------------------
     view = XlSheet(T("점검 소견", "Findings"))
     view.width((0, 13), (1, 22), (2, 46), (3, 26), (4, 14), (5, 14))
     view.row((T("준공 · 점검 리포트", "Commissioning · inspection report"), "title"))
@@ -3856,8 +3854,8 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
              (T("도구", "Tool"), "sub"), "%s v%s" % (APP_NAME, APP_VER))
     view.blank()
 
-    # 용량을 안 알려주는 스위치의 소비만 더하면 사용률이 100%% 를 넘어간다.
-    # 둘 다 알려준 스위치만 넣고 센다.
+    # Adding the draw from a switch that will not report its capacity pushes usage past 100%%.
+    # Count only the switches that reported both.
     poe_used = sum(float(s.get("poeMain", {}).get("used") or 0) for s in switches
                    if float(s.get("poeMain", {}).get("capacity") or 0) > 0)
     poe_cap = sum(float(s.get("poeMain", {}).get("capacity") or 0) for s in switches)
@@ -3883,8 +3881,8 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
              (T("확인", "Checked"), "h"), (T("담당", "Owner"), "h"))
     found_any = False
     for host, why in missed:
-        # 못 읽은 것을 조용히 빼면, 이 문서는 "그 스위치는 문제 없었다" 고
-        # 거짓말하는 셈이 된다. 못 읽었다고 맨 위에 적는다.
+        # Quietly leaving out what could not be read makes this document lie: it reads as
+        # "that switch was fine". Write "could not be read" at the top instead.
         found_any = True
         view.row((T("확인 못 함", "Not checked"), "bad"), (host, "c"),
                  (T("이 스위치를 읽지 못했습니다 — %s", "Could not read this switch — %s")
@@ -3909,10 +3907,10 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                     "Re-terminate both ends. Gigabit needs all 8 wires; one loose "
                     "wire silently drops the link to 100M."), "c"),
                  ("", "cc"), ("", "cc"))
-    # 반이중. 속도 저하보다 찾기 어려운 고장이라 따로 세워 적는다.
+    # Half duplex. A harder fault to find than a speed drop, so it gets its own entry.
     #
-    # "1G 로 뜨는데 느리다" 는 신고가 들어오면 대개 이것이다. 속도 칸만 보고
-    # 정상이라고 넘긴 뒤 카메라를 교체하러 다시 나오는 일이 실제로 생긴다.
+    # A report of "it says 1G but it's slow" is usually this. Glance at the speed column,
+    # call it fine, and you really do end up driving back out to replace a camera.
     for switch in switches:
         for info in sorted(switch.get("ports", {}).values(), key=port_number):
             if not is_half_duplex(info):
@@ -3964,9 +3962,9 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                  (T("장비를 더 달려면 전원을 보강해야 합니다.",
                     "Add power capacity before installing more devices."), "c"),
                  ("", "cc"), ("", "cc"))
-    # 처음 온 현장은 비교할 지난 기록이 없다. 속도 저하가 '없는' 게 아니라
-    # '아직 모르는' 것이다. 그걸 안 적으면 이 문서는 확인하지도 않은 것을
-    # 확인했다고 말하는 셈이 된다.
+    # A site visited for the first time has no earlier record to compare against. There
+    # is no speed drop 'absent', only 'not known yet'. Leave that out and this document
+    # claims to have confirmed something it never checked.
     first_time = [sw for sw in switches if not sw.get("hadHistory")]
     if first_time:
         view.row((T("첫 기록", "First record"), "warn"),
@@ -3978,9 +3976,9 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                  (T("다음 방문 때 다시 뽑으면 그때부터 비교합니다.",
                     "Re-run on the next visit to start comparing."), "c"),
                  ("", "cc"), ("", "cc"))
-    # 듀플렉스를 한 포트도 못 읽었으면 그 사실을 적는다. 안 적으면 이 문서에
-    # '반이중' 항목이 없다는 것을 사람은 "확인했고 문제 없었다" 로 읽는다.
-    # EtherLike-MIB 를 아예 안 내주는 스위치가 흔하다.
+    # If duplex could not be read on a single port, say so. Leave it out and people read
+    # the absence of a 'half duplex' entry in this document as "checked, nothing wrong".
+    # Plenty of switches do not serve EtherLike-MIB at all.
     blind = [sw for sw in switches
              if not any(int(p.get("duplex") or 0) for p in sw.get("ports", {}).values())]
     if blind:
@@ -4052,7 +4050,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                 "%s v%s — %d addresses scanned")
               % (APP_NAME, APP_VER, empty["scanned"]), "small"))
 
-    # ---- 2. 장비 목록 ------------------------------------------------------
+    # ---- 2. Device list ----------------------------------------------------
     book = XlSheet(T("장비 목록", "Devices"))
     book.width((0, 15), (1, 19), (2, 18), (3, 17), (4, 22), (5, 18), (6, 22),
                (7, 8), (8, 9), (9, 16), (10, 9), (11, 20))
@@ -4093,7 +4091,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                      (" · ".join(marks), "bad" if marks else "c"))
     book.filter = "A1:%s%d" % (_xl_col(len(head) - 1), max(len(book.rows), 1))
 
-    # ---- 3. 스위치 포트 배치 -----------------------------------------------
+    # ---- 3. Switch port layout ---------------------------------------------
     plate = XlSheet(T("스위치 포트 배치", "Switch layout"))
     plate.width(*[(i, 5.4) for i in range(26)])
     if not switches:
@@ -4117,7 +4115,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
             plate.merge(legend, col, legend, col + 1)
         plate.blank()
         slots, columns = _plate_layout(ports, slow_keys)
-        for start in range(0, columns, 24):       # 48포트 넘으면 줄을 바꾼다
+        for start in range(0, columns, 24):       # past 48 ports, wrap to a new block
             stop = min(start + 24, columns)
             for line in (0, 1):
                 cells = []
@@ -4127,7 +4125,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                 number = plate.row(*cells)
                 plate.heights[number] = 22
             plate.blank()
-        # 포트 하나하나
+        # port by port
         plate.row(*[(text, "h") for text in
                     (T("포트", "Port"), T("이름", "Name"), T("설명", "Label"),
                      T("속도", "Speed"), T("이중", "Duplex"), T("링크", "Link"),
@@ -4148,8 +4146,8 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                       (info.get("alias", ""), style),
                       (speed_label(info.get("speed")) if up else "-",
                        "bad" if key in slow_keys else "cc"),
-                      # 못 읽었으면 빈 칸으로 둔다. 빈 칸은 "안 봤다" 로 읽히고,
-                      # '전이중' 이라고 적으면 "봤고 정상이다" 가 된다.
+                      # Could not read it: leave the cell empty. An empty cell reads as
+                      # "not looked at"; writing 'full' reads as "looked at, and fine".
                       (duplex_label(info.get("duplex")) if up else "",
                        "bad" if half else "cc"),
                       (T("연결", "up") if up else T("없음", "down"), "cc"),
@@ -4159,7 +4157,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                       (behind, style))
         plate.blank(2)
 
-    # ---- 4. PoE 전력 -------------------------------------------------------
+    # ---- 4. PoE power ------------------------------------------------------
     power = XlSheet(T("PoE 전력", "PoE power"))
     power.width((0, 24), (1, 16), (2, 16), (3, 14), (4, 12), (5, 14), (6, 26))
     power.row((T("스위치별 전력", "Per switch"), "sect"))
@@ -4210,15 +4208,15 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                  "'class est.' is computed from the class; 'measured' comes from "
                  "the switch."), "small"))
 
-    # ---- 5. 빈 IP ----------------------------------------------------------
+    # ---- 5. Free IPs -------------------------------------------------------
     spare = XlSheet(T("남은 IP", "Free IPs"))
     spare.width((0, 18), (1, 18), (2, 10), (3, 22), (4, 30))
     spare.row((T("응답 없는 주소 — 배정에 쓸 수 있습니다", "Addresses with no reply"),
                "sect"))
     spare.merge(1, 0, 1, 4)
     if not empty.get("complete"):
-        # 준공 문서에 "빈 IP" 라고 적힌 것을 고객이 그대로 배정에 쓴다.
-        # 안 훑은 주소가 섞여 있으면 그건 문서가 아니라 사고다.
+        # Whatever the handover document calls a "free IP" is what the customer assigns from.
+        # Addresses that were never swept mixed in makes it not a document but an accident.
         spare.row((T("스캔이 끝까지 가지 않았습니다 — 이 목록을 배정에 쓰지 마십시오. "
                      "안 훑은 주소와 조용한 주소가 섞여 있습니다.",
                      "The scan did not finish — do not assign from this list. Addresses "
@@ -4243,16 +4241,16 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
 
 
 # ---------------------------------------------------------------------------
-# 단독 실행
+# Standalone run
 #
-# 화면은 일렉트론(electron/)이 그린다. 이 파일은 그 뒤에서 도는 엔진이다.
-# 예전에는 여기에 tkinter 화면이 같이 들어 있었지만, 일렉트론으로 옮긴 뒤로는
-# 아무도 쓰지 않으면서 이미 지운 함수를 부르고 있어 들어냈다.
+# Electron (electron/) draws the UI. This file is the engine running behind it.
+# A tkinter UI used to live in here too, but after the move to Electron nobody used it
+# while it went on calling functions that had already been deleted, so it was ripped out.
 # ---------------------------------------------------------------------------
 
 
 def main():
-    """엔진 점검용. 실제 화면은 electron/ 쪽에서 띄운다."""
+    """For checking the engine. The real UI comes up from electron/."""
     parser = argparse.ArgumentParser(description="%s 엔진" % APP_NAME)
     parser.add_argument("mac", nargs="?", help="MAC 하나를 넣으면 무슨 장비인지 알려줍니다.")
     args = parser.parse_args()

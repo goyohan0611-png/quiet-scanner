@@ -1,9 +1,5 @@
-/* Quiet Scanner — 현장 IP 충돌 정리 도구
+/* Quiet Scanner — field tool for sorting out IP conflicts
  * Copyright (C) 2026 고요한
- *
- * 이 프로그램은 자유 소프트웨어입니다. GNU 일반 공중 사용 허가서 제2판 또는
- * 그 이후 판의 조건에 따라 재배포하거나 수정할 수 있습니다. 아무런 보증도
- * 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를 보십시오.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
@@ -29,10 +25,10 @@ let scanRunning = false;
 
 const portName = { 80: 'HTTP', 443: 'HTTPS', 8080: 'HTTP', 554: 'RTSP', 8000: 'HIK', 37777: 'Dahua', 22: 'SSH' };
 
-/* ── 목록의 칸 ────────────────────────────────────────────────────────
-   읽어오는 정보가 늘어나면서 한 칸에 다 밀어넣을 수 없게 됐다.
-   칸을 나누고, 무엇을 볼지는 사람이 고른다 — 머리글 우클릭.
-   현장마다 보는 것이 다르니, 고른 것은 다음 실행 때도 그대로 남는다.
+/* ── List columns ─────────────────────────────────────────────────────
+   As we read more off each device, it stopped fitting into one column.
+   Split it into columns and let the tech choose what to see — right-click the header.
+   Every site looks at different things, so the choice survives the next run.
    ------------------------------------------------------------------- */
 
 const COLUMNS = [
@@ -56,23 +52,23 @@ let shownColumns = defaultColumns();
 try {
   const saved = JSON.parse(localStorage.getItem(COLUMN_STORE) || 'null');
   if (Array.isArray(saved) && saved.length) {
-    // 저장해둔 목록에 없는 칸(옛 버전)은 버리고, IP 칸은 무슨 일이 있어도 남긴다.
+    // Drop saved keys that no longer exist (old version); keep the IP column no matter what.
     const known = saved.filter(k => COLUMNS.some(c => c.key === k));
     shownColumns = known.includes('ip') ? known : ['ip', ...known];
   }
-} catch (_) { /* 저장소를 못 읽어도 기본값으로 돈다 */ }
+} catch (_) { /* unreadable storage still runs on the defaults */ }
 
 function saveColumns() {
   try { localStorage.setItem(COLUMN_STORE, JSON.stringify(shownColumns)); }
-  catch (_) { /* 못 저장해도 이번 실행에는 적용된다 */ }
+  catch (_) { /* if it will not save, it still applies for this run */ }
 }
 
-/** 화면에 보이는 칸을, 정해둔 순서대로. */
+/** The visible columns, in the order we fixed. */
 function visibleColumns() {
   return COLUMNS.filter(c => shownColumns.includes(c.key));
 }
 
-/** 장비 하나에서 이름 후보를 겹치는 것 없이 모은다. */
+/** Collect one device's candidate names with no duplicates. */
 function deviceNames(d) {
   const out = [];
   for (const name of [d.host, d.mdns, d.nbname, d.ssdp]) {
@@ -84,7 +80,7 @@ function deviceNames(d) {
   return out;
 }
 
-/** 칸 하나에 들어갈 글자. 정렬·검색·내보내기가 모두 이것을 쓴다. */
+/** The text for one cell. Sorting, search and export all use this. */
 function cellText(d, key) {
   switch (key) {
     case 'ip':     return (d.mac || '').toUpperCase().replaceAll(':', '-');
@@ -106,7 +102,7 @@ function cellText(d, key) {
   }
 }
 
-/** 정렬할 때 쓰는 값. 숫자는 숫자로 비교해야 10이 9 뒤에 온다. */
+/** Value used for sorting. Numbers must compare as numbers, or 10 lands before 9. */
 function cellSortValue(d, key) {
   switch (key) {
     case 'ip':    return ipKey(d.ip);
@@ -117,14 +113,14 @@ function cellSortValue(d, key) {
   }
 }
 
-/** 링크 속도를 사람이 읽는 단위로. 1000 이상은 기가로 적는다. */
+/** Link speed in units a person reads. 1000 and up is written as gigabit. */
 function formatSpeed(mbps) {
   const value = Number(mbps) || 0;
   if (!value) return '';
   return value >= 1000 ? `${value / 1000}G` : `${value}M`;
 }
 
-/** 칸 하나를 그린다. */
+/** Draws one cell. */
 function cellHtml(d, key) {
   if (key === 'ip') {
     const isolated = state.isolated === d.key;
@@ -149,15 +145,15 @@ function cellHtml(d, key) {
   if (key === 'name') {
     const names = deviceNames(d);
     if (!names.length) return '<div class="dim">-</div>';
-    // 한 장비가 역DNS·mDNS·NetBIOS·UPnP 로 이름을 여럿 내놓는 일이 흔하다.
-    // 칸에는 첫 개만 두고, 나머지는 +N 으로 세어 보여준 뒤 마우스에 맡긴다.
+    // One device commonly hands back several names — reverse DNS, mDNS, NetBIOS, UPnP.
+    // The cell keeps the first, counts the rest as +N, and leaves them to the tooltip.
     const rest = names.slice(1);
     const tip = rest.length ? t('namesTip', { n: rest.length, rest: rest.join(' · ') }) : names[0];
     return `<div title="${esc(tip)}">${esc(names[0])}${rest.length ? `<i class="more" title="${esc(tip)}">+${rest.length}</i>` : ''}</div>`;
   }
   if (key === 'os') {
-    // TTL 숫자는 화면에 안 쓴다 — 64면 리눅스라는 걸 우리가 이미 번역했다.
-    // 값 자체는 마우스를 올리면 나오고, 내보내기 파일에는 그대로 들어간다.
+    // The raw TTL never hits the screen — we already translated 64 into Linux.
+    // The number itself shows on hover, and goes into the export file as-is.
     if (d.ttl == null) return `<div class="dim">${d.identified ? t('ttlUnread') : '-'}</div>`;
     return `<div title="TTL ${d.ttl}">${esc(tk(d.os))}</div>`;
   }
@@ -167,12 +163,12 @@ function cellHtml(d, key) {
   }
   if (key === 'swport') {
     if (!d.swport) return '<div class="dim">-</div>';
-    // 포트 이름 옆에 링크 속도를 붙인다. 기가 스위치인데 100M 으로 붙어 있으면
-    // 빨갛게 띄운다 — 케이블 한 쌍이 나가도 링크는 안 끊기고 조용히 떨어진다.
-    // 화면에는 Gi1/0/12 로 줄여 적으므로, 전체 이름은 반드시 설명에 남긴다.
-    // 스위치 화면에서 찾을 때 기사는 그 긴 이름 그대로를 본다.
-    // 반이중은 속도 칸이 멀쩡해 보이는 고장이라, 목록에서 바로 안 보이면
-    // 영영 안 잡힌다. 속도 옆에 ½ 를 붙여 둔다.
+    // Link speed goes next to the port name. A gigabit switch sitting at 100M
+    // gets painted red — lose one cable pair and the link never drops, it just sags.
+    // The screen shortens it to Gi1/0/12, so the full name must stay in the tooltip.
+    // On the switch CLI the tech reads that long name exactly as it is.
+    // Half duplex is the fault where the speed column still looks fine, so if the
+    // list does not show it outright nobody ever finds it. Hang a ½ off the speed.
     const dupHalf = Number(d.swduplex || 0) === 2;
     const hint = [d.swname ? `${d.swname} ${d.swport}` : d.swport,
                   d.swalias, d.swvlan ? `VLAN ${d.swvlan}` : '',
@@ -181,15 +177,15 @@ function cellHtml(d, key) {
     const speed = d.swspeed
       ? `<i class="swspeed${d.swslow || dupHalf ? ' slow' : ''}">${formatSpeed(d.swspeed)}`
         + `${dupHalf ? '<b>\u00bd</b>' : ''}</i>` : '';
-    // PoE 로 전원을 받고 있으면 몇 W 인지 같이 보여준다. 3 = 급전 중.
+    // If the port is feeding PoE, show how many watts alongside. 3 = delivering power.
     const poe = d.poeStatus === 3
       ? `<i class="poe" title="${esc(t('poeTip'))}">${d.poeWatt ? d.poeWatt.toFixed(1) : '?'}W</i>` : '';
-    // 현장에 스위치가 여러 대면 "12번 포트" 만으로는 못 찾아간다. 어느
-    // 스위치인지를 같이 적되 **한 줄**로 둔다 — 두 줄이면 줄 높이가 45px 로
-    // 붙박여서 밀집 보기가 아예 안 먹는다.
+    // With several switches on site, "port 12" alone gets you nowhere. Name the
+    // switch too, but keep it to **one line** — two lines pin the row height at
+    // 45px and dense view stops working entirely.
     //
-    // 포트 이름도 줄인다. GigabitEthernet1/0/12 는 21글자인데 그중 18글자가
-    // 늘 같은 소리다. Gi1/0/12 는 기사들이 원래 그렇게 적는 표기다.
+    // Shorten the port name as well. GigabitEthernet1/0/12 is 21 characters and 18
+    // of them say the same thing every time. Gi1/0/12 is how techs write it anyway.
     const where = d.swname ? `<span class="swname">${esc(d.swname)}</span>` : '';
     return `<div class="swcell" title="${esc(hint)}">${where}`
       + `<span class="swport">${esc(shortPort(d.swport))}</span>${speed}${poe}</div>`;
@@ -206,7 +202,7 @@ function renderHead() {
     `<span class="sortable" data-sort="${c.key}"${sortKey === c.key ? ` data-dir="${sortDesc ? 'desc' : 'asc'}"` : ''}>${esc(t(c.name))}</span>`).join('');
 }
 
-/* 볼 칸 고르기 — 머리글 우클릭 */
+/* Pick which columns to see — right-click the header */
 function renderColumnMenu() {
   $('#columnMenu').innerHTML = COLUMNS.map(c => {
     const on = shownColumns.includes(c.key);
@@ -225,8 +221,8 @@ $('#tableHead').addEventListener('contextmenu', (event) => {
 });
 
 $('#columnMenu').addEventListener('click', (event) => {
-  // 여기서 멈춘다. 안 그러면 아래의 '바깥 누르면 닫기' 가 이 클릭까지 바깥으로
-  // 친다 — 메뉴를 다시 그리면서 눌린 단추가 문서에서 떨어져 나가기 때문이다.
+  // Stop here. Otherwise the 'click outside to close' handler below counts this
+  // click as outside — redrawing the menu detaches the pressed button from the document.
   event.stopPropagation();
   const button = event.target.closest('button');
   if (!button) return;
@@ -241,31 +237,31 @@ $('#columnMenu').addEventListener('click', (event) => {
       : COLUMNS.filter(c => shownColumns.includes(c.key) || c.key === key).map(c => c.key);
   }
   saveColumns();
-  renderColumnMenu();       // 창은 열어둔다 — 여러 개를 이어서 고르기 편하다
+  renderColumnMenu();       // keep it open — easier to tick several in a row
   render();
 });
 
 function esc(text) { return String(text || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-/* 알림.
+/* Notices.
 
-   로그 줄(#notice)은 화면 맨 아래 작업 로그 안에 있다. 창이 하나라도 열려
-   있으면 그 줄은 창 뒤에 완전히 가려진다 — 그래서 포트를 잠그려다 거절당해도
-   화면에는 아무 일도 안 일어난 것처럼 보인다. 사람은 단추가 고장 난 줄 알고
-   다시 누른다. 지금은 확인이 안 되면 거절하도록 되어 있어서 거절이 드물지도
-   않다. 거절한 이유는 반드시 그 자리에서 보여야 한다.
+   The log line (#notice) sits inside the activity log at the very bottom. If any
+   dialog is open, that line is completely hidden behind it — so a port lock that
+   gets refused looks like nothing happened at all. The tech decides the button is
+   broken and presses it again. We now refuse whenever we cannot verify, so refusals
+   are not rare either. The reason for a refusal has to show where the eyes are.
 
-   그래서 창이 열려 있으면 그 창 안에도 실행 로그를 쌓는다. 한 줄이 아니라
-   여러 줄인 이유는, 포트를 풀고 링크가 붙기를 기다리는 것처럼 시간이 걸리는
-   일은 진행 과정이 남아 있어야 하기 때문이다.
+   So while a dialog is open we stack the run log inside that dialog too. Several
+   lines, not one, because jobs that take time — unlocking a port and waiting for
+   the link to come up — need their progress left on screen.
    ------------------------------------------------------------------- */
 
 const DIALOG_LOG_KEEP = 8;
 
-/* 열려 있는 창 중 '지금 보고 있는' 것.
+/* Of the open dialogs, the one actually being looked at.
 
-   DOM 순서로 마지막을 고르면 안 된다 — #snmpDialog 가 #portsDialog 뒤에 있어서,
-   포트 관리 창에서 거절당한 이유가 뒤에 숨은 다른 창으로 들어가 버린다.
-   화면에서 제일 위에 그려진 것(z-index, 그다음 DOM 순서)을 고른다. */
+   Do not take the last one in DOM order — #snmpDialog sits after #portsDialog, so
+   a refusal from the port manager ends up in another dialog hidden behind it.
+   Take the one drawn topmost (z-index, then DOM order). */
 function openModal() {
   const open = [...document.querySelectorAll('.modal')].filter(m => !m.hidden);
   if (!open.length) return null;
@@ -279,7 +275,7 @@ function openModal() {
   return top;
 }
 
-/** 열려 있는 창 안에 로그 한 줄. kind: '' | 'ok' | 'warn' | 'bad' */
+/** One log line inside the open dialog. kind: '' | 'ok' | 'warn' | 'bad' */
 function say(text, kind = '') {
   const open = openModal();
   for (const box of document.querySelectorAll('.modal-log')) {
@@ -306,7 +302,7 @@ function say(text, kind = '') {
   box.scrollTop = box.scrollHeight;
 }
 
-/** 창을 열 때 지난 로그를 지운다. 지난 현장 얘기가 남아 있으면 안 된다. */
+/** Wipe the old log when a dialog opens. The last site's messages must not linger. */
 function clearSay() {
   for (const box of document.querySelectorAll('.modal-log')) box.remove();
 }
@@ -314,7 +310,7 @@ function clearSay() {
 function notice(text, bad = false) {
   $('#notice').textContent = text;
   $('#notice').style.color = bad ? '#e7475b' : '';
-  // '준비됨' 은 알릴 내용이 아니라 아무 일도 없다는 뜻이다. 로그에 쌓지 않는다.
+  // 'Ready' is not news, it means nothing is happening. Do not stack it in the log.
   if (text && text !== t('ready')) say(text, bad ? 'bad' : '');
 }
 function applyState(next) { state = { ...state, ...next }; render(); }
@@ -327,18 +323,18 @@ function hideProgressAfterCompletion() {
   }, 5000);
 }
 
-/* ── 대역 탭 ──────────────────────────────────────────────────────────
-   랜카드를 둘 이상 골라 훑으면 대역이 섞인다. 172 대역 200개와 192 대역
-   50개가 한 줄로 이어지면 어느 쪽을 보고 있는지 알 수가 없다. 대역마다
-   탭을 만들어 나눈다 — 검색할 때만 전부 한 번에 본다.
+/* ── Subnet tabs ──────────────────────────────────────────────────────
+   Scan with two or more NICs picked and the subnets mix. 200 addresses on 172
+   running straight into 50 on 192 and you cannot tell which one you are looking
+   at. One tab per subnet — only a search looks at all of them at once.
    ------------------------------------------------------------------- */
 
 let activeNet = '';
 
-/** IP 의 대역. 앞 세 마디로 가른다 — 현장의 망은 거의 /24 다. */
+/** An IP's subnet. Cut at the first three octets — site networks are almost always /24. */
 function netOf(ip) { return String(ip || '').split('.').slice(0, 3).join('.'); }
 
-/** 지금 목록에 있는 대역과 그 안의 IP·장비 수. 나오는 순서는 IP 순. */
+/** Subnets in the current list, with their IP and device counts. Ordered by IP. */
 function netTally() {
   const tally = new Map();
   for (const group of (state.groups || [])) {
@@ -374,9 +370,9 @@ $('#netTabs').addEventListener('click', (event) => {
 function render() {
   const s = state.summary || {};
   $('#titleCount').textContent = s.conflictIps ? t('titleConflict', { n: s.conflictIps }) : (s.devices ? t('titleDevices', { n: s.devices }) : t('idle'));
-  // 색점 네 개짜리 띠를 없앴다. '발견된 IP 23' 과 '전체 장비 24' 는 사실상 같은
-  // 숫자였고, 그 띠가 화면 56px 을 먹으면서 웹 대시보드처럼 보이게 했다.
-  // 숫자는 여기 한 줄로 적는다.
+  // Dropped the strip of four coloured dots. 'IPs found 23' and 'devices 24' were
+  // effectively the same number, and the strip ate 56px of screen while making this
+  // look like a web dashboard. The numbers go on this one line.
   $('#subTitle').textContent = s.devices
     ? [s.conflictIps ? t('countConflict', { n: s.conflictIps }) : '',
        t('countDevices', { n: s.devices }),
@@ -386,15 +382,15 @@ function render() {
   const columns = visibleColumns();
   const rows = [];
   let shown = 0;
-  // 목록은 IP 로 묶여 있다. 머리글로 정렬하면 묶음 안쪽뿐 아니라 묶음 자체도
-  // 같은 기준으로 줄세운다. 단 충돌난 IP 는 늘 위에 둔다 — 그게 이 도구의 목적이다.
+  // The list is grouped by IP. Sorting on a header orders the groups themselves,
+  // not just their contents. Conflicting IPs always stay on top — that is what this tool is for.
   const groupValue = (g) => {
     const first = sortDevices(g.devices || [])[0];
     if (!first) return ipKey(g.ip);
     return sortKey === 'ip' ? ipKey(g.ip) : cellSortValue(first, sortKey);
   };
-  // 대역이 둘 이상이면 탭으로 나눈다. 검색 중에는 나누지 않는다 —
-  // 찾는 것이 다른 탭에 있으면 못 찾은 것처럼 보이기 때문이다.
+  // Two or more subnets get split into tabs. Not while searching, though —
+  // if the hit is on another tab it looks like nothing was found.
   const nets = netTally();
   if (!nets.some(row => row.net === activeNet) && activeNet !== '*') {
     activeNet = nets.length ? nets[0].net : '';
@@ -411,7 +407,7 @@ function render() {
     if (x > y) return sortDesc ? -1 : 1;
     return ipKey(a.ip) - ipKey(b.ip);
   });
-  // 검색어가 있으면 걸러내고, 걸린 IP는 접혀 있어도 펼쳐서 보여준다.
+  // With a search term, filter down and force matching IPs open even if collapsed.
   for (const group of groups) {
     const devices = (group.devices || []).filter(matchesFilter);
     if (filterText && !devices.length) continue;
@@ -420,17 +416,17 @@ function render() {
     const open = filterText ? true : expandedGroups.has(group.ip);
     shown += devices.length;
     const note = group.conflict ? t('groupNote', { n: group.count }) : '';
-    // 묶음 줄은 첫 칸만 장비 줄과 폭을 맞추고, 나머지는 한 칸으로 이어 붙인다
-    // (styles.css 의 .group-note). 칸을 하나씩 채우면 글이 좁은 칸에서 접힌다.
-    // 장비가 한 대뿐인 IP 는 접을 이유가 없다.
+    // The group row only matches the device row on the first column; the rest is
+    // merged into one cell (.group-note in styles.css). Fill them one by one and the
+    // text wraps inside the narrow ones. An IP with one device has nothing to fold.
     //
-    // 접어 두면 그 줄에는 IP 하나만 남고 나머지 여덟 칸이 통째로 빈다. 제조사도
-    // 종류도 스위치 포트도 안 보이고, 보려면 한 번 더 눌러야 한다. 현장 IP 는
-    // 대부분 한 대짜리라 화면 전체가 빈 격자가 된다 — 머리글만 허공에 뜬다.
-    // 그 줄이 곧 그 장비이니 한 줄로 다 적는다. 우클릭도 바로 먹는다.
+    // Folded, that row shows one IP and eight empty columns. No vendor, no kind, no
+    // switch port, and it takes another click to see any of it. Most site IPs hold
+    // one device, so the whole screen becomes an empty grid — headers over nothing.
+    // That row is the device, so write it all on one line. Right-click works there too.
     //
-    // 충돌난 IP 만 묶음으로 남긴다. 거기는 진짜 둘 이상이라 '어느 쪽을' 고르는
-    // 단계가 필요하다.
+    // Only conflicting IPs stay grouped. Those really do hold two or more, so there
+    // has to be a step where you pick which one.
     if (!group.conflict && devices.length === 1) {
       rows.push(soloRow(group, devices[0], columns));
       continue;
@@ -447,7 +443,7 @@ function render() {
 }
 
 /** GigabitEthernet1/0/12 -> Gi1/0/12 · TenGigabitEthernet1/0/1 -> Te1/0/1
-    시스코 표기법 그대로다. 전체 이름은 칸에 마우스를 올리면 나온다. */
+    Cisco's own shorthand. The full name shows when you hover the cell. */
 function shortPort(name) {
   const text = String(name || '');
   const m = text.match(/^([A-Za-z]+)(.*)$/);
@@ -468,7 +464,7 @@ function deviceRow(d, columns) {
   return `<div class="device-row" data-key="${esc(d.key)}">${cells}</div>`;
 }
 
-/** 한 대짜리 IP — IP 와 장비를 한 줄에. 첫 칸만 직접 그리고 나머지는 그대로. */
+/** Single-device IP — IP and device on one row. First cell is custom, the rest as-is. */
 function soloRow(group, d, columns) {
   const mine = isSelectedInterfaceIp(group.ip) ? ' own-ip' : '';
   const isolated = state.isolated === d.key
@@ -495,8 +491,8 @@ function renderActivity() {
   $('#logEntries').scrollTop = $('#logEntries').scrollHeight;
 }
 
-// 일렉트론이 IPC 오류를 "Error invoking remote method 'x': Error: 진짜 내용"
-// 으로 감싸서 던진다. 기사분들이 볼 화면이니 껍데기는 벗겨서 보여준다.
+// Electron wraps IPC errors as "Error invoking remote method 'x': Error: the real thing"
+// before throwing. Techs read this screen, so strip the wrapper off first.
 function cleanMessage(text) {
   let out = String(text || '');
   out = out.replace(/^Error invoking remote method\s+'[^']*':\s*/, '');
@@ -513,8 +509,8 @@ async function loadInterfaces(previousNames = []) {
   try {
     interfaces = await call('interfaces');
     $('#ifaceBtn').disabled = false;
-    // 새로고침해도 고른 카드를 지킨다. 이름으로 다시 찾는다 — 목록 순서는
-    // 랜선을 꽂았다 뽑으면 바뀐다. 하나도 못 찾으면 그때만 기본값으로 돌아간다.
+    // A refresh keeps the picked cards. Match them back by name — the list order
+    // shifts when a cable goes in or out. Fall back to the default only if none match.
     const keep = previousNames
       .map(name => interfaces.findIndex(i => i.scapyName === name))
       .filter(n => n >= 0);
@@ -531,10 +527,10 @@ async function loadInterfaces(previousNames = []) {
   }
 }
 
-/* ── 랜카드 고르기 ────────────────────────────────────────────────────
-   서버처럼 랜선 두 개로 대역 두 개를 쓰는 자리가 있다. 그런 곳에서 카드를
-   하나씩 두 번 훑으면 목록이 나뉘어 충돌이 안 보인다. 그래서 여러 개를
-   골라 한 번에 훑는다 — 대역은 각자의 카드로 나간다.
+/* ── Picking NICs ─────────────────────────────────────────────────────
+   Some racks run two subnets on two cables, server-style. Scan those one card at a
+   time and the list splits in two, so the conflict never shows. So we pick several
+   and scan in one pass — each subnet goes out its own card.
    ------------------------------------------------------------------- */
 
 let pickedIfaces = [0];
@@ -543,37 +539,37 @@ function selectedIfaces() {
   return pickedIfaces.map(n => interfaces[n]).filter(Boolean);
 }
 function selectedIface() { return selectedIfaces()[0]; }
-/* 켜자마자 어느 랜카드를 고를 것인가.
+/* Which NIC to pick the moment the app opens.
 
-   예전에는 이름에 'ethernet' 이 들어가는 것을 찾고, 못 찾으면 목록의 첫 번째를
-   골랐다. 그래서 블루투스 PAN 이 맨 위에 있는 노트북에서는 그게 잡혔다.
-   블루투스·가상 어댑터는 대개 169.254.x.x 를 달고 있는데, 그건 주소를 못 받아서
-   윈도우가 혼자 지어낸 번호다(APIPA). **거기엔 아무것도 없다.**
+   It used to look for 'ethernet' in the name and fall back to the first entry in the
+   list. On a laptop with Bluetooth PAN at the top, that is what got picked.
+   Bluetooth and virtual adapters usually carry 169.254.x.x, a number Windows made up
+   on its own because it never got an address (APIPA). **Nothing is out there.**
 
-   그러니 이름이 아니라 **주소를 보고** 고른다. 진짜 주소를 가진 카드가
-   무조건 이긴다. 사람이 화면을 보면 1초 만에 아는 것을, 코드도 그렇게 본다.
+   So pick on the **address**, not the name. A card with a real address wins every
+   time. A person reads that off the screen in a second; the code reads it the same way.
    ------------------------------------------------------------------- */
 function ifaceScore(card) {
   const rows = card.ipv4 || [];
   const ips = rows.map(r => r.ip).concat(card.ips || []).filter(Boolean);
   const real = ips.filter(ip => !/^(169\.254|127\.|0\.)/.test(ip));
-  if (!real.length) return -1;              // 169.254 뿐이면 네트워크가 없는 것이다
+  if (!real.length) return -1;              // nothing but 169.254 means there is no network
 
   let score = 100;
-  // 사설 대역이면 현장 망일 가능성이 높다. 공인 주소는 대개 WAN 쪽이다.
+  // A private range is likely the site network. Public addresses are usually the WAN side.
   if (real.some(ip => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip))) score += 40;
-  // 프리픽스를 아는 카드가 낫다 — 대역을 정확히 만들 수 있다.
+  // A card that knows its prefix is better — we can build the exact range.
   if (rows.some(r => r.cidr)) score += 10;
 
   const name = `${card.desc || ''} ${card.name || ''}`.toLowerCase();
-  // 가상·터널·블루투스는 뒤로. 이름은 마지막 판단 근거로만 쓴다.
+  // Virtual, tunnel and Bluetooth go to the back. The name is the last thing we judge on.
   if (/virtual|vmware|virtualbox|hyper-v|loopback|tap-|tun|vpn|wintun|bluetooth|pseudo|npcap/.test(name)) score -= 60;
   if (/wi-?fi|wireless|무선/.test(name)) score += 5;
   if (/ethernet|이더넷|realtek|intel\(r\) i2|gigabit/.test(name)) score += 15;
   return score;
 }
 
-/** 제일 그럴듯한 랜카드의 자리. 하나도 쓸 만한 게 없으면 0. */
+/** Index of the most plausible NIC. 0 if none of them are any use. */
 function bestIface(cards) {
   let best = 0, top = -Infinity;
   cards.forEach((card, n) => {
@@ -587,7 +583,7 @@ function isSelectedInterfaceIp(ip) {
   return selectedIfaces().some(card => (card.ips || []).includes(ip));
 }
 
-/** 단추에 적히는 글. 하나면 그 이름, 여럿이면 몇 개인지. */
+/** Text on the button. One card gets its name, several get a count. */
 function ifaceLabel() {
   const cards = selectedIfaces();
   if (!cards.length) return t('pickIface');
@@ -603,8 +599,8 @@ function renderIfaceMenu() {
   $('#ifaceMenu').innerHTML = interfaces.map((card, n) => {
     const on = pickedIfaces.includes(n);
     const where = card.ipv4?.[0]?.cidr || card.ips?.[0] || t('noIp');
-    // span 은 못 쓴다. 이 메뉴의 .context-menu span 이 구분선(높이 1px 회색 막대)
-    // 이라서, 이름을 span 에 담으면 글자가 1px 로 잘려 안 보인다.
+    // span is off limits. In this menu .context-menu span is the separator (a 1px
+    // grey bar), so a name put inside a span gets cut to 1px and vanishes.
     return `<button data-iface="${n}"><i class="tick">${on ? '☑' : '☐'}</i>`
       + `<i class="if-name">${esc(card.desc || card.name)}</i>`
       + `<i class="if-net">${esc(where)}</i></button>`;
@@ -629,7 +625,7 @@ $('#ifaceMenu').addEventListener('click', (event) => {
   if (!button) return;
   const n = Number(button.dataset.iface);
   if (pickedIfaces.includes(n)) {
-    // 마지막 하나는 못 끈다. 아무것도 안 고른 상태는 쓸모가 없다.
+    // The last one cannot be unticked. Nothing selected is a useless state.
     if (pickedIfaces.length > 1) pickedIfaces = pickedIfaces.filter(x => x !== n);
   } else {
     pickedIfaces = [...pickedIfaces, n].sort((a, b) => a - b);
@@ -639,7 +635,7 @@ $('#ifaceMenu').addEventListener('click', (event) => {
 });
 
 function setTarget() {
-  // 고른 카드마다 자기 대역을 하나씩. 쉼표로 이으면 엔진이 카드별로 나눠 훑는다.
+  // One range per picked card. Joined by commas, the engine splits the scan per card.
   const parts = [];
   for (const card of selectedIfaces()) {
     const cidr = card.ipv4?.[0]?.cidr;
@@ -648,7 +644,7 @@ function setTarget() {
     else if (ip) parts.push(ip.split('.').slice(0, 3).join('.') + '.1-254');
   }
   if (parts.length) $('#target').value = parts.join(', ');
-  paintMenubarStat();       // 메뉴바 오른쪽 줄도 같이 바뀐다
+  paintMenubarStat();       // the menubar's right-hand line changes with it
 }
 function targetAddressCount(value) {
   const match = String(value || '').trim().match(/\/(\d{1,2})$/);
@@ -688,25 +684,25 @@ $('#refreshInterfaces').addEventListener('click', async () => {
   try { await loadInterfaces(previousNames); notice(t('refreshed')); }
   finally { button.disabled = false; }
 });
-/** 스캔 중에는 같은 자리의 단추가 빨간 '중지'로 바뀐다.
-    단추를 늘리면 누를 것이 하나 더 생기지만, 스캔 중에 '대역 스캔'을 누를 일은
-    어차피 없다. 자리를 지키는 쪽이 눈이 덜 헷갈린다. */
+/** While a scan runs, the button in that same spot turns into a red 'stop'.
+    A second button would be one more thing to hit, and nobody presses 'scan range'
+    mid-scan anyway. Holding the position confuses the eye less. */
 function paintScanButton() {
   const button = $('#scanBtn');
   button.textContent = scanRunning ? t('cancelScan') : t('scan');
   button.classList.toggle('danger', scanRunning);
   button.disabled = false;
-  paintMenubarStat();       // 메뉴바 오른쪽 점도 같이 바꾼다
+  paintMenubarStat();       // the menubar's right-hand dot changes with it
 }
 
 $('#scanBtn').addEventListener('click', async () => {
-  if (scanRunning) {          // 스캔 중이면 이 단추는 중지 단추다
+  if (scanRunning) {          // mid-scan this button is the stop button
     $('#scanBtn').disabled = true;
     notice(t('canceling'));
     try {
       const result = await call('cancel');
       if (result.state) applyState(result.state);
-    } catch (_) { /* call()에서 상태 메시지를 표시 */ }
+    } catch (_) { /* call() already shows the status message */ }
     finally { $('#scanBtn').disabled = false; }
     return;
   }
@@ -723,7 +719,7 @@ $('#scanBtn').addEventListener('click', async () => {
   paintScanButton();
   showProgress();
   expandedGroups = new Set();
-  sortKey = 'ip'; sortDesc = false;   // 새 스캔은 늘 .1 부터
+  sortKey = 'ip'; sortDesc = false;   // a new scan always starts at .1
   notice(t('scanning'));
   try {
     const result = await call('scan', { ifaces: cards, iface: cards[0], target });
@@ -737,13 +733,13 @@ $('#scanBtn').addEventListener('click', async () => {
   }
 });
 
-/* ── 창 바깥을 눌러 닫기 ──────────────────────────────────────────────
-   글자를 끌어서 선택하다가 손을 창 밖에서 떼면 창이 꺼지던 문제가 있었다.
-   브라우저는 누른 곳과 뗀 곳이 다르면 그 둘의 공통 부모에 click 을 준다.
-   칸 안에서 눌러 덮개 위에서 뗐다면 공통 부모가 바로 그 덮개다 — 그래서
-   덮개를 누른 것으로 잘못 읽혔다.
+/* ── Click outside to close ───────────────────────────────────────────
+   Dragging to select text and releasing outside the dialog used to close it.
+   When press and release land in different places, the browser fires click on their
+   common ancestor. Press inside a field, release on the backdrop, and that ancestor
+   is the backdrop — so it read as a click on the backdrop.
 
-   그래서 click 을 안 쓰고, 누른 곳과 뗀 곳이 **둘 다** 덮개일 때만 닫는다. */
+   So we skip click, and close only when press and release are **both** on the backdrop. */
 function closeOnBackdrop(id, close) {
   const dialog = document.getElementById(id);
   if (!dialog) return;
@@ -766,16 +762,16 @@ function showMenu(event, key) {
   menu.hidden = false;
   menu.style.left = `${Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)}px`;
   menu.style.top = `${Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)}px`;
-  // 지금 상태에서 할 수 있는 것만 띄운다. 둘 다 늘어놔봐야 헷갈리기만 한다.
+  // Show only what is possible in the current state. Listing both just confuses.
   const isolated = state.isolated === key;
   menu.querySelector('[data-menu="isolate"]').hidden = isolated;
   menu.querySelector('[data-menu="release"]').hidden = !isolated;
-  // PoE 재시작은 스위치가 실제로 전원을 주고 있는 포트에만 뜬다.
-  // 3 = 급전 중. 그 외에는 껐다 켤 전원이 없다.
+  // PoE restart only appears on ports the switch is actually powering.
+  // 3 = delivering power. Anything else has no power to cycle.
   menu.querySelector('[data-menu="poe"]').hidden = deviceOf(key)?.poeStatus !== 3;
 }
 
-/** key 로 장비 하나를 찾는다. 묶음 안에 들어 있어 한 번 헤집어야 한다. */
+/** Find one device by key. They live inside groups, so we dig one level down. */
 function deviceOf(key) {
   for (const group of (state.groups || []))
     for (const device of group.devices) if (device.key === key) return device;
@@ -798,8 +794,8 @@ $('#deviceList').addEventListener('click', (event) => {
   render();
 });
 $('#deviceList').addEventListener('contextmenu', (event) => {
-  // 합친 줄(.solo-row)에도 걸어야 한다. 안 그러면 한 대짜리 IP 는 우클릭이
-  // 아예 안 먹어서 검사도 격리도 못 한다.
+  // This has to catch the merged row (.solo-row) too. Otherwise right-click does
+  // nothing at all on a single-device IP — no identify, no isolate.
   const row = event.target.closest('.device-row, .solo-row');
   if (row) showMenu(event, row.dataset.key);
 });
@@ -826,15 +822,15 @@ $('#contextMenu').addEventListener('click', async (event) => {
       await navigator.clipboard.writeText((device?.mac || '').toUpperCase().replaceAll(':', '-'));
       notice(t('macCopied'));
     }
-  } catch (_) { /* call()에서 상태 메시지를 표시 */ }
+  } catch (_) { /* call() already shows the status message */ }
 });
 
 
 
-/* ── 장비 사전 ────────────────────────────────────────────────────────
-   MAC 앞자리로 제조사와 장비 종류를 알아보는 표. 현장에서 처음 보는 장비를
-   한 번 등록해두면 다음 현장부터는 스캔하자마자 이름이 뜬다.
-   앞 6자리만 적으면 그 제조사 전체, 12자리를 다 적으면 그 장비 한 대에만.
+/* ── Device book ──────────────────────────────────────────────────────
+   A table that reads vendor and device kind off the MAC prefix. Register a device
+   you meet for the first time and it comes up named on the next site's scan.
+   Six digits covers that whole vendor; all twelve pin it to that one device.
    ------------------------------------------------------------------- */
 
 function deviceByKey(key) {
@@ -863,7 +859,7 @@ $('#isolateConfirm').addEventListener('click', async () => {
   state.progress = { phase: t('isolatePhase'), pct: 0, msg: t('isolateMsg') };
   renderActivity();
   try { applyState(await call('isolate', { key })); notice(t('isolateDone')); }
-  catch (_) { /* call()에서 상태 메시지를 표시 */ }
+  catch (_) { /* call() already shows the status message */ }
   finally { hideProgressAfterCompletion(); renderActivity(); }
 });
 
@@ -887,12 +883,12 @@ async function describeScope() {
     : t('bookScopeAll', { p: pretty });
   box.textContent = range;
 
-  // 사전에 이미 있는 앞자리인지 확인해서 알려준다.
+  // Check whether the prefix is already in the book, and say so.
   clearTimeout(scopeTimer);
   scopeTimer = setTimeout(async () => {
     let found = null;
     try { found = (await call('book_lookup', { prefix: digits })).entry; } catch (_) { return; }
-    if (macDigits($('#bookPrefix').value) !== digits) return;   // 그새 바뀌었으면 버린다
+    if (macDigits($('#bookPrefix').value) !== digits) return;   // changed meanwhile, drop it
     $('#bookDelete').hidden = !found;
     if (!found) {
       box.textContent = `${range}\n${t('bookNew')}`;
@@ -908,8 +904,8 @@ async function describeScope() {
 function openBook(key) {
   const device = deviceByKey(key);
   if (!device) {
-    // 도구 메뉴에서 부르면 고른 장비가 없다. 그때는 빈 채로 열어 손으로
-    // 앞자리를 적게 한다 — 아직 스캔에 안 잡힌 장비를 미리 등록할 수 있다.
+    // Called from the tools menu there is no picked device. Open it empty and let
+    // the prefix be typed — a device not yet scanned can be registered ahead of time.
     for (const id of ['#bookPrefix', '#bookVendor', '#bookKind', '#bookNote']) $(id).value = '';
     describeScope();
     $('#bookSearch').value = '';
@@ -921,10 +917,10 @@ function openBook(key) {
     return;
   }
   const mac = (device.mac || '').toUpperCase().replaceAll(':', '-');
-  // 기본값은 제조사 앞 3바이트. 이 장비만 지정하려면 뒤까지 붙여 쓰면 된다.
+  // Default is the vendor's first three bytes. Type the rest to pin it to this device.
   $('#bookPrefix').value = mac.split('-').slice(0, 3).join('-');
   $('#bookVendor').value = device.vendor && device.vendor !== '미상' ? device.vendor : '';
-  // 사전에는 엔진이 쓰는 한국어 이름 그대로 넣는다 — 화면에서만 옮겨 보인다.
+  // The book stores the Korean kind names the engine uses — only the screen translates.
   $('#bookKind').value = device.kind && device.kind !== '미확인' ? device.kind : '';
   $('#bookNote').value = device.book_note || '';
   describeScope();
@@ -938,23 +934,23 @@ function openBook(key) {
 
 function closeBook() { $('#bookDialog').hidden = true; }
 
-/* ── 등록된 사전 목록 ───────────────────────────────────────────────
-   앞자리는 2,600개가 넘는데 항목은 150개다. 시스코 하나가 앞자리를 1,076개
-   물고 있기 때문이다. 앞자리를 한 줄씩 늘어놓으면 아무도 못 읽으므로
-   제조사·종류·메모가 같은 것끼리 묶어서 한 줄로 보여준다.
+/* ── The registered book ────────────────────────────────────────────
+   Over 2,600 prefixes, but only 150 entries. Cisco alone holds 1,076 of the
+   prefixes. One line per prefix is unreadable, so entries sharing vendor, kind
+   and note are merged onto a single line.
    ------------------------------------------------------------------- */
 
-let bookRows = [];        // [[앞자리, 제조사, 종류, 메모], ...] — 엔진이 준 그대로
-// 도구 메뉴에서 열었으면 '목록을 보는 중' 이다. 그때는 하나 고치고 창이
-// 닫혀 버리면 다시 열어야 한다 — 여러 개를 이어서 손보는 자리이기 때문이다.
+let bookRows = [];        // [[prefix, vendor, kind, note], ...] — exactly as the engine gave it
+// Opened from the tools menu means 'browsing the list'. Closing the dialog after
+// one edit would mean reopening it — this is where you fix several in a row.
 let bookBrowsing = false;
 
 function bookGroups() {
   const byWhat = new Map();
   for (const [prefix, vendor, kind, note] of bookRows) {
-    // 12자리를 다 적은 것은 '이 장비 한 대' 를 콕 집은 것이다. 제조사·종류가
-    // 같다고 앞자리 뭉치에 섞으면, 사람이 이름 붙여 등록해 둔 카메라 한 대가
-    // "Cisco · 앞자리 1076개" 안으로 사라진다. 따로 세운다.
+    // All twelve digits means somebody pinned one specific device. Merge it into the
+    // prefix pile because vendor and kind match, and the one camera a tech named and
+    // registered disappears inside "Cisco · 1076 prefixes". Keep it separate.
     const exact = String(prefix).length >= 12;
     const key = exact ? `\u0001${prefix}` : `${vendor}\u0000${kind}\u0000${note}`;
     if (!byWhat.has(key)) byWhat.set(key, { vendor, kind, note, exact, prefixes: [] });
@@ -962,7 +958,7 @@ function bookGroups() {
   }
   const out = [...byWhat.values()];
   for (const row of out) row.prefixes.sort();
-  // 직접 등록한 것을 맨 위로. 기본 사전 2,600개에 묻히면 안 된다.
+  // Hand-registered entries go on top. They must not be buried under 2,600 stock ones.
   out.sort((a, b) => (b.exact ? 1 : 0) - (a.exact ? 1 : 0)
     || (a.vendor || '').localeCompare(b.vendor || '')
     || (a.kind || '').localeCompare(b.kind || ''));
@@ -987,14 +983,14 @@ function renderBookList() {
     box.innerHTML = `<div class="bk-empty">${esc(t(all.length ? 'bookNoMatch' : 'bookNoneYet'))}</div>`;
     return;
   }
-  // 200줄 넘게 그리면 창이 버벅인다. 검색으로 좁히라고 말한다.
+  // Past 200 rows the dialog stutters. Tell them to narrow it with a search.
   const shown = rows.slice(0, 200);
   box.innerHTML = shown.map((row, n) => {
     const many = row.prefixes.length > 1;
     const head = many ? t('bookPrefixes', { n: row.prefixes.length })
                       : dashPrefix(row.prefixes[0]);
-    // 앞자리가 여럿이면 접어 두고, 눌러서 전부 펼쳐 본다. 예전에는 첫 번째
-    // 하나만 칸에 올라와서 나머지 37개를 볼 방법이 아예 없었다.
+    // Several prefixes stay folded and open on a click. It used to lift only the
+    // first one into the field, with no way whatsoever to see the other 37.
     const open = bookOpen.has(row.prefixes[0]);
     const chips = !many ? '' :
       `<div class="bk-pres"${open ? '' : ' hidden'}>`
@@ -1018,9 +1014,9 @@ function renderBookList() {
     : '');
 }
 
-// 한 항목에서 한 번에 그릴 앞자리 수. 시스코 하나가 1,074개라 다 그리면 멈춘다.
+// Prefixes drawn at once for one entry. Cisco alone has 1,074 — draw them all and it stalls.
 const BOOK_CHIPS = 120;
-const bookOpen = new Set();     // 펼쳐 둔 항목 (첫 앞자리로 기억한다)
+const bookOpen = new Set();     // unfolded entries (remembered by first prefix)
 
 /** 000f7c -> 00-0F-7C */
 function dashPrefix(prefix) {
@@ -1028,7 +1024,7 @@ function dashPrefix(prefix) {
   return (hex.match(/.{1,2}/g) || [hex]).join('-');
 }
 
-/** 사전은 엔진이 쓰는 한국어 종류를 담는다. 화면에서만 옮겨 보인다. */
+/** The book holds the Korean kind names the engine uses. Only the screen translates. */
 function kindShow(kind) {
   return (typeof KINDS === 'object' && KINDS && KINDS[kind]) ? KINDS[kind] : (kind || '');
 }
@@ -1043,10 +1039,10 @@ async function loadBookList() {
 
 $('#bookSearch').addEventListener('input', renderBookList);
 
-/* 목록에서 누를 때.
+/* Clicking in the list.
 
-   앞자리가 여럿인 항목은 눌러도 칸에 올리지 않는다 — 올릴 '하나' 가 없기
-   때문이다. 대신 펼쳐서 앞자리를 다 보여주고, 그중 하나를 누르면 그때 올린다.
+   An entry with several prefixes does not load into the fields on a click — there is
+   no single 'one' to load. It unfolds instead, and a click on one prefix loads that.
    ------------------------------------------------------------------- */
 $('#bookList').addEventListener('click', (event) => {
   const item = event.target.closest('.bk-item');
@@ -1056,7 +1052,7 @@ $('#bookList').addEventListener('click', (event) => {
 
   const chip = event.target.closest('.bk-chip');
   if (!chip && group.prefixes.length > 1) {
-    // 묶인 항목 — 접었다 폈다만 한다
+    // merged entry — folds and unfolds, nothing else
     if (bookOpen.has(group.prefixes[0])) bookOpen.delete(group.prefixes[0]);
     else bookOpen.add(group.prefixes[0]);
     renderBookList();
@@ -1069,7 +1065,7 @@ $('#bookList').addEventListener('click', (event) => {
   (chip || item.querySelector('.bk-row')).classList.add('on');
 });
 
-/** 고른 앞자리를 위 칸으로 올린다. 고치거나 지우기 위해서다. */
+/** Load the picked prefix into the fields above, to edit or delete it. */
 function pickBookEntry(group, prefix) {
   $('#bookPrefix').value = dashPrefix(prefix);
   $('#bookVendor').value = group.vendor || '';
@@ -1097,7 +1093,7 @@ $('#bookSave').addEventListener('click', async () => {
     notice(result.created ? t('bookAdded') : t('bookUpdated'));
     if (bookBrowsing) { bookRows = result.rows || bookRows; renderBookList(); }
     else closeBook();
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
 });
 
 $('#bookDelete').addEventListener('click', async () => {
@@ -1113,18 +1109,18 @@ $('#bookDelete').addEventListener('click', async () => {
       describeScope();
       renderBookList();
     } else closeBook();
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
 });
 
 
 
-/* ── 목록 다루기 ──────────────────────────────────────────────────────
-   장비가 서른 대만 넘어가도 눈으로 훑기 어렵다. 검색으로 걸러내고,
-   머리글을 눌러 정렬한다. 걸러낸 결과 그대로 파일로도 내보낸다.
+/* ── Working the list ─────────────────────────────────────────────────
+   Past thirty devices you cannot scan it by eye. Filter with a search, sort by
+   clicking a header. Whatever the filter leaves is exactly what goes out to file.
    ------------------------------------------------------------------- */
 
 function deviceText(d) {
-  // 지금 안 보이는 칸의 값도 뒤진다. 숨겼다고 못 찾으면 곤란하다.
+  // Search hidden columns too. Hiding a column must not make its value unfindable.
   return [d.ip, d.mac, d.host, d.nbname, d.mdns, d.ssdp, d.vendor, d.kind,
           d.model, d.serial, d.swport, d.os, (d.ports || []).join(' ')]
     .filter(Boolean).join(' ').toLowerCase();
@@ -1163,14 +1159,14 @@ $('#tableHead').addEventListener('click', (event) => {
   render();
 });
 
-/* ── 준공 · 점검 리포트 ─────────────────────────────────────────────
-   기사들이 스캔하고 나서 손으로 엑셀에 치던 것 — 장비 목록, 몇 번 포트에
-   뭐가 물렸는지, 속도, PoE 전력 — 을 그대로 한 부로 뽑는다. 스위치 IP 는
-   목록에서 저절로 모은다. 사람이 다시 입력하게 만들면 한 대를 빠뜨리고,
-   빠뜨린 스위치는 문서에서 조용히 사라진다. 그건 리포트가 아니다.
+/* ── Handover · inspection report ───────────────────────────────────
+   What techs used to retype into Excel after a scan — the device list, what sits on
+   which port, speeds, PoE draw — comes out as one document. Switch IPs are collected
+   off the list on their own. Make a person retype them and one switch gets missed,
+   and a missed switch vanishes quietly from the document. That is not a report.
    ------------------------------------------------------------------- */
 
-/** 지금 목록에 붙어 있는 스위치 IP 를 모은다. */
+/** Collect the switch IPs attached to the current list. */
 function switchesInList() {
   const found = new Set();
   for (const group of (state.groups || [])) {
@@ -1193,7 +1189,7 @@ function renderReportScope() {
 
 $('#reportBtn').addEventListener('click', () => {
   if (!$('#reportSite').value.trim()) $('#reportSite').value = $('#target').value.trim();
-  // 포트 관리 창에서 쓰던 문자열을 그대로 가져다 준다. 같은 스위치, 같은 값이다.
+  // Carry over the community string from the port manager. Same switch, same value.
   if (!$('#reportCommunity').value.trim()) {
     $('#reportCommunity').value = ($('#snmpCommunity').value || '').trim();
   }
@@ -1232,14 +1228,14 @@ $('#reportGo').addEventListener('click', async () => {
     notice(result.slow
       ? t('reportDoneSlow', { sw: result.switches, n: result.devices, slow: result.slow })
       : t('reportDone', { sw: result.switches, n: result.devices }));
-    // 못 읽은 스위치가 있으면 조용히 넘어가지 않는다. 문서에도 적혀 있지만,
-    // 저장한 그 자리에서 한 번 더 말해 줘야 사람이 다시 뽑을 생각을 한다.
+    // A switch we could not read never passes quietly. It is in the document too,
+    // but saying it again right where they saved is what makes them re-export.
     if (result.missed) setTimeout(() => notice(t('reportMissed', { n: result.missed }), true), 2500);
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
   finally { button.disabled = false; }
 });
 
-/* ── 내보내기 ─────────────────────────────────────────────────────── */
+/* ── Export ───────────────────────────────────────────────────────── */
 
 $('#exportBtn').addEventListener('click', async () => {
   const picked = await window.ipfix.saveDialog({
@@ -1261,7 +1257,7 @@ $('#exportBtn').addEventListener('click', async () => {
     notice(format === 'html'
       ? t('exportedHtml', { n: result.count })
       : t('exported', { n: result.count }));
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
 });
 
 function compareRows(title, items, render) {
@@ -1305,34 +1301,34 @@ $('#historyBody').addEventListener('click', async (event) => {
     const result = await call('history_compare', { id });
     $('#historyDialog').hidden = true;
     showCompare(result);
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
 });
 const closeHistory = () => { $('#historyDialog').hidden = true; };
 $('#historyClose').addEventListener('click', closeHistory);
 $('#historyOk').addEventListener('click', closeHistory);
 closeOnBackdrop('historyDialog', closeHistory);
 
-/* ── 언어 ─────────────────────────────────────────────────────────────
-   화면 문구는 i18n.js 가, 로그 문구는 엔진이 만든다. 그래서 바꿀 때
-   양쪽에 다 알려야 한다. 이미 쌓인 로그는 그때 언어 그대로 남는다 —
-   지나간 기록을 나중에 고쳐 쓰면 그게 더 헷갈린다.
+/* ── Language ─────────────────────────────────────────────────────────
+   i18n.js makes the screen text, the engine makes the log text. So a change has to
+   be told to both. Log lines already stacked stay in the language they were written
+   in — rewriting past records after the fact confuses more than it helps.
    ------------------------------------------------------------------- */
 
-/* ── 메뉴바 · 밀집 보기 ─────────────────────────────────────────────
-   메뉴는 아래 작업줄 단추를 대신하지 않는다. 자주 쓰는 것은 단추로 그대로
-   두고, 메뉴는 "그게 어디 있더라" 를 없애고 단축키를 붙이는 자리다.
-   그래서 여기 있는 항목은 전부 기존 단추를 그대로 누른다 — 같은 동작이
-   두 벌 있으면 한쪽만 고치고 다른 쪽을 잊는다.
+/* ── Menubar · dense view ───────────────────────────────────────────
+   The menu does not replace the toolbar buttons below. What gets used often stays a
+   button; the menu is where "now where was that" dies and shortcuts live.
+   So every item here just presses the existing button — keep two copies of one
+   action and you fix one and forget the other.
    ------------------------------------------------------------------- */
 
 const DENSE_STORE = 'ipscan.dense';
-// 기본이 밀집이다. 한 화면에 두 배 가까이 들어간다. 끈 사람만 기억한다.
+// Dense is the default. Nearly twice as much fits on a screen. We only remember who turned it off.
 let dense = true;
 try { dense = localStorage.getItem(DENSE_STORE) !== '0'; } catch (_) { dense = true; }
 
 function applyDense() {
   document.body.classList.toggle('dense', dense);
-  try { localStorage.setItem(DENSE_STORE, dense ? '1' : '0'); } catch (_) { /* 이번 판만 적용 */ }
+  try { localStorage.setItem(DENSE_STORE, dense ? '1' : '0'); } catch (_) { /* this run only */ }
 }
 
 function setDense(on) {
@@ -1344,17 +1340,17 @@ function setDense(on) {
 function setLang(picked) {
   if (picked === lang) return;
   lang = picked;
-  try { localStorage.setItem(LANG_STORE, lang); } catch (_) { /* 못 저장해도 이번엔 적용된다 */ }
+  try { localStorage.setItem(LANG_STORE, lang); } catch (_) { /* if it will not save, it still applies now */ }
   applyStaticText();
-  if (interfaces.length) renderIfaceMenu();     // 단추 글도 언어를 탄다
+  if (interfaces.length) renderIfaceMenu();     // button text follows the language too
   paintScanButton();
   renderColumnMenu();
   paintMenubarStat();
   render();
-  call('set_lang', { lang }).catch(() => { /* 엔진이 못 받아도 화면은 바뀐다 */ });
+  call('set_lang', { lang }).catch(() => { /* the screen changes even if the engine misses it */ });
 }
 
-/** 메뉴 한 벌. [글, 단축키, 누르면 할 일, 체크 여부] */
+/** One menu's worth. [text, shortcut, what to do, ticked] */
 function menuItems(which) {
   const hit = (id) => () => $(id).click();
   if (which === 'file') return [
@@ -1364,8 +1360,8 @@ function menuItems(which) {
     [t('mbQuit'), 'Alt+F4', () => window.close()],
   ];
   if (which === 'view') return [
-    // 칸 고르기는 넣지 않는다. 머리글 우클릭이 원래 자리고, 거기 있는 것을
-    // 메뉴에 한 번 더 두면 목록만 길어진다.
+    // Column picking is not in here. Right-click on the header is its home, and
+    // putting it in the menu as well only makes the list longer.
     [t('mbDense'), 'Ctrl+D', () => setDense(!dense), dense],
     ['-'],
     [t('mbLangKo'), '', () => setLang('ko'), lang === 'ko'],
@@ -1388,9 +1384,9 @@ function menuItems(which) {
   ];
 }
 
-/** 사용설명서를 기본 브라우저로 연다.
-    못 열면 반드시 말한다 — 눌렀는데 아무 일도 안 일어나면 사람은
-    프로그램이 고장 난 줄 알고 계속 누른다. */
+/** Opens the manual in the default browser.
+    If it will not open, say so — press a button, watch nothing happen, and a person
+    decides the program is broken and keeps pressing. */
 async function openManual() {
   try {
     const got = await window.ipfix.openManual(lang);
@@ -1416,7 +1412,7 @@ function openMenubar(button) {
   pop.hidden = false;
   pop.dataset.menu = button.dataset.menu;
   const box = button.getBoundingClientRect();
-  // 창 오른쪽 끝을 넘어가면 왼쪽으로 붙인다
+  // past the right edge of the window it snaps to the left
   const left = Math.min(box.left, window.innerWidth - pop.offsetWidth - 8);
   pop.style.left = `${Math.max(8, left)}px`;
   pop.style.top = `${box.bottom + 3}px`;
@@ -1425,33 +1421,33 @@ function openMenubar(button) {
   }
 }
 
-/* 눌러서 연 메뉴의 이름.
+/* Name of the menu that was opened by a press.
 
-   '열려 있으면 닫는다' 를 그냥 쓰면 안 된다. 메뉴가 열려 있을 때 옆 항목으로
-   마우스를 가져가면 그것이 열리는데(아래 mouseover), 거기서 누르는 순간
-   '이미 열려 있으니 닫자' 가 되어 방금 연 메뉴가 손가락을 떼기도 전에
-   사라진다. 그래서 '눌러서 연 것' 만 다시 눌러 닫는다. */
+   Plain 'if it is open, close it' does not work here. With a menu open, moving the
+   mouse onto the neighbouring item opens that one (mouseover below), and pressing
+   there becomes 'already open, so close' — the menu you just opened disappears
+   before your finger comes up. So only a press-opened menu closes on a press. */
 let mbPressed = '';
 
 document.querySelector('.menubar').addEventListener('mousedown', (event) => {
   const button = event.target.closest('button[data-menu]');
   if (!button) return;
-  event.preventDefault();          // 글자가 드래그로 선택되지 않게
+  event.preventDefault();          // stop the label being drag-selected
   event.stopPropagation();
   if (mbPressed === button.dataset.menu) { closeMenubar(); return; }
   openMenubar(button);
   mbPressed = button.dataset.menu;
 });
 
-// 하나가 열려 있으면 옆으로 지나가기만 해도 바뀐다 — 보통 메뉴바가 그렇다
+// With one open, just passing over the next one switches — that is how menubars work
 document.querySelector('.menubar').addEventListener('mouseover', (event) => {
   const button = event.target.closest('button[data-menu]');
   if (!button || $('#mbPop').hidden || button.classList.contains('on')) return;
   openMenubar(button);
-  mbPressed = '';                  // 지나가서 열린 것은 눌러서 연 것이 아니다
+  mbPressed = '';                  // opened by passing over is not opened by a press
 });
 
-// 바깥을 누르면 닫는다
+// press outside to close
 document.addEventListener('mousedown', (event) => {
   if (!event.target.closest('#mbPop') && !event.target.closest('.menubar')) closeMenubar();
 });
@@ -1466,7 +1462,7 @@ $('#mbPop').addEventListener('click', (event) => {
   if (item && typeof item[2] === 'function') item[2]();
 });
 
-/** 오른쪽 끝 한 줄 — 지금 무엇으로 보고 있는지가 늘 눈에 있어야 한다. */
+/** The line at the far right — what you are looking through must always be in sight. */
 function paintMenubarStat() {
   const box = $('#mbStat');
   if (!box) return;
@@ -1482,7 +1478,7 @@ function paintMenubarStat() {
   box.innerHTML = `<i></i>${esc(t('mbStatNets', { if: names, n: nets || 1 }))}`;
 }
 
-/** 랜카드 이름을 짧게. 제조사 수식어는 랙 앞에서 아무 도움이 안 된다. */
+/** Shorten the NIC name. Vendor padding helps nobody standing in front of a rack. */
 function shortIfaceName(card) {
   const text = String((card && (card.desc || card.name)) || '');
   const short = text
@@ -1491,17 +1487,17 @@ function shortIfaceName(card) {
   return short || text.slice(0, 18);
 }
 
-/* F1 = 사용설명서. 어느 창에 있든, 글자를 치는 중이라도 먹는다 —
-   막혀서 도움을 찾는 순간에 조건을 붙이면 안 된다. */
+/* F1 = manual. Works in any dialog, even mid-typing — the moment someone is
+   stuck and reaching for help is no place for conditions. */
 document.addEventListener('keydown', (event) => {
   if (event.key === 'F1') { event.preventDefault(); closeMenubar(); openManual(); }
 });
 
-/* 단축키. 글자 칸에 타이핑 중일 때는 가로채지 않는다. */
+/* Shortcuts. Not intercepted while typing in a text field. */
 document.addEventListener('keydown', (event) => {
   if (!event.ctrlKey || event.altKey || event.metaKey) return;
   const key = event.key.toLowerCase();
-  // Ctrl+Enter 는 글자 칸 안에서도 먹어야 한다 — 대역을 치고 바로 돌린다.
+  // Ctrl+Enter has to work inside a text field too — type the range and run it.
   if (key === 'enter') { event.preventDefault(); closeMenubar(); return $('#scanBtn').click(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
   const shortcuts = {
@@ -1523,15 +1519,15 @@ $('#target').addEventListener('input', paintMenubarStat);
 paintMenubarStat();
 window.ipfix.onState(applyState);
 call('set_lang', { lang }).catch(() => {});
-// 장비 종류 이름표를 엔진에서 받아온다. 못 받으면 한국어 그대로 보인다.
+// Fetch the device-kind labels from the engine. Without them the Korean shows as-is.
 call('kinds').then((map) => { Object.assign(KINDS, map || {}); render(); }).catch(() => {});
 loadInterfaces();
 render();
 
 
-/* ── 빈 IP ──────────────────────────────────────────────────────────
-   훑은 대역에서 아무도 답하지 않은 자리. 연속된 자리는 묶어서 보여준다.
-   무엇을 어디에 넣을지는 사람이 정한다 — 도구는 빈자리만 알려준다.
+/* ── Free IPs ───────────────────────────────────────────────────────
+   Addresses in the scanned range that nobody answered on. Runs are shown merged.
+   What goes where is the tech's call — the tool only points at the empty seats.
    ------------------------------------------------------------------- */
 
 let freeList = [];
@@ -1541,9 +1537,9 @@ $('#freeBtn').addEventListener('click', async () => {
   try {
     info = await window.ipfix.request('free_ips', {});
   } catch (error) {
-    // 스캔이 끝까지 안 갔으면 엔진이 목록 자체를 안 준다. 그 이유를 아래 로그
-    // 한 줄로 흘리면 아무도 안 읽는다 — 창을 열어 거기 크게 적는다. 빈 IP 는
-    // 그대로 배정에 쓰이는 목록이라, 못 믿을 이유를 반드시 읽혀야 한다.
+    // If the scan did not finish, the engine hands back no list at all. Slip that
+    // reason into one log line below and nobody reads it — open the dialog and write
+    // it large. These IPs get assigned straight off this list; the doubt must be read.
     freeList = [];
     $('#freeWhen').textContent = '';
     $('#freeBody').innerHTML = `<p class="free-refuse">${esc(cleanMessage(error.message))}</p>`;
@@ -1555,8 +1551,8 @@ $('#freeBtn').addEventListener('click', async () => {
   $('#freeWhen').textContent = info.scanned
     ? t('freeSummary', { scanned: info.scanned, used: info.used, free: freeList.length })
     : t('freeScanFirst');
-  // 묶어서 보여주면 짧지만, 현장에서는 "몇 번을 줄까" 를 눈으로 짚는다.
-  // 그래서 한 줄에 하나씩 그대로 늘어놓는다.
+  // Merged ranges are shorter, but on site you point at "which number do I give it".
+  // So they get listed one per line, exactly as they are.
   $('#freeBody').innerHTML = freeList.length
     ? freeList.map(ip => `<div class="free-ip">${esc(ip)}</div>`).join('')
     : `<p class="compare-none">${info.scanned ? t('freeNone') : t('freeNoScan')}</p>`;
@@ -1578,21 +1574,21 @@ $('#freeExport').addEventListener('click', async () => {
   try {
     const result = await call('free_export', { path: picked });
     notice(t('freeExported', { n: result.count }));
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
 });
 const closeFree = () => { $('#freeDialog').hidden = true; };
 $('#freeClose').addEventListener('click', closeFree);
 $('#freeOk').addEventListener('click', closeFree);
 closeOnBackdrop('freeDialog', closeFree);
 
-/* ── 스위치 포트 찾기 (SNMP) ─────────────────────────────────────────
-   "이 카메라가 랙 어느 포트에 물렸나" 를 스위치에 직접 물어본다.
-   읽기 전용이다. 스위치 설정은 건드리지 않는다.
+/* ── Finding switch ports (SNMP) ─────────────────────────────────────
+   Asks the switch directly: "which port in the rack is this camera on".
+   Read-only. It does not touch the switch config.
    ------------------------------------------------------------------- */
 
 $('#snmpBtn').addEventListener('click', () => {
   if (!$('#snmpHost').value) {
-    // 대개 스위치는 대역의 첫 주소다. 아니면 사람이 고쳐 넣는다.
+    // The switch is usually the first address in the range. If not, it gets typed in.
     const ip = selectedIface()?.ips?.[0];
     if (ip) $('#snmpHost').value = ip.split('.').slice(0, 3).join('.') + '.1';
   }
@@ -1620,14 +1616,14 @@ $('#snmpRun').addEventListener('click', async () => {
         ? t('snmpMatched', { sw: result.switch, read: result.read, n: result.matched })
         : t('snmpNoMatch', { sw: result.switch, read: result.read })),
       slow.length > 0 || !result.matched);
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
   finally { $('#snmpRun').disabled = false; }
 });
 
-/* ── PoE 전원 재시작 ──────────────────────────────────────────────────
-   먹통 된 카메라의 랜선을 뽑았다 꽂는 일을, 스위치를 시켜서 한다.
-   쓰는 동작이라 커뮤니티가 따로 필요하고(대개 읽기용과 다르다),
-   되돌릴 수 없는 일이므로 무엇을 끄는지 확인 창에서 보여준다.
+/* ── PoE power cycle ──────────────────────────────────────────────────
+   Unplugging and replugging a dead camera's cable, done by the switch instead.
+   It is a write, so it needs its own community (usually not the read one), and
+   it cannot be undone, so the confirm dialog shows exactly what is being cut.
    ------------------------------------------------------------------- */
 
 let poeKey = null;
@@ -1639,7 +1635,7 @@ function openPoe(key) {
   poeKey = key;
   $('#poeTarget').value = `${device.ip}  ·  ${device.swport || ''}`
     + (device.poeWatt ? `  ·  ${device.poeWatt.toFixed(1)}W` : '');
-  // 스위치 IP 는 방금 포트 조회에 쓴 것을 그대로 가져온다.
+  // The switch IP carries over from the port lookup just run.
   if (!$('#poeHost').value) $('#poeHost').value = $('#snmpHost').value || '';
   $('#poeDialog').hidden = false;
   $('#poeCommunity').focus();
@@ -1668,17 +1664,17 @@ $('#poeRun').addEventListener('click', async () => {
     applyState(result.state);
     closePoe();
     notice(t('poeDone', { ip: device?.ip || '' }));
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
   finally { $('#poeRun').disabled = false; }
 });
 
-/* ── 스위치 포트 관리 ─────────────────────────────────────────────────
-   목록에는 장비가 붙은 포트만 나온다. 빈 포트는 안 나온다 — 그런데 준공 때
-   잠가야 하는 것이 바로 그 빈 포트다. 그래서 스위치에 직접 물어 전체 포트를
-   가져온다.
+/* ── Switch port management ───────────────────────────────────────────
+   The list only shows ports with a device on them. Empty ports never appear — and
+   the empty ports are exactly what has to be locked at handover. So we ask the
+   switch directly for every port.
 
-   못 잠그는 포트(내 PC·업링크·스위치 자신)는 백엔드가 이유까지 붙여 보내고,
-   여기서는 단추를 아예 못 누르게 한다. 눌렀다 거절당하는 것보다 낫다.
+   Ports we must not lock (this PC, the uplink, the switch itself) come back from the
+   backend with a reason attached, and we grey the button out. Better than a refusal after the press.
    ------------------------------------------------------------------- */
 
 let portsData = { switch: '', rows: [], fdbOk: false };
@@ -1692,23 +1688,23 @@ function portStateLabel(row) {
   return { text: t('portsStateDown'), cls: 'down' };
 }
 
-/** 포트 이름에서 앞판에 적힌 번호를 뽑는다. GigabitEthernet1/0/12 -> 12
-    엔진(port_number)과 규칙이 같아야 한다. 다르면 엑셀 리포트에 찍힌 번호와
-    화면에 뜬 번호가 어긋나고, 기사는 그 번호를 세면서 랙 앞에 서 있다. */
+/** Pulls the number printed on the faceplate out of the port name. GigabitEthernet1/0/12 -> 12
+    Must follow the same rule as the engine (port_number). Differ, and the number in
+    the Excel report and the one on screen disagree while a tech counts ports at the rack. */
 function portNumber(row) {
   const runs = String(row.name || '').match(/\d+/g);
   if (runs && runs.length) return Number(runs[runs.length - 1]);
   return Number(row.index) || 0;
 }
 
-/** 업링크·광포트는 앞판에서 따로 떨어져 있다. 속도나 이름으로 가린다. */
+/** Uplinks and fibre ports sit apart on the faceplate. Told apart by speed or name. */
 function isUplink(row) {
   return (row.speed || 0) >= 10000 || /^(te|twe|fo|fi|hu|xg|sfp)/i.test(String(row.name || ''));
 }
 
-/** 링크가 붙어 있는데 반이중으로 앉았는가. 2 = 반이중, 3 = 전이중.
-    0 은 스위치가 이 값을 아예 안 내준 것이라 아무 말도 하지 않는다 —
-    0 을 '전이중' 으로 읽으면 확인하지도 않은 것을 정상이라고 칠하게 된다. */
+/** Link is up, but did it settle at half duplex. 2 = half, 3 = full.
+    0 means the switch never reported the value at all, so we say nothing —
+    reading 0 as 'full' paints something we never checked as healthy. */
 function isHalfDuplex(row) {
   return Number(row.duplex || 0) === 2 && row.oper === 1;
 }
@@ -1716,38 +1712,38 @@ function isHalfDuplex(row) {
 function portClass(row) {
   if (row.admin === 2) return 'locked';
   if (row.oper !== 1) return 'idle';
-  // 느리다고 볼 근거가 셋이다. wasSpeed 는 '이 포트가 전에는 더 빨랐다' 는
-  // 기록이라 훨씬 확실하다. slowLink 는 '옆 포트들보다 느리다' 는 짐작이다.
-  // 반이중은 짐작이 아니라 스위치가 직접 한 말이라 제일 확실하다 — 그런데
-  // 속도 칸은 멀쩡해 보이기 때문에 여기서 칠해주지 않으면 아무도 못 찾는다.
+  // Three grounds for calling a port slow. wasSpeed is our own record that this port
+  // used to run faster, so it is solid. slowLink is a guess: it is slower than its
+  // neighbours. Half duplex is no guess — the switch said it itself, so it is surest
+  // of the three, and the speed column looks fine, so nobody finds it unless we paint it.
   return (isHalfDuplex(row) || row.wasSpeed || row.slowLink) ? 'slow' : 'live';
 }
 
-/** 스위치 앞판. 실물처럼 홀수는 위, 짝수는 아래로 놓는다. */
+/** The switch faceplate. Like the real thing: odds on top, evens below. */
 function renderFace() {
   const rows = portsData.rows || [];
-  // 기준은 최고 속도가 아니라 '제일 흔한 속도'. 10G 업링크 하나 때문에
-  // 멀쩡한 1G 포트가 전부 느린 것으로 잡히면 안 된다.
-  // 링크가 붙어 있는 포트만 센다. 안 꽂힌 포트에 명목 속도를 적어 내는
-  // 스위치가 있어서, 빈 포트 스무 개가 '보통 1G' 라고 투표해 버린다.
+  // The baseline is the most common speed, not the highest. One 10G uplink must not
+  // make every healthy 1G port read as slow.
+  // Only ports with a link count. Some switches report a nominal speed on ports with
+  // nothing plugged in, so twenty empty ports vote '1G is normal'.
   const live = rows.filter(r => r.oper === 1 && r.speed > 0);
   const tally = new Map();
   for (const row of live) tally.set(row.speed, (tally.get(row.speed) || 0) + 1);
   let usual = 0;
   for (const [speed, n] of tally) {
     const best = tally.get(usual) || 0;
-    // 동수면 느린 쪽을 보통으로 본다. CCTV 현장은 100M 카메라가 절반인 곳이
-    // 흔해서, 빠른 쪽으로 기울이면 멀쩡한 카메라 열 대가 전부 빨개진다.
+    // On a tie, the slower side is normal. Half the cameras on a CCTV site are often
+    // 100M, and leaning fast turns ten healthy cameras red.
     if (n > best || (n === best && speed < usual)) usual = speed;
   }
-  // 느린 쪽이 소수일 때만 '이상하다' 고 할 수 있다. 절반이 100M 인 스위치에서
-  // 100M 은 고장이 아니라 그냥 이 현장의 모습이다.
+  // Only a minority running slow can be called wrong. On a switch that is half 100M,
+  // 100M is not a fault, it is just what this site looks like.
   const slowSide = live.filter(r => usual >= 1000 && r.speed <= usual / 4).length;
   const minority = live.length >= 4 && slowSide * 3 <= live.length;
   for (const row of rows) {
-    // speedOk 는 사람이 "이 포트는 원래 이 속도" 라고 눌러 둔 것이다. 그걸
-    // 누르고도 계속 빨갛게 남으면 단추가 안 먹은 것처럼 보이고, 그다음부터
-    // 사람은 빨간색 전체를 무시한다.
+    // speedOk is a tech pressing "this port always ran at this speed". Press that and
+    // have the port stay red and the button looks dead, and from then on the tech
+    // ignores red everywhere.
     row.slowLink = !row.speedOk && minority && usual >= 1000 && row.oper === 1
       && row.speed > 0 && row.speed <= usual / 4;
   }
@@ -1768,17 +1764,17 @@ function renderFace() {
                  row.wasSpeed ? `← ${formatSpeed(row.wasSpeed)} (${row.wasAt})` : '',
                  row.poeStatus === 3 ? `PoE ${(row.poeWatt || 0).toFixed(1)}W` : '',
                  who, row.blocked].filter(Boolean).join(' · ');
-    // 반이중은 색만으로는 속도 저하와 구분이 안 된다. 조치가 다르다 —
-    // 하나는 랜선을 다시 성단하는 일이고, 하나는 양끝 설정을 맞추는 일이다.
+    // Colour alone cannot separate half duplex from a slow link. The fix differs —
+    // one is reterminating the cable, the other is matching settings at both ends.
     const face = row.admin === 2 ? '\u2715'
       : (half ? `${portNumber(row)}<i class="pp-half">\u00bd</i>` : portNumber(row));
     return `<button class="pport ${marks.join(' ')}" data-index="${esc(row.index)}"`
       + ` title="${esc(tip)}">${face}</button>`;
   };
 
-  // 실물 스위치는 1번 밑에 2번, 3번 밑에 4번이 온다. 그러니 번호 순으로
-  // 늘어놓으면 안 되고 자리를 잡아 놓아야 한다 — 없는 번호는 빈 칸으로 둔다.
-  // 그래야 랙 앞에서 세어본 위치와 화면이 같아진다.
+  // On a real switch, 2 sits under 1 and 4 under 3. So they cannot just be laid out
+  // in number order, they have to be placed — missing numbers stay empty slots.
+  // That is what makes the screen match what you counted at the rack.
   const byNumber = new Map(access.map(r => [portNumber(r), r]));
   const last = Math.max(0, ...byNumber.keys());
   const top = [], bottom = [];
@@ -1790,7 +1786,7 @@ function renderFace() {
     + `<div class="face-line">${top.join('')}</div>`
     + `<div class="face-line">${bottom.join('')}</div></div>`;
 
-  // 범례는 여섯 개. 색 다섯 + 점선 하나로 앞판의 모든 상태가 설명된다.
+  // Six legend keys. Five colours plus one dashed outline explain every faceplate state.
   const legend = [
     ['live', t('portsLegend')], ['slow', t('portsLegendSlow')],
     ['slow half', t('portsLegendHalf')],
@@ -1798,7 +1794,7 @@ function renderFace() {
     ['live has-poe', t('portsLegendPoe')], ['keep', t('portsLegendKeep')],
   ].map(([cls, text]) => `<span class="face-key"><i class="pport ${cls}">${cls === 'locked' ? '\u2715' : (cls === 'slow half' ? '\u00bd' : '')}</i>${esc(text)}</span>`).join('');
 
-  // 창 맨 위 한 줄. 숫자 넷이면 이 스위치 상태가 다 설명된다.
+  // One line at the top of the dialog. Four numbers describe this switch completely.
   $('#portsWhere').textContent = t('portsWhere', { sw: portsData.switch, n: rows.length });
   $('#portsTally').innerHTML = [
     ['live', rows.filter(r => portClass(r) === 'live').length, t('portsTallyUp')],
@@ -1817,16 +1813,16 @@ function renderFace() {
     + `</div><div class="face-legend">${legend}</div>`;
 }
 
-/** 고른 포트 하나. 한 줄 요약과 다룰 수 있는 단추뿐이다.
-    포트를 고르기 전에는 아예 나오지 않는다 — 빈 칸도 화면을 어지럽힌다. */
+/** The one picked port. A one-line summary and the buttons that apply, nothing else.
+    Before a port is picked it does not appear at all — an empty panel is clutter too. */
 function renderDetail() {
   const panel = $('#portsDetail');
   const row = (portsData.rows || []).find(r => String(r.index) === String(pickedPort));
   if (!row) { panel.hidden = true; panel.innerHTML = ''; return; }
 
   const state = portStateLabel(row);
-  // 듀플렉스는 아는 경우에만 적는다. 3(전이중)이면 조용히 옆에 붙여 두고,
-  // 0(스위치가 안 알려줌)이면 아무 말도 안 한다.
+  // Duplex is written only when we know it. 3 (full) gets tucked quietly alongside;
+  // 0 (the switch never told us) says nothing at all.
   const dup = row.oper === 1 && Number(row.duplex || 0) === 3 ? t('portsFull') : '';
   const meta = [
     row.speed ? formatSpeed(row.speed) : '',
@@ -1848,24 +1844,24 @@ function renderDetail() {
     acts.push(`<button class="ghost-btn danger-btn" data-act="lock"${row.blocked ? ' disabled' : ''}>${esc(t('portsLock'))}</button>`);
   }
 
-  // "모르는 장비" 라고 말할 수 있는 경우는 하나뿐이다 —
-  // 스위치가 MAC 을 알려줬는데(fdbOk) 그 MAC 이 우리 목록에 없을 때.
+  // There is exactly one case where we may say "unknown device" —
+  // the switch gave us a MAC (fdbOk) and that MAC is not in our list.
   //
-  // MAC 자체를 못 읽었으면 그냥 모르는 것이지 '없는' 것이 아니다. 거기에
-  // 경고를 붙이면 포트마다 빨간 딱지가 붙어서 진짜 봐야 할 것을 덮는다.
+  // If we could not read the MAC at all, we simply do not know; that is not the same
+  // as absent. Warn there and every port gets a red tag, burying what really matters.
   const seen = row.devices || [];
   const strangers = seen.filter(d => !d.ip);
   const ghost = portsData.fdbOk && row.oper === 1 && seen.length && !seen.some(d => d.ip)
     ? `<div class="pd-ghost">${esc(t('portsGhost', { n: strangers.length }))}</div>` : '';
 
-  // 이 포트가 예전에 더 빨랐다는 기록. 짐작이 아니라 우리가 적어둔 사실이라
-  // 따로, 눈에 띄게 내놓는다. 옆에 '정상입니다' 를 같이 둔다 — 일부러 100M
-  // 장비를 물려둔 포트가 영원히 빨갛게 남으면 사람은 빨간색 전체를 무시한다.
+  // Our record that this port used to be faster. Not a guess but a fact we wrote
+  // down, so it gets its own prominent spot. A 'this is normal' button sits beside
+  // it — a port deliberately holding a 100M device, left red forever, kills red.
   //
-  // 근거가 둘이다. wasSpeed 는 "이 포트가 전에는 더 빨랐다" 는 우리 기록이라
-  // 확실하고, slowLink 는 "옆 포트들보다 느리다" 는 짐작이다. 둘 다 빨갛게
-  // 칠하는 이상, 둘 다 "정상입니다" 로 재울 수 있어야 한다. 짐작으로 빨개진
-  // 포트를 끌 방법이 없으면 그 빨강은 영원히 남고, 곧 무시당한다.
+  // Two grounds. wasSpeed is our record that "this port used to run faster", so it
+  // is certain; slowLink is the guess that "it is slower than its neighbours". As
+  // long as both paint red, both have to be silenceable with "this is normal". With
+  // no way to clear a port reddened by a guess, that red stays forever and is ignored.
   const why = row.wasSpeed
     ? t('portsWas', { was: formatSpeed(row.wasSpeed), when: row.wasAt || '-',
                       now: formatSpeed(row.speed) || '-' })
@@ -1877,9 +1873,9 @@ function renderDetail() {
       + `${esc(t('portsWasOk'))}</button></div>`
     : '';
 
-  // 반이중. 속도 저하와 나란히 두되 따로 세운다 — 조치가 완전히 다르다.
-  // 속도 저하는 랜선을 다시 성단하는 일이고, 반이중은 양끝 설정을 맞추는 일이다.
-  // 여기서 랜선부터 뜯으면 멀쩡한 성단을 두 번 하고도 안 고쳐진다.
+  // Half duplex. Sits next to the slow link but stands apart — the fix is different.
+  // A slow link means reterminating the cable; half duplex means matching both ends.
+  // Tear into the cable here and you reterminate a good run twice and still not fix it.
   const hits = Number(row.lateColl || 0);
   const half = isHalfDuplex(row)
     ? `<div class="pd-half"><b>${esc(t('portsHalf', { s: formatSpeed(row.speed) || '-' }))}</b>`
@@ -1904,13 +1900,13 @@ function renderPorts() {
   renderDetail();
 }
 
-/* 지켜보는 중에 부르는 새로고침.
+/* The refresh called while we are watching.
 
-   아래 칸(renderDetail)은 innerHTML 을 통째로 갈아치운다. 그런데 그 안의
-   단추는 누르는 순간 disabled 로 잠가서 두 번 눌리는 것을 막고 있다. 요청이
-   아직 날아가는 중에 다시 그려 버리면 잠기지 않은 새 단추가 생긴다 — 성격
-   급한 사람이 한 번 더 누르면 PoE 를 두 번 끄거나 카메라 전원을 두 번 껐다
-   켠다. 그래서 손대는 중에는 앞판만 고쳐 그린다. */
+   The panel below (renderDetail) replaces its innerHTML wholesale. But the buttons
+   in it go disabled the moment they are pressed, to stop a double press. Redraw
+   while the request is still in flight and a fresh, unlocked button appears — an
+   impatient hand presses again and cuts PoE twice, or power-cycles the camera
+   twice. So while something is in progress only the faceplate is redrawn. */
 function refreshPorts() {
   const busy = $('#portsDetail').querySelector('button[data-act][disabled]');
   renderFace();
@@ -1928,7 +1924,7 @@ async function openPorts() {
   portsData = { switch: result.switch, rows: result.ports || [], fdbOk: !!result.fdbOk,
                 name: result.switchName || '' };
   pickedPort = null;
-  linkEpoch += 1;            // 다른 스위치를 열었으면 앞의 지켜보기는 끝난 얘기다
+  linkEpoch += 1;            // another switch opened means the earlier watch is over
   $('#snmpDialog').hidden = true;
   renderPorts();
   clearSay();
@@ -1939,11 +1935,11 @@ async function openPorts() {
 $('#portsBtn').addEventListener('click', openPorts);
 const closePorts = () => {
   $('#portsDialog').hidden = true;
-  // 예약해둔 '전부 잠그기' 를 푼다. 안 그러면 창을 닫았다 다시 열어 한 번만
-  // 눌러도 확인 없이 전부 잠긴다.
+  // Disarm the pending 'lock them all'. Otherwise close the dialog, reopen it, press
+  // once, and everything locks with no confirmation.
   clearTimeout(lockFreeTimer);
   lockFreeArmed = false;
-  linkEpoch += 1;              // 링크 지켜보기도 같이 멈춘다
+  linkEpoch += 1;              // the link watch stops with it
   $('#portsLockFree').textContent = t('portsLockFree');
   $('#portsLockFree').classList.remove('danger-btn');
 };
@@ -1951,7 +1947,7 @@ $('#portsClose').addEventListener('click', closePorts);
 $('#portsOk').addEventListener('click', closePorts);
 closeOnBackdrop('portsDialog', closePorts);
 
-/** 포트 하나를 잠그거나 푼다. 성공하면 그 줄만 고쳐 그린다. */
+/** Lock or unlock one port. On success only that row is redrawn. */
 async function setPort(index, up) {
   const row = portsData.rows.find(r => String(r.index) === String(index));
   if (!row) return false;
@@ -1967,12 +1963,12 @@ async function setPort(index, up) {
 }
 
 $('#portsLockFree').addEventListener('click', async () => {
-  // 링크가 없고, 막을 이유도 없는 포트만 고른다. 준공 마감에 쓰는 단추다.
+  // Only ports with no link and no reason to keep them. This is the handover button.
   const targets = portsData.rows.filter(r => r.oper !== 1 && r.admin !== 2 && !r.blocked);
   if (!targets.length) return notice(t('portsLockNone'), true);
   if (!$('#portsCommunity').value.trim()) return notice(t('portsNeedComm'), true);
-  // 한 번에 여러 포트를 끄는 단추라 한 번 더 묻는다. 창을 띄우는 대신
-  // 단추가 스스로 물어보고, 4초 안에 다시 누르지 않으면 없던 일이 된다.
+  // It shuts several ports at once, so it asks twice. Instead of a dialog the button
+  // asks by itself, and if it is not pressed again within 4 seconds it never happened.
   if (!lockFreeArmed) {
     lockFreeArmed = true;
     const button = $('#portsLockFree');
@@ -2005,22 +2001,22 @@ $('#portsLockFree').addEventListener('click', async () => {
   }
 });
 
-/* 포트를 풀어도 통신이 곧바로 살아나지 않는다.
+/* Unlocking a port does not bring traffic straight back.
 
-   랜선 양끝이 속도를 다시 맞추는 데(오토니고) 2~3초. 그다음 스위치가 루프를
-   확인하는 동안(STP) 링크는 붙어 있는데도 데이터가 안 흐른다 — 기본 설정이면
-   여기서만 30초까지 간다. "풀었습니다" 하고 화면이 끝나 버리면 기사는 카메라가
-   안 올라온다며 멀쩡한 포트를 다시 만진다. 그러니 붙는 것을 직접 보고 알린다. */
+   Both ends renegotiate speed (autoneg) for 2-3 seconds. Then, while the switch
+   checks for loops (STP), the link is up but no data flows — on defaults that alone
+   runs up to 30 seconds. End the screen at "unlocked" and the tech says the camera
+   is not coming up and starts poking a healthy port. So we watch it come up and say so. */
 
 const LINK_WAIT_MS = 45000;
 const LINK_POLL_MS = 2500;
-let linkEpoch = 0;                 // 창을 닫거나 다른 스위치를 열면 올린다
-const linkWatching = new Set();    // 지금 지켜보는 포트들
+let linkEpoch = 0;                 // bumped when the dialog closes or another switch opens
+const linkWatching = new Set();    // ports being watched right now
 
 async function watchLink(index, label) {
-  // 준공 마감에는 포트를 서너 개 연달아 푼다. 하나 풀 때마다 앞의 것을
-  // 버리면, 나머지는 "풀었습니다" 만 남고 붙었는지 아닌지 아무 말이 없다.
-  // 그래서 포트마다 따로 지켜본다.
+  // At handover you unlock three or four ports in a row. Drop the previous watch
+  // each time and the rest are left with "unlocked" and no word on whether they
+  // came up. So each port is watched separately.
   if (linkWatching.has(String(index))) return;
   linkWatching.add(String(index));
   const era = linkEpoch;
@@ -2031,14 +2027,14 @@ async function watchLink(index, label) {
   try {
     while (Date.now() - began < LINK_WAIT_MS) {
       await new Promise(done => setTimeout(done, LINK_POLL_MS));
-      // 창을 닫았거나 다른 스위치를 열었으면 조용히 그만둔다.
+      // Dialog closed or another switch opened — stop quietly.
       if (era !== linkEpoch || $('#portsDialog').hidden) return;
       let now;
       try { now = await window.ipfix.request('port_link', { switch: host, community, index }); }
-      catch (_) { continue; }            // 한 번 놓친 것으로 포기하지 않는다
+      catch (_) { continue; }            // one missed read is no reason to give up
       if (era !== linkEpoch) return;
-      // read 가 false 면 이번에 못 읽은 것이다. 그걸 '링크 없음' 으로 적으면
-      // 그 포트가 빈 포트로 보이고, '빈 포트 전부 잠그기' 가 물어간다.
+      // read false means we failed to read this time. Write that down as 'no link' and
+      // the port looks empty, and 'lock all empty ports' swallows it.
       if (!now || !now.read) continue;
       const row = (portsData.rows || []).find(r => String(r.index) === String(index));
       if (row) {
@@ -2077,8 +2073,8 @@ $('#portsDetail').addEventListener('click', async (event) => {
   const act = button.dataset.act;
   const label = row.name || row.index;
   if (act === 'speedok') {
-    // 스위치를 건드리지 않는다 — 우리 기록의 기준선만 지금 속도로 내린다.
-    // 그래서 쓰기 커뮤니티 문자열도 필요 없다.
+    // The switch is not touched — only our own baseline drops to the current speed.
+    // That is why no write community string is needed.
     button.disabled = true;
     try {
       await call('port_speed_ok', { switch: portsData.switch, port: row.speedKey || row.name });
@@ -2099,8 +2095,8 @@ $('#portsDetail').addEventListener('click', async (event) => {
       const up = act === 'unlock';
       if (await setPort(row.index, up)) {
         notice(t(up ? 'portsUnlocked' : 'portsLocked', { p: label }));
-        // 풀었으면 링크가 실제로 붙는지 끝까지 본다. 기다리는 동안에도 창은
-        // 계속 쓸 수 있어야 하므로 붙잡지 않는다.
+        // After an unlock, watch to the end whether the link actually comes up. The
+        // dialog has to stay usable while waiting, so we do not block on it.
         if (up) watchLink(row.index, label);
       }
     } else if (act === 'poeoff' || act === 'poeon') {
@@ -2123,6 +2119,6 @@ $('#portsDetail').addEventListener('click', async (event) => {
       notice(t('poeDone', { ip: (row.devices || [])[0]?.ip || label }));
     }
     renderPorts();
-  } catch (_) { /* call()에서 메시지 표시 */ }
+  } catch (_) { /* call() already shows the message */ }
   finally { button.disabled = false; }
 });

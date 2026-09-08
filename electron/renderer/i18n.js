@@ -1,9 +1,5 @@
-/* Quiet Scanner — 현장 IP 충돌 정리 도구
+/* Quiet Scanner — field IP conflict cleanup tool
  * Copyright (C) 2026 고요한
- *
- * 이 프로그램은 자유 소프트웨어입니다. GNU 일반 공중 사용 허가서 제2판 또는
- * 그 이후 판의 조건에 따라 재배포하거나 수정할 수 있습니다. 아무런 보증도
- * 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를 보십시오.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
@@ -14,9 +10,9 @@
  * details. You should have received a copy of the GNU General Public License
  * along with this program; if not, see <https://www.gnu.org/licenses/>.
  */
-/* ── 말 ───────────────────────────────────────────────────────────────
-   화면에 나가는 문구를 한 곳에 모은다. [한국어, English] 짝으로 둔다 —
-   따로 파일을 나누면 하나만 고치고 다른 쪽을 잊는다.
+/* ── Strings ───────────────────────────────────────────────────────────
+   Every string the screen shows, in one place, as [Korean, English] pairs.
+   Split them into separate files and one gets fixed while the other is forgotten.
 
    처음 켜면 윈도우 언어를 보고 고른다. 사람이 바꾸면 그걸 기억한다.
    장비 종류(KINDS)는 사전 파일과 엔진이 한국어로 뱉기 때문에, 화면에서
@@ -36,7 +32,7 @@ try {
 }
 
 const STRINGS = {
-  /* 위쪽 조작줄 */
+  /* Top control bar */
   ifaceLabel:      ['네트워크 인터페이스', 'Network interface'],
   engineLoading:   ['네트워크 엔진 준비 중...', 'Starting network engine…'],
   refresh:         ['↻ 새로고침', '↻ Refresh'],
@@ -50,7 +46,7 @@ const STRINGS = {
                     '{target} has {n} addresses, which is too large for one scan. Split it into smaller ranges.'],
   scan:            ['대역 스캔', 'Scan range'],
 
-  /* 작업줄 */
+  /* Work bar */
   idle:            ['대기 중', 'Idle'],
   pickIface:       ['인터페이스를 선택하고 스캔을 시작하십시오.', 'Choose an interface and start a scan.'],
   filterPh:        ['검색 — IP · MAC · 이름 · 제조사', 'Search — IP · MAC · name · vendor'],
@@ -66,7 +62,7 @@ const STRINGS = {
   swportTitle:     ['스위치에 물어 장비가 몇 번 포트에 물렸는지 찾습니다',
                     'Ask the switch which port each device is on'],
   exportBtn:       ['내보내기', 'Export'],
-  /* 메뉴바 */
+  /* Menu bar */
   mbFile:          ['파일', 'File'],
   mbView:          ['보기', 'View'],
   mbScan:          ['스캔', 'Scan'],
@@ -99,7 +95,7 @@ const STRINGS = {
                     'Export the scan and switch ports as a commissioning/inspection workbook.'],
   langMenu:        ['언어 ▾', 'Language ▾'],
 
-  /* 목록 */
+  /* Device list */
   headTitle:       ['우클릭하면 볼 칸을 고를 수 있습니다', 'Right-click to choose which columns to show'],
   emptyList:       ['아직 발견된 장비가 없습니다.', 'No devices found yet.'],
   noMatch:         ['검색과 맞는 장비가 없습니다.', 'No device matches the search.'],
@@ -108,7 +104,7 @@ const STRINGS = {
   conflictBadge:   ['충돌 {n}대', '{n} in conflict'],
   colReset:        ['기본값으로', 'Reset to default'],
 
-  /* 칸 이름 */
+  /* Column headings */
   colIp:           ['IP / 장비 MAC', 'IP / device MAC'],
   colVendor:       ['MAC 제조사', 'MAC vendor'],
   colKind:         ['장비 종류', 'Device type'],
@@ -125,7 +121,7 @@ const STRINGS = {
   colVlan:         ['VLAN', 'VLAN'],
   colSeen:         ['확인 시각', 'Seen at'],
 
-  /* 칸 안의 말 */
+  /* Cell text */
   unknownVendor:   ['미상', 'Unknown'],
   unknownKind:     ['미확인', 'Unidentified'],
   kindConfirmed:   ['확정', 'Confirmed'],
@@ -136,7 +132,7 @@ const STRINGS = {
   namesTip:        ['다른 이름 {n}개 — {rest}', '{n} more name{s} — {rest}'],
   bookMatchTip:    ['장비 사전에서 인식', 'Matched in the device book'],
 
-  /* 요약 */
+  /* Summary */
   mIps:            ['발견된 IP', 'IPs found'],
   mConflictIps:    ['충돌난 IP', 'Conflicting IPs'],
   mDevices:        ['전체 장비', 'Devices'],
@@ -150,20 +146,20 @@ const STRINGS = {
   countDevices:    ['장비 {n}', '{n} devices'],
   countIps:        ['IP {n}', '{n} IPs'],
 
-  /* 로그 칸 */
+  /* Activity log */
   logResizeTitle:  ['드래그하여 로그창 크기 조절', 'Drag to resize the log pane'],
   logHead:         ['작업 로그', 'Activity log'],
   ready:           ['준비됨', 'Ready'],
   logEmpty:        ['작업 기록이 여기에 표시됩니다.', 'Activity will appear here.'],
 
-  /* 우클릭 메뉴 */
+  /* Right-click menu */
   menuIdentify:    ['장비 정보 검사', 'Identify device'],
   menuIsolate:     ['이 장비만 격리', 'Isolate this device only'],
   menuRelease:     ['격리 해제', 'Release isolation'],
   menuBook:        ['장비 사전에 등록…', 'Add to device book…'],
   menuCopyMac:     ['MAC 주소 복사', 'Copy MAC address'],
 
-  /* 장비 사전 창 */
+  /* Device book dialog */
   bookTitle:       ['장비 사전에 등록', 'Add to device book'],
   bookHint:        ['MAC 앞자리로 장비를 알아봅니다. 앞 6자리만 적으면 그 제조사 장비 전부에, 12자리를 다 적으면 이 장비 한 대에만 적용됩니다.',
                     'Devices are recognised by their MAC prefix. Six digits covers every device from that vendor; all twelve covers this one device only.'],
@@ -187,7 +183,7 @@ const STRINGS = {
   save:            ['저장', 'Save'],
   close:           ['닫기', 'Close'],
 
-  /* 비교 창 */
+  /* Compare dialog */
   compareDlg:      ['스캔 기록 비교', 'Scan record comparison'],
   compareWhen:     ['기준 기록: {when}{name} · 장비 {n}대', 'Saved scan: {when}{name} · {n} device{s}'],
   compareAdded:    ['새로 생긴 장비', 'New devices'],
@@ -195,7 +191,7 @@ const STRINGS = {
   compareMoved:    ['IP가 바뀐 장비', 'Devices whose IP changed'],
   compareNone:     ['없음', 'none'],
 
-  /* 빈 IP 창 */
+  /* Free IP dialog */
   freeDlg:         ['사용 가능 후보 IP', 'Candidate IPs'],
   freeCopyBtn:     ['목록 복사', 'Copy list'],
   freeExportBtn:   ['배정용 CSV 저장', 'Save assignment CSV'],
@@ -211,7 +207,7 @@ const STRINGS = {
   candidateFileName: ['후보IP_배정표', 'candidate-ip-assignment'],
   freeExported:    ['후보 IP {n}개를 배정용 CSV로 저장했습니다.', 'Saved {n} candidate IPs as an assignment CSV.'],
 
-  /* 스위치 포트 창 */
+  /* Switch port dialog */
   snmpDlg:         ['스위치 포트 찾기', 'Find switch port'],
   snmpHint:        ['스위치는 어느 포트에서 어느 MAC이 들어왔는지 기억합니다. 그 표를 읽어와 목록에 붙입니다. 스위치에서 <b>SNMP v2c 읽기</b>가 켜져 있어야 합니다.',
                     'A switch remembers which MAC came in on which port. This reads that table and attaches it to the list. <b>SNMP v2c read</b> must be enabled on the switch.'],
@@ -235,7 +231,7 @@ const STRINGS = {
   snmpNoMatch:     ['{sw} — MAC {read}개를 읽었지만 목록과 맞는 장비가 없습니다.',
                     '{sw} — read {read} MACs but none of them match the list.'],
 
-  /* PoE — 포트 전원 껐다 켜기 */
+  /* PoE — power-cycle a port */
   menuPoe:         ['이 장비 전원 재시작 (PoE)', 'Restart this device (PoE)'],
   poeDlg:          ['PoE 전원 재시작', 'PoE power restart'],
   poeHint:         ['스위치에게 이 포트의 전원을 껐다 켜라고 시킵니다. 장비의 랜선을 뽑았다 꽂는 것과 같습니다. <b>쓰기 권한이 있는 커뮤니티</b>가 필요합니다.',
@@ -253,7 +249,7 @@ const STRINGS = {
   poeNoPort:       ['먼저 스위치 포트를 조회해야 합니다.', 'Run the switch port lookup first.'],
   poeTip:          ['이 포트가 PoE 로 전원을 주고 있습니다', 'This port is delivering PoE'],
 
-  /* 포트 관리 */
+  /* Port management */
   portsBtn:        ['포트 관리…', 'Manage ports…'],
   portsTitle:      ['스위치의 포트를 전부 보고, 안 쓰는 포트를 잠급니다',
                     'See every port on the switch and lock the unused ones'],
@@ -296,7 +292,7 @@ const STRINGS = {
   portsWasDone:    ['{port} — 지금 속도를 정상으로 기록했습니다.', '{port} — current speed recorded as normal.'],
   portsTallyWas:   ['예전보다 느림', 'slower than before'],
   portsTallyHalf:  ['반이중', 'half duplex'],
-  // 범례의 색칠 견본 자체에 ½ 가 찍힌다. 글자에 또 넣으면 '½½' 이 된다.
+  // The legend swatch already carries the ½. Put it in the label too and you get '½½'.
   portsLegendHalf: ['반이중 — 설정 불일치', 'half duplex — config mismatch'],
   portsFull:       ['전이중', 'full duplex'],
   portsHalfTip:    ['반이중 — 속도는 정상이지만 실제로는 느립니다',
@@ -351,7 +347,7 @@ const STRINGS = {
   poeCut:          ['포트 {p} 전원을 끊었습니다.', 'Cut power on port {p}.'],
   poeRestored:     ['포트 {p} 전원을 넣었습니다.', 'Restored power on port {p}.'],
 
-  /* 알림 */
+  /* Notices */
   engineReady:     ['네트워크 엔진 준비됨', 'Network engine ready'],
   engineFailOpt:   ['네트워크 엔진을 시작하지 못했습니다', 'Could not start the network engine'],
   engineCheck:     ['네트워크 엔진 확인 필요', 'Network engine needs attention'],
@@ -380,7 +376,7 @@ const STRINGS = {
                     'On this computer, this IP will be connected only to the selected MAC address. Release isolation when finished.'],
   isolateConfirm:  ['이 장비만 격리', 'Isolate this device only'],
 
-  /* 장비 사전 알림 */
+  /* Device book notices */
   bookNeedPrefix:  ['MAC 앞자리를 6자리 이상 적어주십시오. (제조사 코드)',
                     'Enter at least six hex digits (the vendor code).'],
   bookScopeOne:    ['{p} — 이 장비 한 대에만 적용됩니다.', '{p} — applies to this one device only.'],
@@ -397,7 +393,7 @@ const STRINGS = {
   bookUpdated:     ['장비 사전을 수정했습니다.', 'Device book updated.'],
   bookRemoved:     ['장비 사전에서 지웠습니다.', 'Removed from the device book.'],
 
-  /* 내보내기 */
+  /* Export */
   saveDlgTitle:    ['스캔 결과 저장', 'Save scan results'],
   reportFileName:  ['현장리포트', 'site-report'],
   filterCsv:       ['스캔 결과 (CSV)', 'Scan results (CSV)'],
@@ -407,17 +403,17 @@ const STRINGS = {
   exported:        ['{n}대를 저장했습니다.', 'Saved {n} device{s}.'],
 };
 
-/* 장비 종류 — 사전 파일과 엔진이 한국어로 뱉는 것을 화면에서 옮긴다. */
-/* 장비 종류 — 표는 엔진(IPFixStudio.py)이 한 벌만 가지고 있다.
-   화면이 뜨면 그 표를 받아 여기에 채운다. 못 받으면 한국어 그대로 보인다. */
+/* Device kinds. The engine (IPFixStudio.py) holds the only copy of this table;
+   the screen fetches it at startup and fills this in. If the fetch fails, the
+   Korean names the engine emits show through unchanged. */
 const KINDS = {};
 
-/** 문구 하나. {이름} 자리는 두 번째 인자로 채운다. */
+/** One string. {name} placeholders are filled from the second argument. */
 function t(key, vars) {
   const pair = STRINGS[key];
   let text = pair ? (pair[lang === 'en' ? 1 : 0] ?? pair[0]) : key;
   if (vars) {
-    // 영어는 하나일 때 s 를 뗀다. {s} 자리는 숫자 n 을 보고 알아서 채운다.
+    // English drops the s when there is one. {s} fills itself from the number n.
     if (vars.n !== undefined && vars.s === undefined) {
       vars = { ...vars, s: Number(vars.n) === 1 ? '' : 's',
                s2: Number(vars.n) === 1 ? 'is' : 'are' };
@@ -429,13 +425,14 @@ function t(key, vars) {
   return text;
 }
 
-/** 엔진이 한국어로 준 장비 종류·OS 를 화면 언어로. 표에 없으면 그대로 둔다. */
+/** Device kind / OS names the engine gives in Korean, in the screen's language.
+    Anything not in the table passes through unchanged. */
 function tk(text) {
   if (!text) return '';
   return lang === 'en' ? (KINDS[text] || text) : text;
 }
 
-/** index.html 에 박아둔 글자를 지금 언어로 갈아 끼운다. */
+/** Swap the text baked into index.html for the current language. */
 function applyStaticText() {
   document.documentElement.lang = lang;
   for (const el of document.querySelectorAll('[data-i18n]')) {

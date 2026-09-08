@@ -1,9 +1,5 @@
-/* Quiet Scanner — 현장 IP 충돌 정리 도구
+/* Quiet Scanner — field IP conflict cleanup tool
  * Copyright (C) 2026 고요한
- *
- * 이 프로그램은 자유 소프트웨어입니다. GNU 일반 공중 사용 허가서 제2판 또는
- * 그 이후 판의 조건에 따라 재배포하거나 수정할 수 있습니다. 아무런 보증도
- * 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를 보십시오.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software

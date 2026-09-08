@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
-# Quiet Scanner — 현장 IP 충돌 정리 도구
+# Quiet Scanner — field tool for sorting out IP conflicts
 # Copyright (C) 2026 고요한
-#
-# 이 프로그램은 자유 소프트웨어입니다. 자유 소프트웨어 재단이 공표한 GNU 일반
-# 공중 사용 허가서 제2판 또는 그 이후 판의 조건에 따라 재배포하거나 수정할 수
-# 있습니다. 아무런 보증도 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를
-# 보십시오.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -15,7 +10,7 @@
 # FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
 # details. You should have received a copy of the GNU General Public License
 # along with this program; if not, see <https://www.gnu.org/licenses/>.
-"""Electron 화면에서 호출하는 IPFix 네트워크 엔진(JSON Lines)."""
+"""IPFix network engine called from the Electron UI (JSON Lines)."""
 import base64
 import concurrent.futures as futures
 import ipaddress
@@ -25,8 +20,8 @@ import threading
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
-    # Electron은 요청 JSON을 UTF-8로 보낸다. 경로에 한글이 있으면 stdin도
-    # 같은 인코딩으로 읽어야 '현장리포트' 같은 파일명이 깨지지 않는다.
+    # Electron sends its request JSON as UTF-8. If a path has non-ASCII characters,
+    # stdin has to be read in the same encoding or the filename comes through mangled.
     sys.stdin.reconfigure(encoding="utf-8")
 except AttributeError:
     pass
@@ -34,9 +29,9 @@ except AttributeError:
 import IPFixStudio as core
 from IPFixStudio import T
 
-# 옛 한국어 파일 이름을 새 이름으로 옮긴다. 아래 pin_sweep 이 격리 기록을
-# 읽으므로 반드시 그 전에 해야 한다 — 순서가 뒤바뀌면 남아 있던 정적 ARP 를
-# 못 찾고, 그 IP 는 재부팅할 때까지 엉뚱한 MAC 에 묶인 채로 잊힌다.
+# Move the old Korean file names to the new ones. pin_sweep below reads the
+# isolation record, so this has to happen first — get the order wrong and a leftover
+# static ARP entry goes unfound, pinning that IP to the wrong MAC until reboot.
 _moved = core.migrate_old_names()
 
 core.STORE = core.Store(demo=False)
@@ -49,7 +44,7 @@ SCAN_LOCK = threading.Lock()
 SCAN_CANCEL = threading.Event()
 SCAN_RUNNING = False
 
-# 지난번에 비정상 종료돼서 남아 있는 격리가 있으면 먼저 걷어낸다.
+# Clear any isolation left behind by a previous crash before anything else runs.
 _left = core.pin_sweep(log=core.STORE.log)
 if _left:
     core.STORE.log(T("지난 실행에서 남은 격리 %d건을 정리했습니다.",
@@ -70,7 +65,7 @@ def serialize():
 
 
 def send_json(message):
-    """스캔 스레드와 취소 요청의 JSON이 한 줄에 섞이지 않게 보낸다."""
+    """Send JSON so the scan thread and a cancel request never share one line."""
     with OUTPUT_LOCK:
         print(json.dumps(message, ensure_ascii=False), flush=True)
 
@@ -82,17 +77,17 @@ def emit_state():
 RECHECK_HISTORY = 3
 
 
-# 포트를 끄기 전에 "꺼도 되는가" 를 스위치에게 직접 묻는다.
+# Before switching a port off, ask the switch itself whether it may be switched off.
 #
-# 규칙이 하나다 — **확인이 안 되면 거절한다.** '모르겠다' 와 '괜찮다' 를 같이
-# 취급하면, 스위치가 답을 안 하는 바로 그 상황에서 관리 포트가 잠긴다. 그러면
-# 그 순간부터 SNMP 가 안 닿아서 되돌릴 방법도 없다. 콘솔 케이블 들고 현장이다.
+# One rule — **if it cannot be confirmed, refuse.** Treating "don't know" as "it's
+# fine" locks the management port in exactly the case where the switch will not
+# answer. SNMP cannot reach it after that, so there is no undo. Console cable, on site.
 #
-# 캐시도 안 쓴다. 캐시는 5분 전 배선을 기억하는데, 그 사이 기사가 랜선을 옮겨
-# 꽂았을 수 있다. 쓰기는 드물고 되돌릴 수 없으니 매번 다시 읽는다.
+# No cache either. A cache remembers the wiring from five minutes ago, and the installer
+# may have moved the patch lead since. Writes are rare and cannot be undone — read fresh.
 
-# 이 컴퓨터의 랜카드 MAC. STORE 는 스캔할 때마다 새로 만들어지므로
-# 프로세스 쪽에 따로 둔다 — 스캔이 실패해도 이건 안 날아간다.
+# This computer's adapter MACs. STORE is rebuilt on every scan, so keep these on
+# the process side — a failed scan does not take them with it.
 KNOWN_MACS = set()
 
 NEVER_LOCK = ("이 컴퓨터가 물린 포트", "this computer's port",
@@ -100,11 +95,11 @@ NEVER_LOCK = ("이 컴퓨터가 물린 포트", "this computer's port",
 
 
 def my_macs_of_this_pc():
-    """이 컴퓨터의 랜카드 MAC 전부. 16진수 12자리로만 맞춘다.
+    """Every adapter MAC on this computer, flattened to 12 hex digits.
 
-    스위치의 MAC 표는 구분자 없이(aabbcc...) 오고 랜카드 목록은 콜론을
-    달고(aa:bb:cc:...) 온다. 겉모양으로 비교하면 절대 안 맞고, 그러면
-    "내 포트" 를 못 알아봐서 스스로 연결을 끊게 된다.
+    The switch's MAC table arrives without separators (aabbcc...) and the adapter
+    list arrives with colons (aa:bb:cc:...). Compare them as written and they never
+    match — then "my own port" goes unrecognised and you cut your own link.
     """
     macs = set(core.STORE.mymacs or set())
     if core.STORE.mymac:
@@ -113,7 +108,7 @@ def my_macs_of_this_pc():
 
 
 def switch_own_macs(host, community, rows):
-    """스위치 자신의 MAC. 직접 묻고, 스캔에서 본 것도 더한다."""
+    """The switch's own MACs. Ask it directly, and add whatever the scan saw."""
     macs = set()
     try:
         macs |= core.read_own_macs(host, community)
@@ -129,7 +124,7 @@ def switch_own_macs(host, community, rows):
 
 
 def block_reason(macs, mine, switch_macs):
-    """이 포트를 끄면 안 되는 이유. 없으면 빈 글자."""
+    """Why this port must not be switched off. Empty string if there is no reason."""
     macs = {core.hex_mac(m) for m in (macs or [])}
     if macs & mine:
         return T("이 컴퓨터가 물린 포트", "this computer's port")
@@ -142,7 +137,7 @@ def block_reason(macs, mine, switch_macs):
 
 
 def guard_rows(host, community, rows):
-    """포트 목록에 '못 끄는 이유' 를 붙인다. 화면에 보여줄 때 쓴다."""
+    """Tag each port with why it cannot be switched off. Used for the UI listing."""
     mine = my_macs_of_this_pc()
     switch_macs = switch_own_macs(host, community, rows)
     for row in rows:
@@ -151,13 +146,13 @@ def guard_rows(host, community, rows):
 
 
 def verify_writable(host, community, index, poe=False):
-    """이 포트를 꺼도 되는지 지금 확인한다. 안 되면 예외를 던진다.
+    """Check right now whether this port may be switched off. Raise if it may not.
 
-    확인할 수 없는 것이 하나라도 있으면 거절한다:
-      - 포트 목록을 못 읽음
-      - MAC 표를 못 읽음 (어느 포트가 업링크인지 알 수 없다)
-      - 이 컴퓨터의 랜카드를 모름 (내 포트를 못 가린다)
-      - 그런 번호의 포트가 없음
+    If anything at all cannot be confirmed, refuse:
+      - the port list cannot be read
+      - the MAC table cannot be read (no way to tell which port is the uplink)
+      - this computer's adapters are unknown (cannot screen out my own port)
+      - there is no port with that number
     """
     def refuse(message):
         raise RuntimeError(
@@ -178,7 +173,7 @@ def verify_writable(host, community, index, poe=False):
     if not ports:
         refuse(T("스위치가 포트 목록을 안 줍니다", "the switch returned no port list"))
 
-    # 우리가 아는 번호인가. PoE 는 번호 체계가 따로라 표에서 되짚는다.
+    # Is it a number we know? PoE numbering is separate, so map it back through the table.
     target = str(index)
     if poe:
         matched = [i for i, info in ports.items()
@@ -206,13 +201,13 @@ def verify_writable(host, community, index, poe=False):
 
 
 def plan_ranges(target, cards):
-    """대역 조각을 랜카드에 나눠 준다.
+    """Hand each piece of the range to the adapter that can reach it.
 
-    랜선 두 개로 대역 두 개를 쓰는 서버 같은 자리에서, 각 대역은 그 대역을
-    가진 랜카드로 나가야 답이 온다. 어느 카드에도 안 맞는 조각은 첫 카드가
-    맡는다 — 사람이 일부러 다른 대역을 적어 넣은 경우다.
+    On a box with two cables on two subnets — a server, say — a subnet only answers
+    when the request goes out of the adapter that holds it. A piece that fits no
+    adapter goes to the first one — someone typed another subnet on purpose.
 
-    돌려주는 것: [(랜카드, "대역 조각들"), ...]
+    Returns: [(adapter, "range pieces"), ...]
     """
     nets = []
     for card in cards:
@@ -224,11 +219,11 @@ def plan_ranges(target, cards):
                 pass
         nets.append(rows)
 
-    # 조각의 **첫 주소만** 보고 카드를 고르면 안 된다. 192.168.0.0/22 처럼 한
-    # 조각이 서브넷 여러 개를 덮으면, 첫 주소가 맞는 카드로 전부 나간다. ARP 는
-    # 자기 대역 밖으로는 애초에 못 나가므로 나머지 주소는 조용할 수밖에 없고,
-    # 그러면 그 주소들이 "확인했는데 비어 있음" 으로 둔갑한다. 주소 하나하나를
-    # 자기 대역을 가진 카드에 붙인다.
+    # Never pick the adapter from the **first address** of a piece. When one piece
+    # covers several subnets — 192.168.0.0/22, say — everything goes out the adapter
+    # matching that first address. ARP cannot leave its own subnet, so the remaining
+    # addresses are silent by construction, and that silence turns into "checked, and
+    # free". Bind every address to the adapter that owns its subnet.
     buckets = [[] for _ in cards]
     homeless = []
     for piece in [p.strip() for p in str(target).split(",") if p.strip()]:
@@ -251,16 +246,16 @@ def plan_ranges(target, cards):
             else:
                 buckets[where].append(text)
 
-    # 어느 카드에도 안 맞는 주소도 훑기는 한다 — 첫 카드가 맡는다. 사람이 일부러
-    # 다른 대역을 적어 넣었을 수 있고(라우터 너머), 그건 사람 판단이다. 다만
-    # 답이 없어도 "비어 있다" 고 말하면 안 되므로 따로 표시해 돌려준다.
+    # Addresses that fit no adapter still get swept — the first adapter takes them.
+    # Someone may have typed another subnet on purpose (past a router), and that is
+    # their call. But silence there must never read as "free", so they come back flagged.
     if homeless and cards:
         buckets[0].extend(homeless)
 
-    # 카드의 대역을 하나도 모르면(윈도우가 프리픽스를 안 줄 때가 있다) "대역
-    # 밖" 이라고 단정할 근거가 없다. 모른다는 것과 닿을 수 없다는 것은 다르다 —
-    # 여기서 헷갈리면 멀쩡한 스캔 결과가 통째로 빈 IP 목록에서 빠진다.
-    # 훑기는 위에서 이미 배정했고, 여기서는 '못 믿을 주소' 딱지만 뗀다.
+    # If not one adapter subnet is known (Windows sometimes withholds the prefix), there
+    # is no ground to call anything "outside the subnet". Not knowing is not the same as
+    # not reachable — confuse the two and a perfectly good scan result drops out of the
+    # free-IP list wholesale. The sweep is assigned above; this only drops the tag.
     if not any(nets):
         homeless = []
 
@@ -272,10 +267,10 @@ def plan_ranges(target, cards):
 
 
 def compact_ranges(addresses):
-    """주소 목록을 "192.168.0.1-40,192.168.0.55" 처럼 짧게 되묶는다.
+    """Squeeze an address list back into "192.168.0.1-40,192.168.0.55" form.
 
-    한 개씩 쉼표로 이으면 /22 하나에 문자열이 1,000토막이 된다. 아래에서 다시
-    parse_target 을 타므로 짧게 만들어 두는 편이 낫다.
+    Joined one by one with commas, a single /22 becomes a 1,000-piece string. It goes
+    back through parse_target below, so it is better kept short.
     """
     try:
         order = sorted(set(addresses), key=lambda x: int(ipaddress.IPv4Address(x)))
@@ -305,13 +300,13 @@ def compact_ranges(addresses):
 
 
 def previous_scan_ips(target):
-    """같은 대역을 최근 세 번 훑는 동안 한 번이라도 답했던 IP 들.
+    """IPs that answered at least once across the last three sweeps of this range.
 
-    한 번만 보면 절전 장비가 두 번 내리 흘렸을 때 놓친다. 세 번을 합쳐 보면
-    그런 장비도 목록에 남는다. 진짜로 뜯어간 장비는 여기서 세 번 더 물어봐도
-    답이 없으니 세 스캔 뒤에는 조용히 사라진다.
+    Look at only one and a power-saving device that dropped two in a row is missed.
+    Fold three together and it stays on the list. A device that really was taken out
+    stays silent through three more asks, so it drops off quietly after three scans.
 
-    비교 대상이 없으면 빈 집합이다 — 첫 스캔이면 다시 물어볼 것도 없다.
+    Empty set when there is nothing to compare — a first scan has nothing to re-ask.
     """
     seen = set()
     used = 0
@@ -334,7 +329,7 @@ def current_devices():
 
 
 def _refresh_from_book():
-    """사전이 바뀌면 이미 목록에 올라온 장비의 제조사·종류를 다시 매긴다."""
+    """When the book changes, re-tag vendor and type on devices already listed."""
     with core.STORE.lock:
         for dev in core.STORE.devices.values():
             seen = core.describe(dev["mac"])
@@ -343,8 +338,8 @@ def _refresh_from_book():
             dev["book_note"] = seen["note"]
             if seen["from_book"]:
                 dev["vendor"] = seen["vendor"]
-                # 이미 조사해서 알아낸 종류는 덮지 않는다.
-                # 단 사람이 전체 MAC 으로 콕 집어 등록했다면 그 이름이 이긴다.
+                # Do not overwrite a type that was already worked out by probing.
+                # Unless someone registered the full MAC by hand — that name wins.
                 if seen["exact"] or not dev.get("identified"):
                     if seen["kind"]:
                         dev["kind"] = seen["kind"]
@@ -353,11 +348,11 @@ def _refresh_from_book():
 
 def run(action, payload):
     if action == "set_lang":
-        # 화면에서 언어를 바꾸면 엔진이 만드는 로그도 따라가야 한다.
+        # Change the language in the UI and the engine's own log has to follow.
         return {"lang": core.set_lang(payload.get("lang"))}
 
     if action == "kinds":
-        # 장비 종류 이름표는 엔진이 한 벌만 가지고 있다. 화면이 받아 쓴다.
+        # The engine holds exactly one set of device-type labels. The UI takes them.
         return core.KIND_EN
 
     if action == "interfaces":
@@ -365,9 +360,9 @@ def run(action, payload):
             raise RuntimeError(T("scapy/Npcap을 불러오지 못했습니다: ",
                                  "Could not load scapy/Npcap: ") + core.SCAPY_ERR)
         cards = core.list_ifaces()
-        # 이 컴퓨터의 랜카드 MAC 을 여기서 기억해 둔다. 스캔을 한 번도 안
-        # 돌리고 바로 포트를 잠그러 가는 사람이 있고, 그때도 "내 포트" 를
-        # 알아봐야 한다. 프로그램이 켜지면 이 동작은 무조건 한 번 돈다.
+        # Remember this computer's adapter MACs here. Some people never run a scan
+        # and go straight to locking ports, and "my own port" still has to be
+        # recognised then. This action always runs once at startup.
         KNOWN_MACS.update(c.get("mac", "") for c in cards if c.get("mac"))
         core.STORE.mymacs = set(KNOWN_MACS)
         return cards
@@ -381,11 +376,11 @@ def run(action, payload):
             for mac, ports, title, model in devices:
                 dev = core.STORE.upsert(ip, mac)
                 dev.update({"ports": ports, "title": title, "model": model, "identified": True})
-        # 데모는 완성된 한 판이다. 그렇게 표시해 두지 않으면 빈 IP 창이
-        # "스캔이 안 끝났다" 며 거절한다 — 둘러보러 켠 사람에게는 고장으로 보인다.
+        # The demo is a finished run. Unmarked, the free-IP window refuses with "the
+        # scan did not finish" — which just looks broken to someone having a look around.
         base = seen[0].rsplit(".", 1)[0] if seen else "192.168.0"
         core.STORE.cidr = "%s.1-60" % base
-        # 시드 IP 를 반드시 포함시킨다. 빠지면 쓰고 있는 자리가 빈 IP 로 나온다.
+        # The seeded IPs must be included. Leave them out and a used address shows as free.
         spread = ["%s.%d" % (base, n) for n in range(1, 61)]
         core.STORE.scanned = sorted(set(spread) | set(seen),
                                     key=lambda x: tuple(int(n) for n in x.split(".")))
@@ -403,24 +398,24 @@ def run(action, payload):
         return {"canceled": True, "state": serialize()}
 
     if action == "scan":
-        # 랜카드를 여러 개 고를 수 있다. 서버처럼 랜선 두 개로 대역 두 개를
-        # 같이 쓰는 자리에서, 한 번 훑어 양쪽을 다 보기 위해서다.
+        # More than one adapter can be picked — so a box on two subnets over two
+        # cables, a server for instance, is covered in a single sweep.
         cards = payload.get("ifaces") or [payload["iface"]]
         target = payload["target"]
-        # 대역을 먼저 따져 본다. 여기서 튕길 거면 지금 목록을 갈아엎을 이유가 없다.
+        # Parse the range first. If this is going to be rejected, no reason to have wiped the list.
         targets = core.parse_target(target)
         if len(targets) > core.MAX_TARGETS:
             raise ValueError(T("대상이 너무 많습니다 (%d개). 범위를 좁혀 주십시오.",
                                "Too many targets (%d). Narrow the range.") % len(targets))
         KNOWN_MACS.update(c.get("mac", "") for c in cards if c.get("mac"))
 
-        # 새 STORE 로 갈아치우기 전에 걸려 있던 격리를 반드시 푼다.
+        # Release any standing isolation before swapping in a new STORE.
         #
-        # 안 풀면 정적 ARP 는 이 PC 에 그대로 남는데 화면은 그걸 잊는다. '격리
-        # 해제' 를 눌러도 아무 일이 안 일어나고, 그 IP 는 계속 한 MAC 으로만
-        # 보인다 — 찾으려던 충돌을 자기 툴이 가려 버리는 셈이다.
-        # 로그는 새 STORE 가 생긴 뒤에 적어야 한다. 여기서 적으면 바로 아래
-        # 줄에서 통째로 버려진다 — 그런데 이게 기사가 꼭 봐야 할 메시지다.
+        # Skip it and the static ARP entry stays on this PC while the UI forgets it.
+        # "Release isolation" then does nothing, and that IP keeps showing a single
+        # MAC — the tool hiding the very conflict it was brought in to find.
+        # The log line has to be written after the new STORE exists. Written here it is
+        # thrown away one line below — and this is a message the installer must see.
         untangle = None
         if core.STORE.isolated:
             stuck = core.STORE.devices.get(core.STORE.isolated)
@@ -466,11 +461,11 @@ def run(action, payload):
         core.STORE.iface = first.get("scapyName") or first["name"]
         core.STORE.ifindex = first.get("index")
         core.STORE.mymac = first.get("mac", "")
-        # 여기에 대상 전체를 미리 넣으면 안 된다. 스캔이 터지거나(Npcap 없음,
-        # 권한 없음) 중간에 멈추면 장비 목록은 비어 있는데 '훑은 주소' 만
-        # 254개가 남는다. 그 상태로 후보 IP 를 누르면 **대역 전체가 "비었음"**
-        # 으로 나오고, 기사는 쓰고 있는 자리에 장비를 박는다. 이 도구가 낼 수
-        # 있는 제일 나쁜 오답이다. 실제로 확인이 끝난 주소만 넣는다.
+        # Never pre-fill this with the whole target. If the scan blows up (no Npcap, no
+        # privileges) or stops halfway, the device list is empty while 254 addresses sit
+        # there as "swept". Hit candidate IPs in that state and **the whole range comes
+        # back "free"**, and the installer puts a device on a used address. That is the
+        # worst answer this tool can give. Only genuinely checked addresses go in.
         core.STORE.scanned = []
         core.STORE.scan_done = False
         core.STORE.set_progress(T("대역 스캔", "Range scan"), 0, len(targets),
@@ -492,15 +487,15 @@ def run(action, payload):
         done_base = 0
 
         def sweep_card(card, sub_target):
-            """랜카드 하나로 한 대역을 훑는다. 찾은 것은 바깥 목록에 쌓인다."""
+            """Sweep one range through one adapter. Hits pile up in the outer lists."""
             nonlocal done_base
-            # 이 카드로 잡힌 장비는 이 카드를 기억해야 나중에 격리가 된다.
+            # A device found on this adapter has to remember it, or isolation later fails.
             core.STORE.iface = card.get("scapyName") or card["name"]
             core.STORE.ifindex = card.get("index")
             sub_list = core.parse_target(sub_target)
 
-            # ARP 는 라우터를 못 넘는다. 내 IP 와 다른 대역을 훑으면 같은 스위치에
-            # 물려 있는 장비만 답한다. 답이 없다고 장비가 없는 것은 아니다.
+            # ARP does not cross routers. Sweep a subnet other than your own and only
+            # devices on the same switch answer. Silence does not mean nothing is there.
             my_ip = (card.get("ips") or [""])[0]
             if my_ip:
                 mine = ".".join(my_ip.split(".")[:3])
@@ -536,28 +531,28 @@ def run(action, payload):
                     if mac not in found[ip]:
                         found[ip].append(mac)
             if core.STORE.cancel.is_set():
-                # 1차만 돌고 멈춘 주소는 '확인했다' 고 할 수 없다. 넣지 않는다.
+                # An address that only got the first pass is not "checked". Leave it out.
                 return
 
-            # ── 이 아래가 "쓰는 IP를 확실히 걸러낸다" 는 부분이다 ──────────────
+            # ── Below is the part that makes sure a used IP is caught ───────────
             #
-            # ARP 는 한 통짜리 물음이다. 스위치가 바쁘거나 랜카드가 절전에 들어가
-            # 있으면 그 한 통을 흘린다. 한 번 물어보고 없다고 단정하면, 쓰고 있는
-            # IP를 "비었다" 고 알려주게 된다. 그게 이 도구가 낼 수 있는 제일 나쁜
-            # 오답이다 — 기사가 그 IP를 새 장비에 박으면 충돌이 난다.
+            # ARP is a one-packet question. A busy switch, or an adapter dozing in
+            # power-save, drops that one packet. Ask once and call it empty, and a
+            # used IP gets reported as "free". That is the worst answer this tool can
+            # give — the installer puts a new device on it and a conflict starts.
             #
-            # 그래서 답이 없는 주소만 골라 두 번 더, 점점 참을성 있게 다시 묻는다.
-            # 이미 답한 주소는 다시 안 물으니 시간은 조금만 더 든다.
+            # So the silent addresses alone get asked twice more, each time more
+            # patiently. Addresses that already answered are skipped; it costs little.
 
             def ask_again(addresses, timeout, retry, phase, note):
-                """주소 몇 개만 다시 물어보고 찾은 것을 목록에 더한다."""
+                """Re-ask a handful of addresses and add whatever answers to the lists."""
                 if not addresses or core.STORE.cancel.is_set():
                     return 0
                 order = sorted(addresses, key=lambda x: tuple(int(n) for n in x.split(".")))
                 core.STORE.set_progress(phase, 0, len(order), note)
                 emit_state()
                 picked = 0
-                # 한 번에 다 던지면 또 흘린다. 나눠서 묻는다.
+                # Throw them all out at once and they get dropped again. Ask in chunks.
                 for i in range(0, len(order), 64):
                     if core.STORE.cancel.is_set():
                         break
@@ -574,10 +569,10 @@ def run(action, payload):
                     emit_state()
                 return picked
 
-            # 2차 — 답이 없던 주소 전부. 처음 보는 장비가 첫 물음을 흘린 경우를 잡는다.
-            #       새 현장의 첫 스캔에서는 비교할 지난 기록이 없으니 이게 유일한 그물이다.
-            #       오래 기다리는 것보다 여러 번 묻는 쪽이 낫다 — 같은 망에 있는 장비의
-            #       ARP 응답은 밀리초 단위로 온다. 1.8초를 기다릴 이유가 없다.
+            # Pass 2 — every silent address. Catches a first-time device that dropped the
+            #       first question. On a new site's first scan there is no history to
+            #       compare against, so this is the only net. Asking often beats waiting
+            #       long — an ARP reply on the same LAN comes in milliseconds, not 1.8s.
             silent = [ip for ip in swept if ip not in found]
             got_n = ask_again(silent, 0.7, 3,
                               T("2차 확인", "Second pass"),
@@ -587,12 +582,12 @@ def run(action, payload):
                 core.STORE.log(T("2차 확인에서 %d대를 더 찾았습니다.",
                                  "Second pass found %d more devices.") % got_n, "ok")
 
-            # 3차 — 지난 스캔에 있었는데 여기까지도 답이 없는 주소. 대개 절전 장비다.
-            #       숫자가 몇 개 안 되니 제일 참을성 있게 묻는다.
+            # Pass 3 — addresses that were in the last scan and are still silent. Usually
+            #       a power-saving device. Few of them, so ask most patiently of all.
             stubborn = (previous_scan_ips(target) & set(sub_list)) - set(found)
-            # 여기는 3차라 시간이 제일 많이 든다. 그래서 64개까지만 본다.
-            # 자른 것을 로그에 안 적으면 "다 물어봤다" 로 읽혀서, 남은 주소가
-            # 빈 IP 로 새어 나가는 것을 아무도 못 알아챈다.
+            # This third pass is the slowest, so it is capped at 64. If the cut is not
+            # logged it reads as "everything was asked", and nobody notices the rest
+            # leaking out into the free-IP list.
             asked_list = sorted(stubborn)[:64]
             got_n = ask_again(asked_list, 1.5, 3,
                               T("지난 기록 대조", "Checking against history"),
@@ -611,15 +606,15 @@ def run(action, payload):
                           "They may show up as free — do not trust that list blindly.")
                         % (len(stubborn) - len(asked_list)), "warn")
 
-            # 마지막 — 이 랜카드 자신. ARP 는 자기가 외친 것을 자기가 듣지 못하므로
-            # 이 컴퓨터는 절대 스스로 잡히지 않는다. 넣어주지 않으면 내 IP가
-            # "비어 있는 주소" 로 나가고, 기사가 그 주소를 장비에 박게 된다.
-            # 세 번의 확인을 다 거친 주소만 '훑었다' 로 친다. 중지로 여기까지
-            # 못 온 대역은 통째로 빠진다 — 한 번만 물어본 주소가 빈 IP 목록에
-            # 섞이면, 그건 세 번 확인한 것과 화면에서 구분이 안 된다.
+            # Last — this adapter itself. ARP never hears its own shout, so this
+            # computer is never discovered by it. Leave it out and your own IP goes
+            # out as a "free address", and the installer puts a device on it.
+            # Only addresses that went through all three passes count as "swept". A range
+            # a stop kept from reaching here drops out whole — an address asked once,
+            # mixed into the free-IP list, looks the same on screen as one asked three times.
             if not core.STORE.cancel.is_set():
-                # 대역 밖 주소는 애초에 닿지 않는다. 조용하다고 '확인했다' 로
-                # 세면 그대로 빈 IP 가 된다.
+                # Out-of-subnet addresses were never reachable. Count that silence
+                # as "checked" and it becomes a free IP.
                 blind = set(homeless)
                 scanned.extend([ip for ip in swept if ip not in blind])
 
@@ -640,7 +635,7 @@ def run(action, payload):
             sweep_card(card, sub_target)
 
         core.STORE.scanned = scanned
-        # 기본 랜카드를 첫 카드로 되돌린다 — 이후 동작이 이걸 기본값으로 쓴다.
+        # Put the default adapter back to the first one — later actions use it as the default.
         core.STORE.iface = first.get("scapyName") or first["name"]
         core.STORE.ifindex = first.get("index")
 
@@ -653,8 +648,8 @@ def run(action, payload):
             result["canceled"] = True
             return result
         emit_state()
-        # 스캔이 끝나면 망 전체에 한 번 외친다. 장비마다 찾아가는 게 아니라
-        # 멀티캐스트 두 통이면 끝이라, 대수가 많아도 시간이 늘지 않는다.
+        # Once the scan is done, shout across the whole LAN. It is two multicast
+        # packets, not a visit per device, so more devices costs no more time.
         core.STORE.set_progress(T("장비 이름 수집", "Collecting names"), 0, 1,
                                 T("mDNS · SSDP 응답 기다리는 중", "waiting for mDNS · SSDP replies"))
         emit_state()
@@ -695,8 +690,8 @@ def run(action, payload):
             result["canceled"] = True
             return result
 
-        # 포트를 적어 넣었으면 "그 포트를 쓰는 장비만" 보자는 뜻이다.
-        # ARP 로 찾은 장비마다 그 포트를 두드려 보고, 아무것도 안 열려 있으면 뺀다.
+        # A port typed in means "show only the devices using that port".
+        # Knock on that port on every device ARP found, and drop the ones with nothing open.
         ports_text = (payload.get("ports") or "").strip()
         if ports_text:
             wanted = core.parse_ports(ports_text)
@@ -727,8 +722,8 @@ def run(action, payload):
                         emit_state()
 
             if core.STORE.cancel.is_set():
-                # 중지를 눌렀으면 거르지 않는다. 반쯤 거른 목록을 남기면
-                # 확인 못 한 장비가 빈 IP 로 나간다.
+                # Stop pressed means no filtering. Leave a half-filtered list and
+                # devices that were never checked go out as free IPs.
                 core.STORE.log(T("포트 확인 중지 — 거르지 않고 그대로 둡니다.",
                                  "Port check stopped — leaving the list unfiltered."), "warn")
                 result = serialize()
@@ -741,8 +736,8 @@ def run(action, payload):
                 hidden = {d["ip"] for d in targets if d["key"] not in kept}
                 core.STORE.devices = {k: v for k, v in core.STORE.devices.items() if k in kept}
                 core.STORE.order = [k for k in core.STORE.order if k in kept]
-                # 숨긴 장비의 IP 는 "훑은 주소" 에서도 빼야 한다. 안 그러면
-                # 쓰고 있는 IP 가 빈 IP 목록으로 나간다 — 제일 나쁜 오답이다.
+                # A hidden device's IP has to come out of "swept addresses" too.
+                # Otherwise a used IP goes out on the free list — the worst answer there is.
                 still = {d["ip"] for d in core.STORE.devices.values()}
                 core.STORE.scanned = [ip for ip in core.STORE.scanned
                                       if ip not in (hidden - still)]
@@ -778,8 +773,8 @@ def run(action, payload):
                          "Identifying — {ip} {mac}").format(ip=dev["ip"], mac=dev["mac"]))
         emit_state()
         try:
-            # 그 장비를 찾은 랜카드로 나가야 한다. 카드를 둘 이상 골라 훑었으면
-            # 지금 고른 카드와 다를 수 있다.
+            # It has to go out of the adapter that found the device. With more than
+            # one adapter swept, that may not be the one selected now.
             core.identify_device(dev, dev.get("ifindex") or core.STORE.ifindex,
                                  dev.get("ifname") or core.STORE.iface,
                                  isolate=True, ports_text=payload.get("ports", ""))
@@ -841,14 +836,14 @@ def run(action, payload):
                                            "Could not find a snapshot URL."))
         return {"dataUrl": "data:image/jpeg;base64," + base64.b64encode(image).decode(), "method": method}
 
-    # ── 장비 사전 ──────────────────────────────────────────────────────
-    # MAC 앞자리로 제조사와 장비 종류를 알아보는 표. 현장에서 처음 보는 장비를
-    # 한 번 등록해두면 다음부터는 스캔하자마자 이름이 뜬다.
+    # ── Device book ────────────────────────────────────────────────────
+    # A table that reads vendor and device type off the MAC prefix. Register an
+    # unfamiliar device once on site and it is named the moment the next scan sees it.
 
     if action == "export":
         fmt = payload.get("format", "json")
         if fmt == "html":
-            # 리포트는 표가 아니라 한 장짜리 문서다. 엔진이 직접 그린다.
+            # The report is a one-page document, not a table. The engine draws it itself.
             core.export_html(payload["path"], site=payload.get("site", ""),
                              note=payload.get("note", ""))
             count = len(core.STORE.devices)
@@ -876,10 +871,10 @@ def run(action, payload):
         return {"path": payload["path"], "count": len(rows)}
 
     if action == "free_ips":
-        # 훑은 대역에서 응답하지 않은 자리. 실제 비어 있는지는 배정 전에 확인해야 한다.
+        # Addresses in the swept range that did not answer. Confirm one before assigning it.
         #
-        # 스캔이 끝까지 안 갔으면 목록을 아예 안 준다. 경고만 띄우고 목록을
-        # 같이 주면 사람은 목록을 본다 — 그리고 그 자리에 장비를 박는다.
+        # If the scan did not run to the end, no list is handed out at all. Put a warning
+        # next to the list and people read the list — and then put a device on one.
         if core.STORE.busy:
             raise RuntimeError(T("스캔이 끝난 뒤에 보십시오. 아직 안 훑은 주소가 "
                                  "빈 자리처럼 보입니다.",
@@ -917,8 +912,8 @@ def run(action, payload):
         hit, slow = core.apply_port_map(result)
         core.STORE.log(T("스위치 포트를 %d대에 붙였습니다.",
                          "Attached switch ports to %d devices.") % hit, "ok" if hit else "warn")
-        # 케이블 한 쌍만 나가도 링크는 안 끊기고 조용히 100M 으로 떨어진다.
-        # 아무도 안 알려주니 여기서 알려준다.
+        # One bad pair in the cable and the link stays up, quietly dropping to 100M.
+        # Nothing else tells anyone, so this does.
         for row in slow:
             core.STORE.log(
                 T("느린 링크 — {ip} 가 {port} 에 {speed}Mbps 로 붙어 있습니다 "
@@ -931,10 +926,10 @@ def run(action, payload):
                 "slow": slow, "top": result.get("top", 0), "state": serialize()}
 
     if action == "poe_restart":
-        # 스위치한테 그 포트 전원을 껐다 켜라고 시킨다. 사다리를 안 타도 되지만,
-        # 엉뚱한 포트를 끄면 현장이 통째로 내려간다. 그래서 세 가지를 먼저 막는다.
-        # 부르는 길이 둘이다. 목록에서 장비를 우클릭하거나(key), 스위치 앞판에서
-        # 포트를 직접 고르거나(index). 어느 쪽이든 막는 규칙은 같아야 한다.
+        # Tell the switch to power-cycle that port. Saves climbing a ladder, but cycle
+        # the wrong port and the whole site goes down. So three things are blocked first.
+        # Two ways in: right-click a device in the list (key), or pick a port straight off
+        # the switch front panel (index). The blocking rules have to be the same either way.
         dev = core.STORE.devices.get(payload.get("key") or "")
         host = (payload.get("switch") or "").strip()
         community = payload.get("community") or ""
@@ -943,7 +938,7 @@ def run(action, payload):
             raise RuntimeError(T("스위치 IP 와 쓰기 커뮤니티 문자열이 필요합니다.",
                                  "The switch IP and a write community are required."))
         if dev is None:
-            # 앞판에서 온 길. 못 만지는 포트인지는 화면이 이미 판단해 붙여 보낸다.
+            # The front-panel way in. The UI already worked out and tagged the untouchable ports.
             index = str(payload.get("index") or "")
             if not index:
                 raise RuntimeError(T("포트를 고르십시오.", "Choose a port."))
@@ -963,21 +958,21 @@ def run(action, payload):
                                  "This device is not PoE powered. Run the switch "
                                  "port lookup first."))
 
-        # 0) 그 장비를 찾은 스위치가 맞는지부터 본다. 3층 카메라의 포트 번호를
-        #    1층 스위치에 보내면 엉뚱한 장비의 전원이 나간다.
+        # 0) First, is this the switch the device was found on? Send a 3rd-floor
+        #    camera's port number to the 1st-floor switch and some other device loses power.
         if dev.get("swhost") and dev["swhost"] != host:
             raise RuntimeError(
                 T("이 장비는 {sw} 에서 찾았습니다. 그 스위치 IP 로 하십시오.",
                   "This device was found on {sw}. Use that switch's IP.")
                 .format(sw="%s (%s)" % (dev.get("swname") or "", dev["swhost"])))
-        # 1) 내 PC 가 물린 포트는 절대 못 끊는다. 스스로 연결을 끊는 짓이다.
+        # 1) The port this PC is plugged into is never cut. That is cutting your own line.
         my_macs = my_macs_of_this_pc()
-        # 2) 스위치 자신도 안 된다.
+        # 2) Nor the switch itself.
         if dev["ip"] == host:
             raise RuntimeError(T("스위치 자신의 포트는 껐다 켤 수 없습니다.",
                                  "The switch's own port cannot be cycled."))
-        # 3) 한 포트에 장비가 여럿 보이면 그 아래 다른 스위치나 허브가 달린 것이다.
-        #    거기를 끊으면 그 아래가 통째로 내려간다.
+        # 3) Several devices on one port means another switch or hub hangs below it.
+        #    Cut that and everything under it goes down with it.
         sharing = [d for d in core.STORE.devices.values()
                    if d.get("swport") and d.get("swport") == dev.get("swport")
                    and d.get("swname") == dev.get("swname")]
@@ -1004,8 +999,8 @@ def run(action, payload):
         return {"ok": True, "state": serialize()}
 
     if action == "switch_ports":
-        # 스위치의 물리 포트를 전부 읽어 표로 만든다. 목록에 없는 빈 포트까지
-        # 나오므로, 준공 때 "안 쓰는 포트 잠그기" 를 여기서 한 번에 할 수 있다.
+        # Read every physical port on the switch into a table. Empty ports that are on no
+        # list show up too, so "lock the unused ports" at handover happens here in one go.
         host = (payload.get("switch") or "").strip()
         community = payload.get("community") or "public"
         if not host:
@@ -1016,11 +1011,11 @@ def run(action, payload):
             raise RuntimeError(T("스위치에서 포트 목록을 못 읽었습니다 (%s).",
                                  "Could not read the port list from the switch (%s).") % host)
 
-        # 어느 포트에 무엇이 붙었는지는 스위치가 내준 MAC 표(row["macs"])로 안다.
-        # 우리 스캔 목록에 없어도 — 스캔을 아직 안 돌렸어도 — 판단이 선다.
-        # 우리가 아는 MAC 이면 IP·장비 종류까지 같이 보여준다.
-        # STORE 는 스캔이 통째로 갈아치운다. 잠금을 잡은 채로 그 자리에서 훑으면
-        # 다른 STORE 의 잠금을 잡고 이 STORE 를 훑는 일이 생긴다. 먼저 베껴 온다.
+        # What sits on which port comes from the switch's own MAC table (row["macs"]).
+        # That holds for devices not in our scan list — even with no scan run yet.
+        # For a MAC we do know, the IP and device type are shown alongside.
+        # A scan swaps STORE out wholesale. Walk it in place while holding the lock and
+        # you end up holding one STORE's lock while walking another. Copy it out first.
         store = core.STORE
         with store.lock:
             snapshot = list(store.devices.values())
@@ -1030,16 +1025,16 @@ def run(action, payload):
                      "vendor": dev.get("vendor") or ""}
                  for dev in snapshot}
 
-        # 원본을 그대로 넘긴다. 사본을 만들면 아래 메우기가 사본에만 들어가서,
-        # 화면에는 여전히 빈 채로 나간다.
+        # Pass the originals through. Make copies and the fill-in below lands on the
+        # copies only, and the UI still gets empty rows.
         listed = []
         for index, info in ports.items():
             info["index"] = index
             listed.append(info)
 
-        # 스위치가 MAC 표를 안 내주거나 번호가 안 맞으면 여기가 통째로 빈다.
-        # 그때는 지난 조회에서 목록에 붙여둔 것(swport)으로 메운다 — 아무것도
-        # 모르는 것보다 낫고, 무엇보다 "다 모르는 장비" 라고 우기면 안 된다.
+        # If the switch withholds its MAC table or the numbering does not line up, this
+        # comes back empty. Then fill it from what the last lookup attached (swport) —
+        # better than knowing nothing, and never insist "every device is unknown".
         fdb_ok = any(row.get("macs") for row in listed)
         if not fdb_ok:
             for row in listed:
@@ -1055,20 +1050,20 @@ def run(action, payload):
                 "warn")
         guard_rows(host, community, listed)
 
-        # 포트 속도를 적어 두고, 예전보다 느려진 포트를 받아 온다. 기가 링크는
-        # 랜선 한 가닥만 나가도 조용히 100M 로 앉는데, 이걸 사람 눈으로는 못 찾는다.
+        # Record the port speeds and get back the ports slower than before. A gigabit
+        # link sits down at 100M over one bad wire, and nobody finds that by eye.
         name = host
         try:
             name = core.switch_name(host, community)
             slow = core.compare_port_speeds(host, ports, name=name)
         except Exception as err:
-            # 이력은 있으면 좋은 것이지, 포트 관리 창을 못 열게 할 이유는 아니다.
+            # History is nice to have; it is no reason to keep the port window shut.
             core.STORE.log(T("포트 속도 이력을 남기지 못했습니다 — %s",
                              "Could not record port speed history — %s") % err, "warn")
             slow = []
         slow_by_key = {row["key"]: row for row in slow}
-        # 사람이 "이 포트는 원래 100M 입니다" 라고 눌러 둔 값. 화면의 다른 짐작
-        # (옆 포트들보다 느리다)까지 같이 재워야 단추가 먹은 것처럼 보인다.
+        # What someone marked as "this port has always been 100M". The UI's other guess
+        # (slower than its neighbours) has to be silenced too, or the button looks dead.
         okay = {}
         try:
             kept = (core.load_port_history().get(host) or {}).get("ports") or {}
@@ -1080,7 +1075,7 @@ def run(action, payload):
 
         rows = []
         for info in sorted(listed, key=lambda r: int(r["index"])):
-            # 우리가 모르는 MAC 이면 IP 는 비워 둔다 — 화면이 MAC 을 대신 보여준다.
+            # For a MAC we do not know, leave the IP blank — the UI shows the MAC instead.
             seen = [known.get(core.hex_mac(m))
                     or {"ip": "", "mac": core.dash_mac(m), "kind": "", "vendor": ""}
                     for m in (info.get("macs") or [])]
@@ -1096,8 +1091,8 @@ def run(action, payload):
                          "Read {n} ports — {up} in use, {lock} locked")
                        .format(n=len(rows), lock=locked,
                                up=sum(1 for r in rows if r["oper"] == 1)), "ok")
-        # 반이중. 속도 저하와 따로 알린다 — 여기 걸린 포트는 속도 칸이 멀쩡해서
-        # 아무리 봐도 안 보인다. "1G 인데 느리다" 는 신고의 정체가 대개 이것이다.
+        # Half duplex. Reported apart from speed drops — a port caught here has a perfectly
+        # normal speed column. Most "it's gigabit but it's slow" complaints are this.
         half = [r for r in rows if core.is_half_duplex(r)]
         if half:
             hits = sum(int(r.get("lateColl") or 0) for r in half)
@@ -1129,15 +1124,15 @@ def run(action, payload):
                     "%s번 %s->%s" % (row["no"], core.speed_label(row["best"]),
                                      core.speed_label(row["speed"])) for row in slow[:6])),
                 "warn")
-        # 이름은 위에서 이미 물어봤다. 답 없는 스위치에 한 번 더 물으면
-        # 사람이 기다리는 자리에서 1.5초를 그냥 버린다.
+        # The name was already asked for above. Asking an unresponsive switch again
+        # throws away 1.5 seconds with someone standing there waiting.
         return {"switch": host, "ports": rows, "fdbOk": fdb_ok, "slow": slow,
                 "switchName": name}
 
     if action == "port_speed_ok":
-        # "이 포트는 원래 100M 입니다" — 기준을 지금 속도로 내린다.
-        # 일부러 100M 장비를 물려 둔 포트가 영원히 빨갛게 남으면, 사람은 곧 빨간색
-        # 전체를 무시하게 된다. 무시당하는 경고는 없는 것만 못하다.
+        # "This port has always been 100M" — drop the baseline to the current speed.
+        # If a port with a deliberately 100M device on it stays red forever, people
+        # start ignoring red altogether. An ignored warning is worse than none.
         host = (payload.get("switch") or "").strip()
         key = (payload.get("port") or "").strip()
         if not host or not key:
@@ -1153,16 +1148,16 @@ def run(action, payload):
         return {"switch": host, "port": key}
 
     if action == "report_export":
-        # 준공·점검 리포트. 기사들이 손으로 엑셀에 치던 것을 그대로 뽑는다.
+        # Handover and inspection report. Exactly what installers used to type into Excel.
         #
-        # 스위치는 목록에 붙은 swhost 에서 저절로 모은다. 사람이 IP 를 다시
-        # 입력하게 만들면 한 대를 빠뜨리고, 빠뜨린 스위치는 문서에서 조용히
-        # 사라진다. 그건 리포트가 아니라 거짓말이다.
+        # The switches are gathered by themselves from the swhost tagged on the list.
+        # Make someone re-enter the IPs and one gets missed, and a missed switch
+        # disappears from the document without a trace. That is not a report, it is a lie.
         path = payload.get("path") or ""
         if not path:
             raise RuntimeError(T("저장할 곳을 정하십시오.", "Choose where to save."))
-        # 스캔 도중이면 장비 목록이 반만 차 있다. 그 상태로 준공 문서를 뽑으면
-        # "장비 12대, 충돌 없음" 같은 숫자가 그대로 고객에게 나간다.
+        # Mid-scan the device list is only half full. Pull a handover document then and
+        # numbers like "12 devices, no conflicts" go straight to the customer.
         if core.STORE.busy:
             raise RuntimeError(T("스캔이 끝난 뒤에 뽑으십시오. 지금은 장비 목록이 "
                                  "아직 채워지는 중이라 문서의 숫자가 틀립니다.",
@@ -1178,8 +1173,8 @@ def run(action, payload):
 
         switches, missed = [], []
         REPORT_MAX = 8
-        # 여덟 대를 넘겨 못 읽은 스위치도 '확인 못 함' 으로 적는다. 조용히
-        # 빼면 문서가 "그 스위치는 문제 없었다" 고 거짓말하는 셈이 된다.
+        # Switches past the eighth that went unread still go in as "not checked". Drop
+        # them silently and the document claims that switch was fine.
         for extra in hosts[REPORT_MAX:]:
             missed.append((extra, T("한 번에 스위치 %d대까지만 읽습니다. 스위치 IP 칸에 "
                                     "나눠 넣고 두 번 뽑으십시오.",
@@ -1197,7 +1192,7 @@ def run(action, payload):
                 had = bool((core.load_port_history().get(host) or {}).get("ports"))
                 slow = core.compare_port_speeds(host, ports, name=name)
             except Exception as err:
-                # 못 읽었다고 그냥 빼면 안 된다. 리포트에 '확인 못 함' 으로 적는다.
+                # Unreadable is no reason to drop it. It goes in the report as "not checked".
                 missed.append((host, str(err) or err.__class__.__name__))
                 core.STORE.log(T("리포트: %s 스위치를 못 읽었습니다 — %s",
                                  "Report: could not read switch %s — %s")
@@ -1221,7 +1216,7 @@ def run(action, payload):
                 "slow": drops, "devices": len(core.STORE.devices)}
 
     if action == "port_admin":
-        # 포트를 잠그거나 푼다. 푸는 것은 언제나 안전하므로 막지 않는다.
+        # Lock or unlock a port. Unlocking is always safe, so it is never blocked.
         host = (payload.get("switch") or "").strip()
         community = payload.get("community") or ""
         index = str(payload.get("index") or "")
@@ -1231,7 +1226,7 @@ def run(action, payload):
                                  "The switch IP and a write community are required."))
         if not index:
             raise RuntimeError(T("포트를 고르십시오.", "Choose a port."))
-        # 푸는 것은 언제나 안전하다. 잠그는 것만 확인한다.
+        # Unlocking is always safe. Only locking gets verified.
         if not up:
             verify_writable(host, community, index)
         core.set_port_admin(host, community, index, up,
@@ -1248,8 +1243,8 @@ def run(action, payload):
         return {"ok": True, "index": index, "up": up}
 
     if action == "port_link":
-        # 포트 하나의 지금 상태. 풀어 놓고 링크가 붙기를 기다리는 동안 쓴다.
-        # 읽기만 하므로 쓰기 커뮤니티가 필요 없고, 잠금 검사도 하지 않는다.
+        # One port's state right now. Used while waiting for a link after unlocking.
+        # Read-only, so no write community is needed and no lock check runs.
         host = (payload.get("switch") or "").strip()
         index = str(payload.get("index") or "")
         community = payload.get("community") or "public"
@@ -1260,8 +1255,8 @@ def run(action, payload):
                                    timeout=float(payload.get("timeout") or 1.5))
 
     if action == "poe_admin":
-        # PoE 를 켠 채로/끈 채로 둔다. 끄는 것은 포트 잠그기와 같은 무게라
-        # 같은 자리를 막는다. 켜는 것은 언제나 안전하다.
+        # Leave PoE on or off. Turning it off carries the same weight as locking a
+        # port, so the same guards apply. Turning it on is always safe.
         host = (payload.get("switch") or "").strip()
         community = payload.get("community") or ""
         index = str(payload.get("index") or "")
@@ -1317,7 +1312,7 @@ def run(action, payload):
         core.STORE.log(T("장비 사전 %s — %s (%s)", "Device book %s — %s (%s)") % (
             (T("등록", "add") if created else T("수정", "update")), prefix.upper(),
             payload.get("kind") or T("종류 없음", "no type")), "ok")
-        # 이미 잡아둔 장비들에도 바로 반영한다
+        # Apply it to the devices already on the list right away
         _refresh_from_book()
         return {"created": created, "rows": core.BOOK.rows(), "state": serialize()}
 
@@ -1347,14 +1342,14 @@ def run(action, payload):
     raise RuntimeError(T("알 수 없는 요청: ", "Unknown request: ") + action)
 
 
-# 오래 걸리는 일. 이걸 읽기 스레드에서 그대로 돌리면 그동안 화면이 보내는
-# 것을 하나도 못 받는다. 리포트는 스위치 여덟 대를 통째로 훑을 수 있어서
-# 답 없는 스위치가 하나만 끼어도 분 단위로 멈춘다.
+# Long-running work. Run this on the reader thread and nothing the UI sends gets
+# picked up meanwhile. A report can sweep eight switches at once, so one unresponsive
+# switch among them stalls it for minutes.
 SLOW_ACTIONS = ("report_export", "switch_ports", "snmp_ports", "poe_restart")
 
 
 def serve():
-    """스캔·리포트처럼 오래 걸리는 일은 별도 스레드에서 처리한다."""
+    """Long jobs like scans and reports are handled on a thread of their own."""
     global SCAN_RUNNING
     def finish(req):
         global SCAN_RUNNING
@@ -1390,13 +1385,13 @@ def serve():
                 SCAN_CANCEL.clear()
             threading.Thread(target=finish, args=(req,), daemon=True).start()
         elif action in SLOW_ACTIONS:
-            # 스위치를 여러 대 훑는 동안 이 줄에서 붙잡고 있으면, 그동안 화면이
-            # 보내는 것을 하나도 못 읽는다. 중지도 안 먹고 창이 죽은 것처럼 보인다.
+            # Hold this line while several switches are swept and nothing the UI sends
+            # is read. Stop stops working and the window looks dead.
             threading.Thread(target=finish, args=(req,), daemon=True).start()
         else:
             finish(req)
 
 
-# 시험에서 이 파일을 불러다 run() 만 직접 부를 수 있도록 감싸둔다.
+# Guarded so tests can import this file and call run() directly.
 if __name__ == "__main__":
     serve()

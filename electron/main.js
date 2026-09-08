@@ -1,9 +1,5 @@
-/* Quiet Scanner — 현장 IP 충돌 정리 도구
+/* Quiet Scanner — field IP conflict cleanup tool
  * Copyright (C) 2026 고요한
- *
- * 이 프로그램은 자유 소프트웨어입니다. GNU 일반 공중 사용 허가서 제2판 또는
- * 그 이후 판의 조건에 따라 재배포하거나 수정할 수 있습니다. 아무런 보증도
- * 하지 않습니다. 자세한 것은 같은 폴더의 LICENSE 를 보십시오.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
@@ -55,7 +51,7 @@ function startBackend() {
       if (!job) return;
       pending.delete(message.id);
       message.ok ? job.resolve(message.data) : job.reject(new Error(message.error || '백엔드 오류'));
-    } catch (_) { /* 프로토콜 외 출력은 무시 */ }
+    } catch (_) { /* anything that is not protocol output gets ignored */ }
   });
   child.on('error', () => {
     backendError = new Error('네트워크 엔진을 실행하지 못했습니다. 설치를 다시 확인하십시오.');
@@ -117,32 +113,32 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('before-quit', () => { if (backend && !backend.killed) backend.kill(); });
 
 ipcMain.handle('network:request', (_event, action, payload) => request(action, payload));
-// 저장 창은 {canceled, filePath} 를 돌려준다. 화면 쪽은 경로 하나만 필요하니
-// 여기서 풀어서 넘긴다. 취소면 null.
+// The save dialog hands back {canceled, filePath}. The renderer only needs the one
+// path, so unwrap it here. null on cancel.
 ipcMain.handle('dialog:save', async (_event, options) => {
   const result = await dialog.showSaveDialog(options);
   return result.canceled ? null : (result.filePath || null);
 });
 
-// 사용설명서를 기본 브라우저로 연다.
+// Open the user guide in the default browser.
 //
-// 설치본에서는 exe 옆에 깔린다(extraFiles). 개발 중에는 소스 폴더의 것을 본다.
-// 파일이 없으면 조용히 실패하지 말고 이유를 말한다 — 메뉴를 눌렀는데 아무 일도
-// 안 일어나면 사람은 프로그램이 고장 난 줄 안다.
+// In an installed build it sits next to the exe (extraFiles). In development we use
+// the copy in the source folder. If the file is missing, do not fail silently — say
+// why. Click a menu item, have nothing happen, and people assume the program is broken.
 ipcMain.handle('open:manual', async (_event, lang) => {
   const spots = app.isPackaged
     ? [path.join(path.dirname(app.getPath('exe')), 'manual.html'),
        path.join(process.resourcesPath, 'manual.html')]
     : [path.join(__dirname, '..', 'manual.html')];
-  // 설명서는 한 파일에 두 말을 담고 주소 끝(#ko·#en)으로 고른다. 프로그램을
-  // 영어로 쓰는 사람에게 한글 문서를 띄우면 연 보람이 없다.
+  // The guide holds both languages in one file and picks with the URL fragment (#ko·#en).
+  // Open a Korean document for someone running the program in English and there was no point opening it.
   const tag = lang === 'en' ? 'en' : 'ko';
   for (const spot of spots) {
     if (fs.existsSync(spot)) {
       const err = await shell.openExternal(pathToFileURL(spot).href + '#' + tag)
         .then(() => '', (e) => String(e && e.message || e));
       if (!err) return { ok: true };
-      // 브라우저를 못 띄웠으면 파일이라도 연다 — 그러면 말은 지난 선택을 따른다.
+      // If the browser would not launch, at least open the file — then the language falls back to whatever was chosen last.
       const back = await shell.openPath(spot);
       return back ? { ok: false, why: back } : { ok: true };
     }
