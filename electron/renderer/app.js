@@ -170,7 +170,7 @@ function cellHtml(d, key) {
     // Half duplex is the fault where the speed column still looks fine, so if the
     // list does not show it outright nobody ever finds it. Hang a ½ off the speed.
     const dupHalf = Number(d.swduplex || 0) === 2;
-    const hint = [d.swname ? `${d.swname} ${d.swport}` : d.swport,
+    const hint = [d.swname ? `${d.swname}${d.swhost ? ` (${d.swhost})` : ''} ${d.swport}` : d.swport,
                   d.swalias, d.swvlan ? `VLAN ${d.swvlan}` : '',
                   dupHalf ? t('halfLinkTip') : '',
                   d.swslow ? t('slowLinkTip') : ''].filter(Boolean).join(' · ');
@@ -1795,7 +1795,14 @@ function renderFace() {
   ].map(([cls, text]) => `<span class="face-key"><i class="pport ${cls}">${cls === 'locked' ? '\u2715' : (cls === 'slow half' ? '\u00bd' : '')}</i>${esc(text)}</span>`).join('');
 
   // One line at the top of the dialog. Four numbers describe this switch completely.
-  $('#portsWhere').textContent = t('portsWhere', { sw: portsData.switch, n: rows.length });
+  // The name matters as much as the count: the device list labels a port by the switch's
+  // sysName and this window is opened by IP, so without both there is nothing to match
+  // them on. Blank when the sysName could not be read — it falls back to the IP, and
+  // printing the address twice tells no one anything.
+  const swName = portsData.name && portsData.name !== portsData.switch ? portsData.name : '';
+  $('#portsWhere').textContent = swName
+    ? t('portsWhereNamed', { name: swName, sw: portsData.switch, n: rows.length })
+    : t('portsWhere', { sw: portsData.switch, n: rows.length });
   $('#portsTally').innerHTML = [
     ['live', rows.filter(r => portClass(r) === 'live').length, t('portsTallyUp')],
     ['slow', rows.filter(r => r.slowLink && !r.wasSpeed).length, t('portsTallySlow')],

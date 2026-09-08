@@ -338,6 +338,9 @@ const STRINGS = {
   portsLegendIdle: ['빈 포트', 'unused'],
   portsLegendLock: ['잠김', 'locked'],
   portsWhere:      ['{sw} · 포트 {n}개', '{sw} · {n} ports'],
+  // The device list names the switch by its sysName, this window by its IP. With only
+  // one of the two on screen there is no telling which switch you are looking at.
+  portsWhereNamed: ['{name} · {sw} · 포트 {n}개', '{name} · {sw} · {n} ports'],
   portsTallyUp:    ['연결', 'up'],
   portsTallySlow:  ['100M', '100M'],
   portsTallyLock:  ['잠김', 'locked'],
