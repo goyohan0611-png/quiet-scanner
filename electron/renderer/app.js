@@ -178,8 +178,11 @@ function cellHtml(d, key) {
       ? `<i class="swspeed${d.swslow || dupHalf ? ' slow' : ''}">${formatSpeed(d.swspeed)}`
         + `${dupHalf ? '<b>\u00bd</b>' : ''}</i>` : '';
     // If the port is feeding PoE, show how many watts alongside. 3 = delivering power.
+    // No room for a word in this column. '~' carries "estimated" and the tooltip says which.
+    const poeEst = d.poeEstimated !== false;
     const poe = d.poeStatus === 3
-      ? `<i class="poe" title="${esc(t('poeTip'))}">${d.poeWatt ? d.poeWatt.toFixed(1) : '?'}W</i>` : '';
+      ? `<i class="poe" title="${esc(t('poeTip') + ' · ' + t(poeEst ? 'poeEstTip' : 'poeMeasTip'))}">`
+        + `${poeEst ? '~' : ''}${d.poeWatt ? d.poeWatt.toFixed(1) : '?'}W</i>` : '';
     // With several switches on site, "port 12" alone gets you nowhere. Name the
     // switch too, but keep it to **one line** — two lines pin the row height at
     // 45px and dense view stops working entirely.
@@ -1628,6 +1631,27 @@ $('#snmpRun').addEventListener('click', async () => {
 
 let poeKey = null;
 
+/** Fill a write-community box from one already filled in.
+
+    There are three community boxes: one to read with, and two to write with (the port
+    window and the PoE dialog). The two write boxes hold the same string for the same
+    switch and did not pass it to each other, so it got typed twice. The read string is
+    the last resort, because plenty of sites run one RW community for everything -- where
+    they do not, the label still says "write" and a wrong one fails with a clear message.
+
+    Session only. A write community is a credential and does not belong on the disk of a
+    laptop that moves from site to site. */
+function carryCommunity(intoId) {
+  const box = $(intoId);
+  if (!box || box.value.trim()) return;
+  const others = [intoId === '#portsCommunity' ? '#poeCommunity' : '#portsCommunity',
+                  '#snmpCommunity'];
+  for (const id of others) {
+    const from = ($(id) || {}).value || '';
+    if (from.trim()) { box.value = from.trim(); return; }
+  }
+}
+
 function openPoe(key) {
   const device = deviceOf(key);
   if (!device) return;
@@ -1637,6 +1661,7 @@ function openPoe(key) {
     + (device.poeWatt ? `  ·  ${device.poeWatt.toFixed(1)}W` : '');
   // The switch IP carries over from the port lookup just run.
   if (!$('#poeHost').value) $('#poeHost').value = $('#snmpHost').value || '';
+  carryCommunity('#poeCommunity');
   $('#poeDialog').hidden = false;
   $('#poeCommunity').focus();
 }
@@ -1697,6 +1722,16 @@ function portNumber(row) {
   return Number(row.index) || 0;
 }
 
+/** The PoE figure, said plainly. A class estimate is the ceiling the switch reserved for
+    that port, not a reading — a camera classed at 15.4W usually draws 4-7W. Printed bare,
+    the two are indistinguishable, and a power budget built from estimates is wrong by
+    triple. poeEstimated defaults to true: unmarked means unmeasured. */
+function poeText(row) {
+  if (Number(row.poeStatus) !== 3) return '';
+  const watt = Number(row.poeWatt || 0).toFixed(1);
+  return `PoE ${watt}W ${t(row.poeEstimated === false ? 'poeMeasTag' : 'poeEstTag')}`;
+}
+
 /** Uplinks and fibre ports sit apart on the faceplate. Told apart by speed or name. */
 function isUplink(row) {
   return (row.speed || 0) >= 10000 || /^(te|twe|fo|fi|hu|xg|sfp)/i.test(String(row.name || ''));
@@ -1750,7 +1785,7 @@ function renderFace() {
                  row.speed ? formatSpeed(row.speed) : t('portsLegendIdle'),
                  half ? t('portsHalfTip') : '',
                  row.wasSpeed ? `← ${formatSpeed(row.wasSpeed)} (${row.wasAt})` : '',
-                 row.poeStatus === 3 ? `PoE ${(row.poeWatt || 0).toFixed(1)}W` : '',
+                 poeText(row),
                  who, row.blocked].filter(Boolean).join(' · ');
     // Colour alone cannot separate half duplex from a slow link. The fix differs —
     // one is reterminating the cable, the other is matching settings at both ends.
@@ -1824,7 +1859,7 @@ function renderDetail() {
   const meta = [
     row.speed ? formatSpeed(row.speed) : '',
     dup,
-    row.poeStatus === 3 ? `PoE ${(row.poeWatt || 0).toFixed(1)}W` : '',
+    poeText(row),
     (row.devices || []).map(d => `${d.ip || (d.mac || '').toUpperCase()}${d.kind ? ' · ' + d.kind : ''}`).join(' / '),
   ].filter(Boolean).join('  ·  ');
 
@@ -1922,6 +1957,7 @@ async function openPorts() {
   portsData = { switch: result.switch, rows: result.ports || [], fdbOk: !!result.fdbOk,
                 name: result.switchName || '' };
   pickedPort = null;
+  carryCommunity('#portsCommunity');
   linkEpoch += 1;            // another switch opened means the earlier watch is over
   $('#snmpDialog').hidden = true;
   renderPorts();

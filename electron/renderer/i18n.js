@@ -250,6 +250,15 @@ const STRINGS = {
   poeNeedComm:     ['쓰기 커뮤니티 문자열을 넣으십시오.', 'Enter the write community string.'],
   poeNoPort:       ['먼저 스위치 포트를 조회해야 합니다.', 'Run the switch port lookup first.'],
   poeTip:          ['이 포트가 PoE 로 전원을 주고 있습니다', 'This port is delivering PoE'],
+  // Two different numbers wear the same 'W'. The class estimate is the ceiling the
+  // switch reserved for that port, not a reading — a camera classed at 15.4W usually
+  // draws 4-7W. Add up the estimates for a power budget and it is wrong by triple.
+  poeEstTag:       ['어림', 'class est.'],
+  poeMeasTag:      ['실측', 'measured'],
+  poeEstTip:       ['PoE 등급으로 계산한 상한값입니다. 실제 소비량은 이보다 적습니다 — 이 스위치가 포트별 실측값을 SNMP 로 내주지 않습니다.',
+                    'Worked out from the PoE class — the ceiling, not a reading. The real draw is lower; this switch does not serve per-port measurements over SNMP.'],
+  poeMeasTip:      ['스위치가 실제로 재서 알려준 값입니다.',
+                    'Measured by the switch itself.'],
 
   /* Port management */
   portsBtn:        ['포트 관리…', 'Manage ports…'],

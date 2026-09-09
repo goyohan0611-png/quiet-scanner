@@ -3337,6 +3337,11 @@ def apply_port_map(result):
             dev["poeIndex"] = info.get("poeIndex", "")
             dev["poeStatus"] = info.get("poeStatus", 0)
             dev["poeWatt"] = info.get("poeWatt", 0.0)
+            # Whether that wattage was measured or worked out from the PoE class. The
+            # report has always split the two; carry it so the screen can as well. A class
+            # estimate is the class ceiling, not a reading: eight cameras at "15.4W" add up
+            # to 123W of budget that nothing is actually drawing.
+            dev["poeEstimated"] = bool(info.get("poeEstimated", True))
             if info.get("slow"):
                 slow.append({"ip": dev["ip"], "port": info["port"],
                              "speed": info.get("speed") or 0,
