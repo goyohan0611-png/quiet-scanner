@@ -662,10 +662,25 @@ def run(action, payload):
                              "Skipping name collection: %s") % exc, "warn")
 
         picked = 0
+        skipped = set()
         with core.STORE.lock:
+            # mDNS and SSDP answer per address. On a conflicting IP exactly one reply comes
+            # back for however many devices are sitting on it, and there is no way to tell
+            # whose it is. Stamped on all of them, four devices get one name, one model and
+            # one serial — the Dahua and the Hanwha both wearing the Hikvision's. An empty
+            # cell is honest; a copied serial is an invented one, and it goes into the
+            # commissioning report as fact. Identification handles these properly: it
+            # isolates one device at a time, so what it finds belongs to that MAC.
+            crowd = {}
+            for dev in core.STORE.devices.values():
+                crowd[dev["ip"]] = crowd.get(dev["ip"], 0) + 1
             for dev in core.STORE.devices.values():
                 name = names.get(dev["ip"], "")
                 info = upnp.get(dev["ip"]) or {}
+                if crowd.get(dev["ip"], 1) > 1:
+                    if name or info:
+                        skipped.add(dev["ip"])
+                    continue
                 if name:
                     dev["mdns"] = name
                 if info:
@@ -680,6 +695,17 @@ def run(action, payload):
             core.STORE.log(T("장비 이름 %d대 수집 (mDNS %d · UPnP %d)",
                              "Collected names for %d devices (mDNS %d · UPnP %d)") % (
                 picked, len(names), len(upnp)), "ok")
+        # Say it out loud. Drop these quietly and the blank cells look like nothing
+        # answered, and someone goes hunting for a fault that is not there.
+        if skipped:
+            core.STORE.log(T("충돌 IP %d곳(%s)은 이름·모델·시리얼을 붙이지 않았습니다 — "
+                             "응답이 한 대 몫뿐이라 어느 장비 것인지 알 수 없습니다. "
+                             "[장비 정보 검사]를 돌리면 한 대씩 격리해서 제대로 채웁니다.",
+                             "Left name, model and serial blank on %d conflicting IP(s) (%s) — "
+                             "only one reply came back for several devices, so there is no "
+                             "telling whose it is. Run Identify device to fill them in "
+                             "properly, one isolated device at a time.")
+                           % (len(skipped), ", ".join(sorted(skipped)[:6])), "warn")
 
         if core.STORE.cancel.is_set():
             core.STORE.set_progress(T("대역 스캔", "Range scan"), len(scanned), len(targets),
