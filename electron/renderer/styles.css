@@ -14,7 +14,13 @@
 @font-face { font-family: Pretendard; src: url('fonts/Pretendard-SemiBold.ttf'); font-weight: 600; }
 @font-face { font-family: Pretendard; src: url('fonts/Pretendard-Bold.ttf'); font-weight: 700; }
 :root {
-  --pad: 20px;   /* Window left/right margin. Every row lines up on this value */ --ink:#182230; --muted:#6f7d90; --line:#e7ecf3; --panel:#fff; --bg:#f7f9fc; --blue:#2878f0; --green:#0a9d67; --red:#e7475b; --red-bg:#fff5f6; --amber:#ba7a09; --log-height:182px; }
+  --pad: 20px;   /* Window left/right margin. Every row lines up on this value */ --ink:#182230; --muted:#6f7d90; --line:#e7ecf3; --panel:#fff; --bg:#f7f9fc; --blue:#2878f0; --green:#0a9d67; --red:#e7475b; --red-bg:#fff5f6; --amber:#ba7a09;
+  /* The dialogs used to call --mut/--acc/--accbg/--tx/--panel2/--hover, none of
+     which existed, so every one fell through to a hardcoded near-miss: three
+     different blues, and a grey and an ink that were each a shade off the app.
+     Nothing looked broken; everything was three percent out, which reads as cheap.
+     Those names are gone now and these two are the only ones that were missing. */
+  --tint:#f0f4f9; --hover:#eef5ff; --blue-deep:#1769df; --log-height:182px; }
 * { box-sizing:border-box; }
 /* On a laptop scaled to 125%, a 1390px window is 1112px in CSS. Pin the minimum
    width at 1120 and that window scrolls sideways, cutting off the right-hand buttons. */
@@ -78,9 +84,11 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
 .modal-card {
   width: min(520px, calc(100vw - 48px));
   padding: 18px 20px 16px;
-  border: 1px solid var(--line, #e2e7ee);
-  border-radius: 12px;
-  background: var(--panel, #fff);
+  border: 1px solid var(--line);
+  /* Square. The main window is an instrument panel divided by 1px lines, and a
+     12px card in front of it reads as a different program. 4px is the seam. */
+  border-radius: 4px;
+  background: var(--panel);
   box-shadow: 0 18px 48px rgba(16, 26, 40, 0.18);
 }
 
@@ -91,26 +99,26 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
   margin-bottom: 6px;
 }
 
-.modal-card header strong { font-size: 14px; }
+.modal-card header strong { font-size: 15px; }
 
 .modal-card header button {
   width: 26px;
   height: 26px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 2px;
   background: transparent;
-  color: var(--mut, #6b7684);
+  color: var(--muted);
   font-size: 17px;
   cursor: pointer;
 }
 
-.modal-card header button:hover { background: var(--hover, #eef1f6); }
+.modal-card header button:hover { background: var(--hover); }
 
 .modal-hint {
   margin: 0 0 14px;
-  color: var(--mut, #6b7684);
-  font-size: 11.5px;
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -124,31 +132,31 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 11.5px;
-  color: var(--mut, #6b7684);
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .modal-grid input {
   padding: 8px 10px;
-  border: 1px solid var(--line, #e2e7ee);
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  border-radius: 0;
   background: #fff;
-  color: var(--tx, #242c38);
-  font-size: 12.5px;
+  color: var(--ink);
+  font-size: 13px;
 }
 
 .modal-grid input:focus {
-  border-color: var(--acc, #2f6feb);
+  border-color: var(--blue);
   outline: none;
 }
 
 .modal-scope {
   margin-top: 12px;
   padding: 9px 11px;
-  border-radius: 8px;
-  background: var(--panel2, #eef1f6);
-  color: var(--mut, #6b7684);
-  font-size: 11.5px;
+  border-radius: 0;
+  background: var(--tint);
+  color: var(--muted);
+  font-size: 12px;
   line-height: 1.5;
   min-height: 18px;
 }
@@ -164,35 +172,35 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
 
 .modal-card footer button {
   padding: 8px 15px;
-  border-radius: 7px;
-  border: 1px solid var(--line, #e2e7ee);
+  border-radius: 0;
+  border: 1px solid var(--line);
   background: #fff;
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
 }
 
-.modal-card footer button:hover { background: var(--hover, #eef1f6); }
+.modal-card footer button:hover { background: var(--hover); }
 
 .modal-card footer button.primary {
   border-color: transparent;
-  background: var(--accbg, #3b82f6);
+  background: var(--blue);
   color: #fff;
   font-weight: 600;
 }
 
-.modal-card footer button.primary:hover { filter: brightness(1.06); }
-.modal-card footer button.ghost { color: var(--mut, #6b7684); }
+.modal-card footer button.primary:hover { background: var(--blue-deep); }
+.modal-card footer button.ghost { color: var(--muted); }
 
 .book-tag {
   margin-left: 5px;
-  color: var(--acc, #2f6feb);
+  color: var(--blue);
   font-size: 10px;
   font-style: normal;
   opacity: 0.75;
 }
 
 .modal-scope { white-space: pre-line; }
-.modal-caution { margin:10px 0 0; padding:9px 11px; border-left:3px solid #d99b2f; background:#fff8e9; color:#8b611a; font-size:11.5px; line-height:1.55; }
+.modal-caution { margin:10px 0 0; padding:9px 11px; border-left:3px solid #d99b2f; background:#fff8e9; color:#8b611a; font-size:12px; line-height:1.55; }
 .modal-card footer button.danger { background:var(--red); border-color:var(--red); }
 .modal-card footer button.danger:hover { background:#d9394d; }
 
@@ -213,7 +221,7 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   background: #fff;
   font-size: 12px;
 }
@@ -224,7 +232,7 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
   height: 30px;
   padding: 0 11px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   background: #fff;
   color: #4a5b70;
   font-size: 12px;
@@ -255,7 +263,7 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
 .compare-group { margin-bottom: 14px; }
 .compare-group h4 { margin: 0 0 6px; font-size: 12px; color: #4a5b70; }
 .compare-group h4 b { color: #1769df; }
-.compare-none { margin: 0; color: #9aa8ba; font-size: 11.5px; }
+.compare-none { margin: 0; color: #9aa8ba; font-size: 12px; }
 
 .compare-row {
   display: grid;
@@ -264,8 +272,8 @@ dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--
   align-items: center;
   padding: 6px 9px;
   border-left: 3px solid transparent;
-  border-radius: 5px;
-  font-size: 11.5px;
+  border-radius: 0;
+  font-size: 12px;
 }
 
 .compare-row .ip { font-family: Consolas, monospace; }
@@ -345,7 +353,7 @@ body.dense .mac-sub { font-size:10.5px; }
 .book-list-head #bookCount { color:var(--muted); font-size:11.5px; }
 .book-list-head .filter-input { width:190px; height:28px; font-size:12px; }
 .book-list { max-height:240px; overflow-y:auto; border:1px solid var(--line);
-             border-radius:8px; background:#fcfdfe; }
+             border-radius:0; background:#fcfdfe; }
 .bk-item { border-bottom:1px solid #eef2f6; }
 .bk-item:last-child { border-bottom:0; }
 .bk-row { display:grid; grid-template-columns:1.1fr 1fr auto; gap:10px;
@@ -367,7 +375,7 @@ body.dense .mac-sub { font-size:10.5px; }
 .bk-pres { display:flex; flex-wrap:wrap; gap:5px; padding:2px 11px 10px 11px;
            background:#f7f9fc; }
 .bk-pres[hidden] { display:none; }
-.bk-chip { padding:3px 8px; border:1px solid #dde4ed; border-radius:5px;
+.bk-chip { padding:3px 8px; border:1px solid #dde4ed; border-radius:0;
            background:#fff; color:#5b6b80; font-size:10.5px; cursor:pointer;
            font-family:ui-monospace,Consolas,monospace; }
 .bk-chip:hover { border-color:var(--blue); color:var(--blue); background:#f1f7ff; }
@@ -375,7 +383,7 @@ body.dense .mac-sub { font-size:10.5px; }
               font-weight:600; }
 .bk-more { align-self:center; margin-left:4px; color:#98a5b5; font-size:10.5px;
            font-style:normal; }
-.bk-mine { display:inline-block; margin-left:6px; padding:0 5px; border-radius:3px;
+.bk-mine { display:inline-block; margin-left:6px; padding:0 5px; border-radius:0;
            background:#e8f7ef; color:#0d7a52; font-size:10px; font-weight:600; }
 .bk-empty { padding:22px; color:#98a5b5; font-size:12px; text-align:center; }
 
@@ -391,7 +399,7 @@ body.dense .mac-sub { font-size:10.5px; }
            padding:0 var(--pad) 0 6px; background:#fff;
            border-bottom:1px solid var(--line); }
 .menubar > button { height:24px; padding:0 11px; border:0; background:transparent;
-                    color:#3d4a5c; font-size:12.5px; border-radius:5px; cursor:pointer; }
+                    color:#3d4a5c; font-size:12.5px; border-radius:0; cursor:pointer; }
 .menubar > button:hover { background:#eef4ff; color:#1769df; }
 .menubar > button.on { background:#e6effd; color:#1769df; }
 .mb-gap { flex:1; }
@@ -402,7 +410,7 @@ body.dense .mac-sub { font-size:10.5px; }
 .mb-stat.live i { background:#22a06b; }
 .mb-stat.busy i { background:#f0a020; }
 .mb-pop { position:fixed; z-index:40; min-width:216px; padding:5px; background:#fff;
-          border:1px solid #dbe3ed; border-radius:8px; box-shadow:0 14px 36px #24334b26; }
+          border:1px solid #dbe3ed; border-radius:4px; box-shadow:0 14px 36px #24334b26; }
 .mb-pop button { display:flex; align-items:center; gap:10px; width:100%; height:30px;
                  padding:0 10px; border:0; background:none; color:#34465c;
                  font-size:12.5px; text-align:left; cursor:pointer; }
@@ -436,17 +444,17 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 .appbar-name { color:#6b7a8d; font-size:12.5px; font-weight:600; letter-spacing:.2px; }
 .appbar-btn { padding:4px 10px; color:#5b6b80; background:none; border:1px solid transparent; font-size:12px; cursor:pointer; }
 .appbar-btn:hover { color:#243043; background:#eef3fa; border-color:var(--line); }
-#langMenu button[data-on="1"] { color:#1f6feb; font-weight:600; }
+#langMenu button[data-on="1"] { color:var(--blue); font-weight:600; }
 
 /* Work bar buttons sit hard right */
 .workbar-tools { display:flex; align-items:center; gap:6px; margin-left:auto; }
 
 /* The scan controls up top tie the input fields and the run button into one look. */
-.control-panel { border-radius:10px; }
+.control-panel { border-radius:0; }
 .control-panel .field select,
 .control-panel .field input,
 .control-panel .interface-control button,
-.control-panel .toolbar-actions button { border-radius:7px; }
+.control-panel .toolbar-actions button { border-radius:0; }
 
 /* The selected interface's IP is our own machine, so set it apart in the list at a glance. */
 .group-row.own-ip:not(.conflict) {
@@ -463,7 +471,7 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 .ip-copy:focus-visible { outline:2px solid #9fc0f2; outline-offset:2px; }
 
 .kind-cell { display:flex; align-items:center; gap:5px; min-width:0; }
-.kind-confidence { flex:0 0 auto; padding:2px 5px; border-radius:4px; font-size:10px; font-style:normal; line-height:1.2; }
+.kind-confidence { flex:0 0 auto; padding:2px 5px; border-radius:0; font-size:10px; font-style:normal; line-height:1.2; }
 .kind-confidence.confirmed { color:#087c53; background:#e8f7ef; }
 .kind-confidence.estimated { color:#9a6508; background:#fff3dc; }
 
@@ -497,10 +505,10 @@ body.dense .net-tab { height:26px; padding:0 10px; }
            background:transparent; color:#7c8b9c; font-size:12px; line-height:1;
            white-space:nowrap; }
 .net-tab i { display:inline-block; margin-left:7px; padding:1px 6px; font-style:normal;
-             font-size:10.5px; color:#8b98a8; background:#eef2f6; border-radius:9px; }
+             font-size:10.5px; color:#8b98a8; background:#eef2f6; border-radius:0; }
 .net-tab:hover { color:var(--ink); }
 .net-tab.on { color:var(--ink); background:#fff; border-color:var(--line);
-              border-radius:4px 4px 0 0; font-weight:600; margin-bottom:-1px; }
+              border-radius:2px 2px 0 0; font-weight:600; margin-bottom:-1px; }
 .net-tab.on i { color:var(--blue); background:#e8f0fe; }
 
 /* Adapter picker — tick several and sweep them all in one pass */
@@ -520,17 +528,22 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 
    The background is white. Paint the faceplate black and it mimics the hardware,
    but it drops a black slab in the middle of the screen and kills the green and red you came to look at. */
-.modal-card--face { width:min(1000px, calc(100vw - 48px)); max-width:none; }
-.face { margin-top:12px; }
-.face-plate { display:flex; gap:16px; align-items:flex-start; padding:12px 14px;
-              background:#fff; border:1px solid var(--line); border-radius:6px; overflow-x:auto; }
-.face-bank { display:flex; flex-direction:column; gap:4px; }
-.face-bank--uplink { padding-left:14px; border-left:1px dashed #dbe3ec; }
-.face-line { display:flex; gap:3px; }
-.face-tag { margin-top:5px; color:#9aa7b6; font-size:9.5px; letter-spacing:.04em; text-align:center; }
-.pport { position:relative; display:grid; place-items:center; width:24px; height:22px; padding:0;
-         border:1px solid #dbe3ec; border-radius:3px; background:#fff; color:#8b98a8;
-         font-family:ui-monospace,Consolas,monospace; font-size:10px; line-height:1; cursor:pointer; }
+.modal-card--face { width:min(1080px, calc(100vw - 48px)); max-width:none; }
+.face { margin-top:14px; }
+/* The plate sits on the app's grey rather than on white, so the ports read as parts
+   mounted on a face instead of chips floating in the dialog. */
+.face-plate { display:flex; gap:20px; align-items:flex-start; padding:16px 18px;
+              background:var(--bg); border:1px solid var(--line); border-radius:2px; overflow-x:auto; }
+.face-bank { display:flex; flex-direction:column; gap:5px; }
+.face-bank--uplink { padding-left:18px; border-left:1px dashed #dbe3ec; }
+.face-line { display:flex; gap:4px; }
+.face-tag { margin-top:6px; color:#9aa7b6; font-size:10.5px; letter-spacing:.04em; text-align:center; }
+/* These were 24x22 with 10px numbers — smaller on screen than the legend explaining them,
+   when they are the whole reason the window opens. At this size the bank reads as the
+   switch's own face, which is the object the tech already knows how to look at. */
+.pport { position:relative; display:grid; place-items:center; width:34px; height:30px; padding:0;
+         border:1px solid #dbe3ec; border-radius:2px; background:#fff; color:#8b98a8;
+         font-family:ui-monospace,Consolas,monospace; font-size:12px; line-height:1; cursor:pointer; }
 .pport:hover { border-color:#8ea6c2; color:#3c4b5e; }
 /* Unused ports get an outline only. Anything carrying colour has to be something worth looking at. */
 .pport.idle { }
@@ -543,50 +556,53 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 /* A locked port shows an X instead of its number. Colour alone gets mistaken for 100M. */
 .pport.locked { background:#f4f6f9; border-color:#e7475b; color:#e7475b; font-size:12px; }
 /* One yellow band underneath when PoE is feeding power. Add another colour and the state stops reading. */
-.pport.has-poe { box-shadow:inset 0 -3px 0 #edc23c; }
+.pport.has-poe { box-shadow:inset 0 -4px 0 #edc23c; }
 .pport.keep { cursor:not-allowed; border-style:dashed; }
 .pport.picked { outline:2px solid var(--blue); outline-offset:1px; }
 .pport--gap { visibility:hidden; }
-.face-legend { display:flex; flex-wrap:wrap; gap:7px 16px; margin-top:8px;
-               color:var(--muted); font-size:11px; }
-.face-key { display:flex; align-items:center; gap:6px; }
-.face-key .pport { width:14px; height:12px; cursor:default; font-size:9px; }
+.face-legend { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:10px;
+               color:var(--muted); font-size:11.5px; }
+.face-key { display:flex; align-items:center; gap:7px; }
+.face-key .pport { width:18px; height:16px; cursor:default; font-size:10px; }
 
 /* One line at the top of the window — which switch, and what state it is in right now */
 .ports-top { display:flex; justify-content:space-between; align-items:baseline; gap:16px;
-             flex-wrap:wrap; margin-top:2px; color:var(--muted); font-size:12px; }
+             flex-wrap:wrap; margin-top:4px; color:var(--muted); font-size:12.5px; }
 .ports-top #portsWhere { font-family:ui-monospace,Consolas,monospace; }
 #portsTally { display:flex; gap:14px; }
-.tally { display:inline-flex; align-items:baseline; gap:5px; font-size:11.5px; }
-.tally b { font-size:13px; font-variant-numeric:tabular-nums; }
+.tally { display:inline-flex; align-items:baseline; gap:5px; font-size:12px; }
+.tally b { font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
 .tally.live b { color:var(--green); }
 .tally.slow b { color:var(--red); }
+.tally.warn b { color:var(--amber); }
 .tally.locked b { color:var(--red); }
 /* Name it pwr — .poe is already taken by the device-list chip and its background bleeds through. */
 .tally.pwr b { color:#a5820e; }
 
 /* The one selected port — a one-line summary and buttons, nothing else. Select nothing and it does not show at all. */
 .port-detail { margin-top:12px; padding:12px 14px; background:#fbfcfe;
-               border:1px solid var(--line); border-radius:6px; }
+               border:1px solid var(--line); border-radius:0; }
 .pd-line { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:11px; }
 .pd-line > b { font-family:ui-monospace,Consolas,monospace; font-size:13px; color:var(--ink); }
 .pd-meta { color:var(--muted); font-size:12px; }
 .pd-alias { font-style:normal; font-size:12px; color:#7b8798; }
 .pd-keep { font-style:normal; font-size:11px; color:#8a6d1f; background:#fff6e2;
-           padding:2px 8px; border-radius:3px; }
+           padding:2px 8px; border-radius:0; }
 .port-state { font-weight:600; font-size:11.5px; }
 .port-state.up { color:#1b7a52; }
 .port-state.down { color:#95a2b3; }
 .port-state.locked { color:var(--red); }
 .pd-ghost { margin:0 0 11px; padding:8px 11px; border-left:3px solid var(--amber);
-            background:#fff8e9; color:#8b611a; font-size:11.5px; line-height:1.55; }
+            background:#fff8e9; color:#8b611a; font-size:12px; line-height:1.55; }
 /* The record that this port used to be faster. Not a guess (slowLink) but a fact we
    wrote down, so it gets its own block where you cannot miss it. 'This speed is normal'
    sits beside it — a port with a deliberate 100M device left red forever gets red ignored everywhere. */
 .pd-was { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
           margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
-          background:#fff2f1; color:#8c332c; font-size:11.5px; line-height:1.55; }
-.pd-was b { font-size:12.5px; color:#7a2b25; }
+          background:#fff2f1; color:#8c332c; font-size:12px; line-height:1.55; }
+/* The headline takes its own line. Left to wrap, it shares a row with the explanation
+   and shoves the button down on its own, leaving a hole in the middle of the block. */
+.pd-was b { flex:1 0 100%; font-size:13px; color:#7a2b25; }
 .pd-was span { flex:1; min-width:200px; color:#96594f; }
 .pd-was button { flex:0 0 auto; height:28px; font-size:11.5px;
                  background:#fff; border-color:#e8c4bf; color:#8c332c; }
@@ -595,32 +611,32 @@ body.dense .net-tab { height:26px; padding:0 10px; }
    A speed drop means re-terminating the cable; half duplex means matching the settings at both ends.
    Mix them into one block and the tech re-terminates a good cable twice and still has not fixed it. */
 .pd-half { margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
-           background:#fff2f1; color:#8c332c; font-size:11.5px; line-height:1.55; }
-.pd-half b { display:block; margin-bottom:3px; font-size:12.5px; color:#7a2b25; }
+           background:#fff2f1; color:#8c332c; font-size:12px; line-height:1.55; }
+.pd-half b { display:block; margin-bottom:3px; font-size:13px; color:#7a2b25; }
 .pd-half span { display:block; color:#96594f; }
 /* Late collisions are evidence, not a guess. Stand them up in bold. */
 .pd-half .pd-proof { margin-top:5px; font-weight:600; color:#8c332c; }
 
 /* The ½ on a faceplate port. It must not cover the number, so it goes small in the bottom-right corner. */
-.pport .pp-half { position:absolute; right:1px; bottom:0; font-size:9px;
+.pport .pp-half { position:absolute; right:2px; bottom:1px; font-size:10.5px;
                   font-style:normal; font-weight:700; line-height:1; opacity:.9; }
-.face-key .pport.half { font-size:9px; }
+.face-key .pport.half { font-size:10px; }
 /* The ½ that attaches to the speed column in the list */
 .swspeed b { margin-left:2px; font-weight:700; }
 
 /* Commissioning report dialog — wide fields take up both columns */
 .report-form .wide { grid-column:1 / -1; }
-.report-form textarea { padding:8px 10px; border:1px solid var(--line,#e2e7ee);
-                        border-radius:7px; background:#fff; color:var(--tx,#242c38);
+.report-form textarea { padding:8px 10px; border:1px solid var(--line);
+                        border-radius:0; background:#fff; color:var(--ink);
                         font-family:inherit; font-size:12.5px; line-height:1.5;
                         resize:vertical; }
-.report-form textarea:focus { border-color:var(--acc,#2f6feb); outline:none; }
+.report-form textarea:focus { border-color:var(--blue); outline:none; }
 
 /* In-dialog run log. The activity log below is hidden behind the dialog —
    the reason you were refused, and the waiting, have to show right there. */
 .modal-log { max-height:132px; margin:12px 0 0; padding:8px 10px; overflow-y:auto;
-             background:#f7f9fc; border:1px solid var(--line,#e2e7ee); border-radius:8px;
-             font-size:11.5px; line-height:1.5; }
+             background:#f7f9fc; border:1px solid var(--line); border-radius:0;
+             font-size:12px; line-height:1.5; }
 .ml-line { display:flex; gap:9px; padding:2px 0; color:#5b6b80; }
 .ml-line i { flex:0 0 auto; font-style:normal; color:#a3b0c0;
              font-family:ui-monospace,Consolas,monospace; font-size:10.5px; padding-top:1px; }
