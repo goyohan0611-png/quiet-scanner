@@ -24,7 +24,7 @@ const pending = new Map();
 
 function backendCommand() {
   if (app.isPackaged) return { file: path.join(process.resourcesPath, 'IPFixBackend', 'IPFixBackend.exe'), args: [] };
-  return { file: 'python', args: [path.join(__dirname, '..', 'electron-backend.py')] };
+  return { file: 'python', args: [path.join(__dirname, '..', 'src', 'electron-backend.py')] };
 }
 
 function startBackend() {
@@ -87,9 +87,9 @@ function request(action, payload = {}) {
 }
 
 function createWindow() {
-  const appIcon = app.isPackaged
-    ? path.join(__dirname, 'renderer', 'IPFixStudio.ico')
-    : path.join(__dirname, '..', 'IPFixStudio.ico');
+  // Same path either way. The repository root has no icon — .gitignore blocks one there
+  // on purpose so the app's own copy survives — so the dev branch pointed at nothing.
+  const appIcon = path.join(__dirname, 'renderer', 'IPFixStudio.ico');
   const win = new BrowserWindow({
     width: 1400,
     height: 900,

@@ -1343,15 +1343,26 @@ def arp_pin(ip, mac, ifindex, ifname):
 
 
 def arp_unpin(ip, ifindex, ifname, remember=True):
-    """Release the isolation. Clears it for certain, whichever way it was set.
+    """Release the isolation, and forget it only once it is really gone.
+
+    pin_sweep's rule, which this used to break: never clear the record first. With no
+    record the next run does not even try, and that IP stays nailed to one MAC until the
+    PC reboots — the tool hiding the very conflict it was opened to find.
+    """
+    ok, why = _arp_unpin_now(ip, ifindex, ifname)
+    if ok and remember:
+        pin_forget(ip)
+    return ok, why
+
+
+def _arp_unpin_now(ip, ifindex, ifname):
+    """Clear it for certain, whichever way it was set.
 
     Do not just answer "success" regardless. Without administrator rights both commands
     fail silently, and this PC keeps sending that IP only to the fixed MAC — move or swap
     the device and traffic still goes to the wrong place. It takes a reboot to clear.
     Write "released" for that and nobody will ever think to go looking.
     """
-    if remember:
-        pin_forget(ip)
     if STORE.demo:
         return True, "demo"
     if os.name == "nt":
@@ -2551,6 +2562,10 @@ def snmp_get(ip, community, oid, timeout=1.5):
         if err or value is None:
             return None
         tag, body = value
+        # noSuchObject / noSuchInstance / endOfMibView. Falling through returned b"",
+        # which is not None — and the two "the switch went quiet" branches test for None.
+        if tag in (0x80, 0x81, 0x82):
+            return None
         if tag == 0x04:
             return body.decode("utf-8", "replace").strip()
         # Numbers arrive as more than just 0x02 INTEGER. ifHighSpeed is a Gauge32
@@ -2562,7 +2577,18 @@ def snmp_get(ip, community, oid, timeout=1.5):
         sock.close()
 
 
+# Keyed by (ip, root), not root alone. Keyed by root only, reading a second switch
+# discarded the first switch's flag, and verify_writable — which reads it seconds after
+# its own walk returned — then waved through a truncated MAC table and let an uplink be
+# locked. The lock guards this because report_export sweeps switches on its own thread.
 SNMP_WALK_TRUNCATED = set()
+_TRUNCATED_LOCK = threading.Lock()
+
+
+def walk_truncated(ip, *roots):
+    """Was this switch's walk of any of these roots cut short."""
+    with _TRUNCATED_LOCK:
+        return any((ip, root) in SNMP_WALK_TRUNCATED for root in roots)
 
 
 def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
@@ -2572,14 +2598,16 @@ def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
     table drops the MACs behind an uplink, so that port looks like "one device only" —
     lock it in that state and everything below goes down. This must not pass silently.
     """
-    SNMP_WALK_TRUNCATED.discard(root)
+    with _TRUNCATED_LOCK:
+        SNMP_WALK_TRUNCATED.discard((ip, root))
     out = {}
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     current = root
     try:
         while True:
             if len(out) >= limit:
-                SNMP_WALK_TRUNCATED.add(root)
+                with _TRUNCATED_LOCK:
+                    SNMP_WALK_TRUNCATED.add((ip, root))
                 break
             try:
                 oid, value, err = _snmp_ask(
@@ -2739,7 +2767,11 @@ def snmp_port_map(ip, community="public", timeout=1.5, log=None):
         poe = read_poe(ip, community, timeout)
         poe_main = poe["main"]
         for info in ports.values():
-            index = poe_index_for(info["portNo"], poe["ports"])
+            # ifIndex, not the bridge port number. read_switch_ports looks PoE up by
+            # ifIndex, and verify_writable checks the poeIndex that reader produced. Look
+            # it up here in the other space and on any switch where the two differ the
+            # guard inspects one port while the switch powers down another.
+            index = poe_index_for(info.get("ifIndex") or info["portNo"], poe["ports"])
             if not index:
                 continue
             row = poe["ports"][index]
@@ -2893,6 +2925,11 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
     # and the screen says "could not switch off". The tech never thinks to go looking.
     turned_off = True
     restore_failed = False
+    # Hold the switch-off error rather than letting it fly. Let it propagate out of the
+    # try and Python re-raises it the moment finally ends — which skipped the "the port
+    # is still dark" warning below entirely, and the tech read "check write access" over
+    # a camera that was powered down. A dark port outranks whatever went wrong.
+    off_error = None
     try:
         got = _snmp_set_int(ip, community, admin_oid, 2, timeout)
         # Read the written value back. Some devices answer and change nothing.
@@ -2904,6 +2941,8 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
         say(T("포트 %s 전원 끊음 — %.0f초 기다립니다.",
               "Port %s powered off — waiting %.0f seconds.") % (poe_index, wait))
         time.sleep(max(1.0, wait))
+    except Exception as exc:
+        off_error = exc
     finally:
         # Whatever happens, switch it back on. Fail here and somebody has to go there.
         if turned_off:
@@ -2920,12 +2959,15 @@ def poe_restart(ip, community, poe_index, wait=6.0, timeout=1.5, log=None):
                 # tech only finds out the device is dead after waiting a minute.
                 restore_failed = True
 
+    # Order matters. A port left without power is the worse news, so it is said first.
     if restore_failed:
         raise RuntimeError(
             T("포트 %s 전원을 다시 켜지 못했습니다. 스위치 화면에서 직접 켜야 합니다 "
               "— 그 포트에 물린 장비는 지금 꺼져 있습니다.",
               "Could not power port %s back on. Switch it on manually in the switch UI "
               "— whatever is on that port is powered down right now.") % poe_index)
+    if off_error is not None:
+        raise off_error
 
     say(T("포트 %s 전원 다시 넣음. 장비가 올라오는 데 30초에서 1분쯤 걸립니다.",
           "Port %s powered back on. The device needs 30-60 seconds to boot.")
@@ -2967,7 +3009,12 @@ def _blank_port(index):
     said; 0 is the switch saying nothing at all. Mix the two and every switch that does
     not serve EtherLike-MIB looks perfectly healthy.
     """
-    return {"index": index, "name": "", "alias": "", "speed": 0,
+    # read=False until ifOperStatus actually comes back for this port. A dropped UDP
+    # datagram ends a walk with no retry, and the ports past that point kept oper=0.
+    # ifOperStatus has no 0, so the screen read them as "no link", they became "unused
+    # ports", and "lock every unused port" took them. read_port_link already refuses to
+    # do this — see its comment; this is the same rule for the main reader.
+    return {"index": index, "name": "", "alias": "", "speed": 0, "read": False,
             "admin": 0, "oper": 0, "poeIndex": "", "poeStatus": 0,
             "poeAdmin": 0, "poeWatt": 0.0, "poeClass": 0,
             "poeEstimated": True, "macs": [], "duplex": 0, "lateColl": None}
@@ -2992,6 +3039,8 @@ def read_switch_ports(ip, community="public", timeout=1.5):
         for index, value in by_index(root).items():
             if index in ports:
                 ports[index][field] = _int_of(value[1])
+                if field == "oper":
+                    ports[index]["read"] = True
     for root in (OID_IF_NAME, OID_IF_DESCR):
         for index, value in by_index(root).items():
             if index in ports and not ports[index]["name"] and value[0] == 0x04:
@@ -3099,12 +3148,22 @@ def set_poe_admin(ip, community, poe_index, on, timeout=1.5):
     oid = "%s.%s" % (OID_POE_ADMIN, poe_index)
     want = 1 if on else 2
     _snmp_set_int(ip, community, oid, want, timeout)
-    if snmp_get(ip, community, oid, timeout) != want:
-        raise RuntimeError(T("PoE 상태가 바뀌지 않았습니다. 쓰기 권한이 있는 "
-                             "커뮤니티인지 확인하십시오.",
-                             "The PoE state did not change. Check that the "
-                             "community has write access."))
-    return True
+    got = snmp_get(ip, community, oid, timeout)
+    if got == want:
+        return True
+    # Same fork as set_port_admin. Silence after cutting power can mean the cut landed on
+    # the device carrying the management path. "It did not change" invites another press.
+    if got is None and not on:
+        raise RuntimeError(
+            T("포트 %s 전원을 끊은 뒤 스위치가 답하지 않습니다. 끊긴 것이 관리 경로일 "
+              "수 있습니다 — 다시 누르지 마시고 스위치 화면으로 확인하십시오.",
+              "The switch stopped answering after power was cut on port %s. What went "
+              "down may have been the management path — do not retry; check the switch UI.")
+            % poe_index)
+    raise RuntimeError(T("PoE 상태가 바뀌지 않았습니다. 쓰기 권한이 있는 "
+                         "커뮤니티인지 확인하십시오.",
+                         "The PoE state did not change. Check that the "
+                         "community has write access."))
 
 
 def set_port_admin(ip, community, ifindex, up, timeout=1.5):
@@ -4300,11 +4359,14 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                      "The scan did not finish — do not assign from this list. Addresses "
                      "never swept are mixed in with genuinely silent ones."), "bad"))
         spare.merge(len(spare.rows), 0, len(spare.rows), 4)
-    spare.row((T("훑은 주소 %d개 중 %d개가 조용합니다. 조용하다고 반드시 비어 있는 "
-                 "것은 아닙니다 — 꺼져 있는 장비도 조용합니다.",
-                 "%d of %d scanned addresses were silent. Silent does not always "
-                 "mean free — a powered-off device is also silent.")
-               % (empty["scanned"], len(empty["free"])), "sub"))
+    # Named fields, not positional. Korean counts "of N scanned, M silent" and English
+    # "M of N": written as %d %d the English sheet read "254 of 61 were silent" and
+    # quadrupled the pool of addresses a customer was about to assign from.
+    spare.row((T("훑은 주소 {scanned}개 중 {silent}개가 조용합니다. 조용하다고 반드시 "
+                 "비어 있는 것은 아닙니다 — 꺼져 있는 장비도 조용합니다.",
+                 "{silent} of {scanned} scanned addresses were silent. Silent does not "
+                 "always mean free — a powered-off device is also silent.")
+               .format(scanned=empty["scanned"], silent=len(empty["free"])), "sub"))
     spare.blank()
     spare.row(*[(text, "h") for text in
                 (T("시작", "From"), T("끝", "To"), T("개수", "Count"),

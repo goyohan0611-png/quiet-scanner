@@ -141,6 +141,13 @@ def guard_rows(host, community, rows):
     mine = my_macs_of_this_pc()
     switch_macs = switch_own_macs(host, community, rows)
     for row in rows:
+        # A port ifOperStatus never answered for is unknown, not empty. Left lockable,
+        # one dropped datagram is enough for "lock every unused port" to take a live
+        # camera down. Checked before block_reason: not knowing outranks every other reason.
+        if not row.get("read"):
+            row["blocked"] = T("상태를 못 읽은 포트입니다 — 비어 있는지 알 수 없습니다",
+                               "this port's state could not be read — no telling if it is free")
+            continue
         row["blocked"] = block_reason(row.get("macs"), mine, switch_macs)
     return rows
 
@@ -185,11 +192,14 @@ def verify_writable(host, community, index, poe=False):
                      "PoE index %s does not map to a port") % index)
     if target not in ports:
         refuse(T("스위치에 %s 번 포트가 없습니다", "the switch has no port %s") % index)
+    if not ports[target].get("read"):
+        refuse(T("%s 번 포트의 상태를 못 읽었습니다 — 비어 있는지 알 수 없습니다",
+                 "port %s's state could not be read — no telling if it is free") % target)
 
     if not any(info.get("macs") for info in ports.values()):
         refuse(T("스위치가 MAC 표를 안 내줍니다 — 어느 포트가 업링크인지 알 수 없습니다",
                  "the switch will not give up its MAC table — uplinks cannot be told apart"))
-    if core.SNMP_WALK_TRUNCATED & {core.OID_Q_FDB_PORT, core.OID_FDB_PORT}:
+    if core.walk_truncated(host, core.OID_Q_FDB_PORT, core.OID_FDB_PORT):
         refuse(T("MAC 표가 너무 커서 다 못 읽었습니다 — 업링크를 놓칠 수 있습니다",
                  "the MAC table was too large to read in full — an uplink could be missed"))
 
@@ -1377,7 +1387,12 @@ def run(action, payload):
 # Long-running work. Run this on the reader thread and nothing the UI sends gets
 # picked up meanwhile. A report can sweep eight switches at once, so one unresponsive
 # switch among them stalls it for minutes.
-SLOW_ACTIONS = ("report_export", "switch_ports", "snmp_ports", "poe_restart")
+# Anything that talks to a switch belongs here. port_admin calls verify_writable, which
+# reads the whole port list: against a switch that receives but does not answer that is
+# ~30s during which the stdin loop reads nothing at all — Stop included, which is the
+# exact hazard finish()'s comment describes.
+SLOW_ACTIONS = ("report_export", "switch_ports", "snmp_ports", "poe_restart",
+                "port_admin", "poe_admin", "port_link")
 
 
 def serve():

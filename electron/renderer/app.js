@@ -1746,6 +1746,8 @@ function isHalfDuplex(row) {
 
 function portClass(row) {
   if (row.admin === 2) return 'locked';
+  // The switch never said what this port is doing. Not idle, not fine — unknown.
+  if (row.read === false) return 'unknown';
   if (row.oper !== 1) return 'idle';
   // Red is only for what we can prove. wasSpeed is our own earlier reading of this same
   // port; half duplex the switch stated outright. Either one is a fact.
@@ -1754,7 +1756,11 @@ function portClass(row) {
   // says it can. Often that is a 100M camera in a gigabit port, which is nobody's
   // fault — so it must not be red. But it must not be green either. Green is this
   // window saying "checked, and fine", and nothing here checked that.
-  if (row.slowLink) return 'warn';
+  // speedOk is a tech having pressed "this port always ran at this speed"; leave the
+  // port marked after that and the button looks dead. Read here, never written back:
+  // renderFace used to assign this onto the row, so locking a slow port erased the
+  // engine's verdict for good and the port came back green after unlocking.
+  if (row.slowLink && !row.speedOk) return 'warn';
   return 'live';
 }
 
@@ -1762,14 +1768,8 @@ function portClass(row) {
 function renderFace() {
   const rows = portsData.rows || [];
   // Which ports are running slow is decided in the engine (mark_slow_ports) and arrives
-  // already marked. Working it out a second time here is what let this window and the
-  // activity log describe the same switch differently.
-  for (const row of rows) {
-    // speedOk is a tech having pressed "this port always ran at this speed". Leave the
-    // port marked after that and the button looks dead, and from then on the tech
-    // ignores the colour everywhere.
-    row.slowLink = !!row.slowLink && !row.speedOk && row.oper === 1;
-  }
+  // already marked. Nothing is written back onto the rows here — portClass reads what the
+  // engine sent. A render pass must not destroy the state it renders.
   const access = rows.filter(r => !isUplink(r)).sort((a, b) => portNumber(a) - portNumber(b));
   const uplink = rows.filter(isUplink).sort((a, b) => portNumber(a) - portNumber(b));
 
@@ -1815,7 +1815,8 @@ function renderFace() {
     ['live', t('portsLegend')], ['warn', t('portsLegendUnder')],
     ['slow', t('portsLegendSlow')],
     ['slow half', t('portsLegendHalf')],
-    ['idle', t('portsLegendIdle')], ['locked', t('portsLegendLock')],
+    ['idle', t('portsLegendIdle')], ['unknown', t('portsLegendUnread')],
+    ['locked', t('portsLegendLock')],
     ['live has-poe', t('portsLegendPoe')], ['keep', t('portsLegendKeep')],
   ].map(([cls, text]) => `<span class="face-key"><i class="pport ${cls}">${cls === 'locked' ? '\u2715' : (cls === 'slow half' ? '\u00bd' : '')}</i>${esc(text)}</span>`).join('');
 
@@ -1833,6 +1834,7 @@ function renderFace() {
     ['warn', rows.filter(r => portClass(r) === 'warn').length, t('portsTallySlow')],
     ['slow', rows.filter(r => r.wasSpeed).length, t('portsTallyWas')],
     ['slow', rows.filter(isHalfDuplex).length, t('portsTallyHalf')],
+    ['unknown', rows.filter(r => r.read === false).length, t('portsTallyUnread')],
     ['locked', rows.filter(r => r.admin === 2).length, t('portsTallyLock')],
     ['pwr', rows.filter(r => r.poeStatus === 3).length, 'PoE'],
   ].filter(([, n]) => n).map(([cls, n, label]) =>
@@ -1897,8 +1899,9 @@ function renderDetail() {
   const why = row.wasSpeed
     ? t('portsWas', { was: formatSpeed(row.wasSpeed), when: row.wasAt || '-',
                       now: formatSpeed(row.speed) || '-' })
-    : (row.slowLink ? t('portsUnderRef', { now: formatSpeed(row.speed) || '-',
-                                           ref: formatSpeed(row.slowRef) || '-' }) : '');
+    : (row.slowLink && !row.speedOk
+        ? t('portsUnderRef', { now: formatSpeed(row.speed) || '-',
+                               ref: formatSpeed(row.slowRef) || '-' }) : '');
   const was = why
     ? `<div class="pd-was"><b>${esc(why)}</b>`
       + `<span>${esc(t('portsWasWhy'))}</span>`
@@ -1998,7 +2001,8 @@ async function setPort(index, up) {
 
 $('#portsLockFree').addEventListener('click', async () => {
   // Only ports with no link and no reason to keep them. This is the handover button.
-  const targets = portsData.rows.filter(r => r.oper !== 1 && r.admin !== 2 && !r.blocked);
+  const targets = portsData.rows.filter(r => r.oper !== 1 && r.admin !== 2
+                                             && !r.blocked && r.read !== false);
   if (!targets.length) return notice(t('portsLockNone'), true);
   if (!$('#portsCommunity').value.trim()) return notice(t('portsNeedComm'), true);
   // It shuts several ports at once, so it asks twice. Instead of a dialog the button
@@ -2114,8 +2118,10 @@ $('#portsDetail').addEventListener('click', async (event) => {
       await call('port_speed_ok', { switch: portsData.switch, port: row.speedKey || row.name });
       row.wasSpeed = 0;
       row.wasAt = '';
+      // speedOk alone silences it now — portClass and the detail block both gate on it.
+      // Clearing slowLink as well would throw away what the engine measured, and a later
+      // re-read would have nothing to restore it from.
       row.speedOk = true;
-      row.slowLink = false;
       notice(t('portsWasDone', { port: label }));
       renderPorts();
     } catch (_) { button.disabled = false; }

@@ -348,6 +348,10 @@ const STRINGS = {
   portsGhost:      ['이 포트에 물린 MAC {n}개가 스캔 목록에 없습니다 — IP 가 아직 없는 장비이거나, 훑지 않은 대역을 쓰고 있습니다.',
                     '{n} MAC{s} on this port {s2} not in the scan — the device may have no IP yet, or sit in a range you did not sweep.'],
   portsLegendIdle: ['빈 포트', 'unused'],
+  // Distinct from "unused". The switch did not answer for this port, so whether anything
+  // is on it is unknown — and it must not be offered up to "lock every unused port".
+  portsLegendUnread:['못 읽음', 'not read'],
+  portsTallyUnread: ['못 읽음', 'not read'],
   portsLegendLock: ['잠김', 'locked'],
   portsWhere:      ['{sw} · 포트 {n}개', '{sw} · {n} ports'],
   // The device list names the switch by its sysName, this window by its IP. With only
