@@ -444,7 +444,6 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 .appbar-name { color:#6b7a8d; font-size:12.5px; font-weight:600; letter-spacing:.2px; }
 .appbar-btn { padding:4px 10px; color:#5b6b80; background:none; border:1px solid transparent; font-size:12px; cursor:pointer; }
 .appbar-btn:hover { color:#243043; background:#eef3fa; border-color:var(--line); }
-#langMenu button[data-on="1"] { color:var(--blue); font-weight:600; }
 
 /* Work bar buttons sit hard right */
 .workbar-tools { display:flex; align-items:center; gap:6px; margin-left:auto; }

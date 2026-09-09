@@ -317,7 +317,6 @@ function notice(text, bad = false) {
   if (text && text !== t('ready')) say(text, bad ? 'bad' : '');
 }
 function applyState(next) { state = { ...state, ...next }; render(); }
-function metric(label, value, type = '') { return `<div class="metric ${type}"><i></i><span>${label}</span><strong>${value || 0}</strong></div>`; }
 function showProgress() { progressRun += 1; progressVisible = true; }
 function hideProgressAfterCompletion() {
   const finishedRun = progressRun;
@@ -1123,9 +1122,13 @@ $('#bookDelete').addEventListener('click', async () => {
    ------------------------------------------------------------------- */
 
 function deviceText(d) {
-  // Search hidden columns too. Hiding a column must not make its value unfindable.
-  return [d.ip, d.mac, d.host, d.nbname, d.mdns, d.ssdp, d.vendor, d.kind,
-          d.model, d.serial, d.swport, d.os, (d.ports || []).join(' ')]
+  // Built from cellText, so anything a column can show is findable — including the
+  // columns that are switched off, because hiding one must not hide its value from the
+  // search. Listing the fields by hand is what left VLAN, the seen time and the switch
+  // name unsearchable while they sat on screen. The tail is the identity fields that
+  // never get a column of their own.
+  return [...COLUMNS.map(c => cellText(d, c.key)),
+          d.ip, d.host, d.serial, d.nbname, d.mdns, d.ssdp, d.swname, d.swalias]
     .filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -1139,13 +1142,16 @@ function ipKey(ip) {
 }
 
 function sortDevices(list) {
-  const sorted = [...list].sort((a, b) => {
+  // Negate the comparison, do not reverse the result. reverse() turned the tiebreaker
+  // round too, so descending listed equal values by descending IP while the group rows
+  // above them stayed ascending — two layers of the same screen sorted opposite ways.
+  const dir = sortDesc ? -1 : 1;
+  return [...list].sort((a, b) => {
     const x = cellSortValue(a, sortKey), y = cellSortValue(b, sortKey);
-    if (x < y) return -1;
-    if (x > y) return 1;
-    return ipKey(a.ip) - ipKey(b.ip);
+    if (x < y) return -dir;
+    if (x > y) return dir;
+    return ipKey(a.ip) - ipKey(b.ip);          // ties always read low IP first
   });
-  return sortDesc ? sorted.reverse() : sorted;
 }
 
 $('#filterInput').addEventListener('input', (event) => {

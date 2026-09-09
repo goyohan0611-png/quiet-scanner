@@ -2,6 +2,13 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
+    <!-- Nothing in this app is fetched. Everything ships beside the page and all
+         traffic goes through the preload bridge to the Python engine, so the page
+         needs no network of its own. Device names, ONVIF titles and SNMP aliases are
+         rendered here; they are escaped, and this is the second wall. 'unsafe-inline'
+         stays on styles only because a stricter setting cannot be verified without
+         running the packaged app. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quiet Scanner</title>
     <link rel="stylesheet" href="styles.css" />

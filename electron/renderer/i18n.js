@@ -72,10 +72,8 @@ const STRINGS = {
   mbTool:          ['도구', 'Tools'],
   mbExport:        ['결과 내보내기…', 'Export results…'],
   mbReport:        ['준공 · 점검 리포트…', 'Commissioning report…'],
-  mbFreeCsv:       ['후보 IP 배정표 저장…', 'Save candidate-IP worksheet…'],
   mbQuit:          ['끝내기', 'Quit'],
   mbDense:         ['밀집 보기', 'Compact rows'],
-  mbColumns:       ['칸 고르기…', 'Choose columns…'],
   mbLangKo:        ['언어 — 한국어', 'Language — 한국어'],
   mbLangEn:        ['언어 — English', 'Language — English'],
   mbScanRun:       ['대역 스캔', 'Scan range'],
@@ -93,9 +91,6 @@ const STRINGS = {
                     'Compact rows on — more fits on screen. (Ctrl+D to undo)'],
   mbDenseOff:      ['보통 보기로 돌아왔습니다.', 'Back to normal row height.'],
   reportBtn:       ['준공 리포트', 'Report'],
-  reportTitle:     ['스캔 결과와 스위치 포트를 준공·점검용 엑셀 한 부로 뽑습니다.',
-                    'Export the scan and switch ports as a commissioning/inspection workbook.'],
-  langMenu:        ['언어 ▾', 'Language ▾'],
 
   /* Device list */
   headTitle:       ['우클릭하면 볼 칸을 고를 수 있습니다', 'Right-click to choose which columns to show'],
@@ -116,10 +111,6 @@ const STRINGS = {
   colOs:           ['OS', 'OS'],
   colPorts:        ['열린 포트', 'Open ports'],
   colSwport:       ['스위치 포트', 'Switch port'],
-  colSerial:       ['시리얼', 'Serial'],
-  colNbname:       ['NetBIOS 이름', 'NetBIOS name'],
-  colMdns:         ['mDNS 이름', 'mDNS name'],
-  colSsdp:         ['UPnP 이름', 'UPnP name'],
   colVlan:         ['VLAN', 'VLAN'],
   colSeen:         ['확인 시각', 'Seen at'],
 
@@ -135,15 +126,8 @@ const STRINGS = {
   bookMatchTip:    ['장비 사전에서 인식', 'Matched in the device book'],
 
   /* Summary */
-  mIps:            ['발견된 IP', 'IPs found'],
-  mConflictIps:    ['충돌난 IP', 'Conflicting IPs'],
-  mDevices:        ['전체 장비', 'Devices'],
-  mConflictDev:    ['충돌 장비', 'Devices in conflict'],
   titleConflict:   ['충돌 IP {n}개', '{n} conflicting IP{s}'],
   titleDevices:    ['발견 장비 {n}대', '{n} device{s} found'],
-  subConflict:     ['충돌 장비를 우클릭해 검사 또는 격리를 선택하십시오.',
-                    'Right-click a device in conflict to identify or isolate it.'],
-  subDevices:      ['장비를 우클릭하면 작업 메뉴가 열립니다.', 'Right-click a device for the action menu.'],
   countConflict:   ['충돌 {n}', '{n} in conflict'],
   countDevices:    ['장비 {n}', '{n} devices'],
   countIps:        ['IP {n}', '{n} IPs'],

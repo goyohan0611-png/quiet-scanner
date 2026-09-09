@@ -100,6 +100,17 @@ function createWindow() {
     icon: appIcon,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
+  // This window shows one local page and nothing else, ever. Device names, ONVIF titles
+  // and SNMP aliases are rendered in it, and while they are all escaped, a window that
+  // can be navigated or can spawn another is one bug away from being worth attacking.
+  // Anything that wants a browser gets the real browser.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== win.webContents.getURL()) event.preventDefault();
+  });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
