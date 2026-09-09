@@ -2040,10 +2040,21 @@ def identify_device(dev, ifindex, ifname, isolate=True, ports_text=""):
         ok, msg = arp_pin(ip, mac, ifindex, ifname)
         pinned = ok
         if not ok:
-            STORE.log(T("ARP 격리 실패 %s / %s : %s",
-                        "ARP isolation failed %s / %s : %s") % (ip, mac, msg), "warn")
-        else:
-            time.sleep(0.4)
+            # Isolation is what makes the answers belong to this MAC. Without it every
+            # probe below talks to whichever device won the ARP race on that IP, and the
+            # ports, web title, ONVIF data and TTL of that one get written down here and
+            # marked identified. On a conflicting IP that is a different device's identity
+            # recorded against this MAC — the same fault as one mDNS reply stamped on four
+            # devices. Better to leave the row blank and say why.
+            STORE.log(T("ARP 격리 실패 %s / %s : %s — 이 장비는 검사하지 않았습니다. "
+                        "격리 없이 물어보면 같은 IP 를 쓰는 다른 장비의 답이 이 MAC 의 "
+                        "정보로 기록됩니다. 관리자 권한으로 다시 켜십시오.",
+                        "ARP isolation failed %s / %s : %s — this device was not probed. "
+                        "Asking without isolation records another device's answers "
+                        "against this MAC. Restart with administrator rights.")
+                      % (ip, mac, msg), "error")
+            return dev
+        time.sleep(0.4)
     try:
         http = {"title": "", "server": "", "realm": ""}
         ov = {}
@@ -2485,15 +2496,35 @@ def _ber_oid(dotted):
     return _tlv(0x06, body)
 
 
+class BadPacket(ValueError):
+    """A reply that is too short, or that claims a length the packet does not hold."""
+
+
 def _read_tlv(buf, i):
-    """Returns (tag, value, next position)."""
+    """Returns (tag, value, next position). Raises BadPacket rather than IndexError.
+
+    snmp_walk caught the bare IndexError; snmp_get and _snmp_set_int did not, and those
+    are the write and control paths. A malformed reply there surfaced as "index out of
+    range" instead of the safety wording, and in set_port_admin it aborted before the
+    read-back that decides whether the lock cut the management path.
+    """
+    if i + 2 > len(buf):
+        raise BadPacket("truncated header")
     tag = buf[i]
     length = buf[i + 1]
     i += 2
     if length & 0x80:
         count = length & 0x7F
+        if count == 0:                                  # indefinite length: not BER here
+            raise BadPacket("indefinite length")
+        if i + count > len(buf):
+            raise BadPacket("truncated length")
         length = int.from_bytes(buf[i:i + count], "big")
         i += count
+    if i + length > len(buf):
+        # Silently returning a short value handed the caller a next-position past the end
+        # of the buffer, and the next read blew up somewhere unrelated.
+        raise BadPacket("value runs past the packet")
     return tag, buf[i:i + length], i + length
 
 
@@ -2524,23 +2555,43 @@ def _snmp_message(community, pdu_tag, request_id, oid, non_repeaters=0):
 
 
 def _snmp_ask(sock, addr, community, pdu_tag, oid, request_id, timeout):
+    """Ask one question and take the answer only from the switch we asked.
+
+    The reply used to be accepted on a matching request-id alone: the sender's address was
+    thrown away and the community was parsed and dropped. Anyone who can see the GETNEXT
+    on the wire reads the id off it and races the switch — no address spoofing needed —
+    and this tool runs in ARP-poisoned segments by definition. The MAC table it returns
+    decides which port gets locked and which loses power.
+    """
+    want_community = community.encode("utf-8")
     sock.settimeout(timeout)
     sock.sendto(_snmp_message(community, pdu_tag, request_id, oid), addr)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        data, _ = sock.recvfrom(8192)
-        _, body, _ = _read_tlv(data, 0)
-        _, _, i = _read_tlv(body, 0)                    # version
-        _, _, i = _read_tlv(body, i)                    # community
-        tag, pdu, _ = _read_tlv(body, i)
-        if tag != 0xA2:                                 # only GetResponse is accepted
+        data, peer = sock.recvfrom(8192)
+        if peer[0] != addr[0]:                          # not from the switch we asked
             continue
-        _, rid, j = _read_tlv(pdu, 0)
-        if _int_of(rid) != request_id:
+        # A malformed datagram is one datagram, not the end of the conversation. Parsed
+        # outside this guard the failure escaped snmp_get and _snmp_set_int as a bare
+        # exception, and in set_port_admin that landed before the read-back that decides
+        # whether the lock cut our own management path.
+        try:
+            _, body, _ = _read_tlv(data, 0)
+            _, _, i = _read_tlv(body, 0)                # version
+            _, got_community, i = _read_tlv(body, i)
+            if got_community != want_community:         # not answered with our string
+                continue
+            tag, pdu, _ = _read_tlv(body, i)
+            if tag != 0xA2:                             # only GetResponse is accepted
+                continue
+            _, rid, j = _read_tlv(pdu, 0)
+            if _int_of(rid) != request_id:
+                continue
+            _, err, j = _read_tlv(pdu, j)
+            _, _, j = _read_tlv(pdu, j)                 # error index
+            _, binds, _ = _read_tlv(pdu, j)
+        except BadPacket:
             continue
-        _, err, j = _read_tlv(pdu, j)
-        _, _, j = _read_tlv(pdu, j)                     # error index
-        _, binds, _ = _read_tlv(pdu, j)
         if _int_of(err):
             return None, None, _int_of(err)
         _, bind, _ = _read_tlv(binds, 0)
@@ -2557,7 +2608,7 @@ def snmp_get(ip, community, oid, timeout=1.5):
         try:
             _, value, err = _snmp_ask(sock, (ip, SNMP_PORT), community, 0xA0, oid,
                                       random.randint(1, 0x7FFFFFFF), timeout)
-        except (socket.timeout, OSError):
+        except (socket.timeout, OSError, BadPacket):
             return None
         if err or value is None:
             return None
@@ -2609,17 +2660,33 @@ def snmp_walk(ip, community, root, timeout=1.5, limit=8000):
                 with _TRUNCATED_LOCK:
                     SNMP_WALK_TRUNCATED.add((ip, root))
                 break
-            try:
-                oid, value, err = _snmp_ask(
-                    sock, (ip, SNMP_PORT), community, 0xA1, current,
-                    random.randint(1, 0x7FFFFFFF), timeout)
-            except (socket.timeout, OSError):
-                # Windows answers a closed UDP port with ICMP unreachable, and that
-                # surfaces as ConnectionResetError. No reason to blow the whole thing up.
+            # Agents rate-limit and drop under load, so a lost reply mid-table is the
+            # ordinary case, not a hostile one. Writes already retry twice; reads retried
+            # zero times and just stopped, leaving a short MAC table that nothing flagged —
+            # and a short MAC table is how an uplink comes to look like an empty port.
+            oid = value = err = None
+            asked = False
+            for attempt in range(3):
+                try:
+                    oid, value, err = _snmp_ask(
+                        sock, (ip, SNMP_PORT), community, 0xA1, current,
+                        random.randint(1, 0x7FFFFFFF), timeout)
+                    asked = True
+                    break
+                except (socket.timeout, OSError, BadPacket):
+                    # Windows answers a closed UDP port with ICMP unreachable, and that
+                    # surfaces as ConnectionResetError. Retry; a switch that is simply
+                    # not there costs the same either way.
+                    continue
+                except (BadPacket, IndexError, ValueError):
+                    continue
+            if not asked:
+                # Out of retries with the table unfinished. Say so — this is exactly the
+                # state the flag exists for.
+                with _TRUNCATED_LOCK:
+                    SNMP_WALK_TRUNCATED.add((ip, root))
                 break
-            except (IndexError, ValueError):
-                # A short packet from somewhere else. Ignore it and use what was read so far.
-                break
+
             # Stop at the end of the table. There are three reasons to stop.
             #  - an error came back / we walked past our table
             #  - a 'not there' marker came back, like endOfMibView or noSuchObject (tags 0x80~0x82)
@@ -2826,21 +2893,34 @@ def _snmp_set_int(ip, community, oid, value, timeout=1.5):
         message = _tlv(0x30, _ber_int(1)
                        + _tlv(0x04, community.encode("utf-8")) + pdu)
         sock.settimeout(timeout)
+        want_community = community.encode("utf-8")
         for _ in range(2):
             sock.sendto(message, (ip, SNMP_PORT))
             try:
-                data, _addr = sock.recvfrom(4096)
+                data, peer = sock.recvfrom(4096)
             except socket.timeout:
                 continue
-            _, body, _ = _read_tlv(data, 0)
-            _, _, i = _read_tlv(body, 0)
-            _, _, i = _read_tlv(body, i)
-            _, pdu_body, _ = _read_tlv(body, i)
-            _, rid, j = _read_tlv(pdu_body, 0)
-            if _int_of(rid) != request_id:
+            # The write path checked even less than the read path: it never looked at the
+            # PDU tag, the sender or the community. A SET is the one place where taking a
+            # stranger's word for "yes, it changed" is worst.
+            if peer[0] != ip:
                 continue
-            _, err, j = _read_tlv(pdu_body, j)
-            _, _, j = _read_tlv(pdu_body, j)
+            try:
+                _, body, _ = _read_tlv(data, 0)
+                _, _, i = _read_tlv(body, 0)
+                _, got_community, i = _read_tlv(body, i)
+                if got_community != want_community:
+                    continue
+                tag, pdu_body, _ = _read_tlv(body, i)
+                if tag != 0xA2:
+                    continue
+                _, rid, j = _read_tlv(pdu_body, 0)
+                if _int_of(rid) != request_id:
+                    continue
+                _, err, j = _read_tlv(pdu_body, j)
+                _, _, j = _read_tlv(pdu_body, j)
+            except BadPacket:
+                continue
             if _int_of(err):
                 # 3 = badValue, 4 = readOnly, 6 = noAccess, 16/17 = not authorized
                 raise RuntimeError(T("스위치가 쓰기를 거부했습니다 (오류 %d). "
@@ -2848,10 +2928,13 @@ def _snmp_set_int(ip, community, oid, value, timeout=1.5):
                                      "The switch refused the write (error %d). "
                                      "The community may be read-only.")
                                    % _int_of(err))
-            _, binds, _ = _read_tlv(pdu_body, j)
-            _, bind, _ = _read_tlv(binds, 0)
-            _, _, k = _read_tlv(bind, 0)
-            _, got, _ = _read_tlv(bind, k)
+            try:
+                _, binds, _ = _read_tlv(pdu_body, j)
+                _, bind, _ = _read_tlv(binds, 0)
+                _, _, k = _read_tlv(bind, 0)
+                _, got, _ = _read_tlv(bind, k)
+            except BadPacket:
+                continue
             return _int_of(got)
         raise RuntimeError(T("스위치가 쓰기에 답하지 않습니다 (%s).",
                              "The switch is not answering the write (%s).") % ip)
@@ -3129,7 +3212,11 @@ def read_switch_ports(ip, community="public", timeout=1.5):
             if found:
                 info["poeIndex"] = found
                 info["poeStatus"] = poe["ports"][found]["status"]
-                info["poeWatt"] = poe["ports"][found]["watt"]
+                # Only what is actually being delivered. snmp_port_map has always gated
+                # on this; here the class estimate was written onto dark ports too, and
+                # the report added them into the site's power draw.
+                info["poeWatt"] = (poe["ports"][found]["watt"]
+                                   if poe["ports"][found]["status"] == 3 else 0.0)
                 info["poeAdmin"] = poe["ports"][found]["admin"] or 0
                 # So the report can write "estimated 15.4W" and "measured 4.2W" differently.
                 # When the customer asks about power, those two are completely different answers.
@@ -4151,6 +4238,10 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                     "Scan the range, then re-run."), "c"), ("", "cc"), ("", "cc"))
         found_any = True
 
+    # 'First record' and 'duplex not read' are notes about this document's limits, not
+    # findings. Counting them as findings sent a clean first visit into the "could not
+    # read the switch — do not judge port speed or PoE from this document" branch, with
+    # that switch's verified data filling sheets 3 and 4.
     if not found_any and switches and groups and not first_time and not blind:
         view.row((T("특이사항 없음", "All clear"), "good"), ("", "c"),
                  (T("속도 저하·반이중·IP 충돌·잠긴 포트 없습니다.",
@@ -4190,10 +4281,11 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
     # ---- 2. Device list ----------------------------------------------------
     book = XlSheet(T("장비 목록", "Devices"))
     book.width((0, 15), (1, 19), (2, 18), (3, 17), (4, 22), (5, 18), (6, 22),
-               (7, 8), (8, 9), (9, 16), (10, 9), (11, 20))
+               (7, 8), (8, 9), (9, 10), (10, 16), (11, 9), (12, 20))
     head = (T("IP", "IP"), "MAC", T("제조사", "Vendor"), T("장비 종류", "Type"),
             T("모델 · 이름", "Model · name"), T("스위치", "Switch"),
             T("포트", "Port"), T("속도", "Speed"), T("PoE(W)", "PoE(W)"),
+            T("PoE 근거", "PoE basis"),
             T("열린 포트", "Open ports"), T("응답(ms)", "Reply(ms)"),
             T("비고", "Note"))
     book.row(*[(text, "h") for text in head])
@@ -4223,6 +4315,11 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                      (dev.get("swport") or "", base),
                      (speed_label(dev.get("swspeed")), "bad" if dev.get("swslow") else "cc"),
                      (round(float(dev.get("poeWatt") or 0), 1) or "", "cn"),
+                     # Sheet 4 has always split these. A class estimate is the ceiling the
+                     # switch reserved, not a reading; summed as if measured it triples a
+                     # site's power budget.
+                     ((T("어림", "class est.") if dev.get("poeEstimated", True)
+                       else T("실측", "measured")) if float(dev.get("poeWatt") or 0) else "", "cs"),
                      (", ".join(str(p) for p in (dev.get("ports") or [])), base),
                      (dev.get("ms") if dev.get("ms") is not None else "", "cn"),
                      (" · ".join(marks), "bad" if marks else "c"))
@@ -4266,7 +4363,7 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
         plate.row(*[(text, "h") for text in
                     (T("포트", "Port"), T("이름", "Name"), T("설명", "Label"),
                      T("속도", "Speed"), T("이중", "Duplex"), T("링크", "Link"),
-                     T("관리", "Admin"), T("PoE(W)", "PoE(W)"),
+                     T("관리", "Admin"), T("PoE(W)", "PoE(W)"), T("PoE 근거", "PoE basis"),
                      T("물린 장비", "Devices behind"))])
         for info in sorted(ports.values(), key=port_number):
             key = port_key(info)
@@ -4291,6 +4388,8 @@ def export_xlsx(path, site="", note="", author="", switches=None, missed=None):
                       (T("잠김", "locked") if locked else T("열림", "open"),
                        "warn" if locked else "cc"),
                       (round(float(info.get("poeWatt") or 0), 1) or "", "cn"),
+                      ((T("어림", "class est.") if info.get("poeEstimated", True)
+                        else T("실측", "measured")) if float(info.get("poeWatt") or 0) else "", "cs"),
                       (behind, style))
         plate.blank(2)
 

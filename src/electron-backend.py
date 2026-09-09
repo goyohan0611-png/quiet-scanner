@@ -878,6 +878,21 @@ def run(action, payload):
 
     if action == "export":
         fmt = payload.get("format", "json")
+        # Every other output refuses mid-scan or after a stopped one. This one did not, so
+        # Ctrl+E right after pressing Stop produced a customer-facing page that said
+        # "no conflicts" about a range that was never finished being swept.
+        if core.STORE.busy:
+            raise RuntimeError(T("스캔이 끝난 뒤에 뽑으십시오. 지금은 장비 목록이 "
+                                 "아직 채워지는 중이라 문서의 숫자가 틀립니다.",
+                                 "Wait until the scan finishes — the device list is "
+                                 "still filling, so the numbers would be wrong."))
+        if fmt == "html" and not core.free_ips().get("complete"):
+            raise RuntimeError(T("스캔이 끝까지 가지 않아 현장 리포트를 만들 수 "
+                                 "없습니다 — 문서가 '충돌 없음' 이라고 말하게 됩니다. "
+                                 "대역을 다시 스캔하십시오.",
+                                 "The scan did not finish, so no site report was written "
+                                 "— the document would claim 'no conflicts'. Re-scan "
+                                 "the range."))
         if fmt == "html":
             # The report is a one-page document, not a table. The engine draws it itself.
             core.export_html(payload["path"], site=payload.get("site", ""),
@@ -1330,6 +1345,18 @@ def run(action, payload):
         if not record:
             raise RuntimeError(T("선택한 스캔 기록을 찾지 못했습니다.",
                                  "The selected scan record was not found."))
+        # An unfinished scan has not seen most of the range yet, so every device the
+        # saved record holds and this run has not reached shows up as "gone".
+        if core.STORE.busy:
+            raise RuntimeError(T("스캔이 끝난 뒤에 비교하십시오. 지금은 아직 안 훑은 "
+                                 "장비가 전부 '사라짐' 으로 나옵니다.",
+                                 "Compare after the scan finishes — devices not reached "
+                                 "yet would all show as gone."))
+        if not core.free_ips().get("complete"):
+            raise RuntimeError(T("스캔이 끝까지 가지 않아 비교할 수 없습니다 — 안 훑은 "
+                                 "장비가 '사라짐' 으로 나옵니다. 대역을 다시 스캔하십시오.",
+                                 "The scan did not finish, so this cannot be compared — "
+                                 "devices never reached would show as gone. Re-scan."))
         base = record.get("devices", {})
         added, gone, moved = core.compare_device_maps(base, current_devices())
         core.STORE.log(T("스캔 기록 비교 — 새로 %d대 · 사라짐 %d대 · IP 바뀜 %d대",
