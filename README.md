@@ -1,225 +1,155 @@
 # Quiet Scanner
 
-**Sort out IP conflicts without unplugging a single cable.**
+> **CCTV·AV·네트워크 설치 현장에서 IP 충돌을 찾아, 케이블을 뽑지 않고 처리하기 위해 만든 현장형 네트워크 진단 도구**
 
----
+## 프로젝트 소개
 
-## Why this exists
+현장에는 카메라, 녹화기, 출입통제기, AV 장비처럼 출고 시 같은 기본 IP를 가진 장비가 한 스위치에 함께 연결되는 일이 많습니다.  
+이때 일반적인 IP 스캐너는 운영체제가 기억하는 ARP 정보만 읽기 때문에, **같은 IP를 사용하는 여러 장비 중 한 대만 보이는 문제**가 있습니다.
 
-CCTV and AV gear ships with the same factory IP. Hang eight cameras off one
-switch and all eight insist they are `192.168.0.13`.
+Quiet Scanner는 이 불편함에서 출발했습니다. 패킷 레벨의 ARP 응답을 직접 수집해 IP 충돌 장비를 모두 보여주고, 특정 장비만 분리해 접속한 뒤 IP를 변경할 수 있도록 만들었습니다.
 
-**A normal IP scanner shows you exactly one of them.** Windows keeps one MAC per
-IP in its ARP table, so the other seven simply do not exist as far as the scanner
-is concerned.
+## 왜 만들었나
 
-So this is what happens on site:
+기존 현장 작업 흐름은 보통 아래와 같았습니다.
 
-> unplug everything → plug one in → open its web page → change the IP →
-> plug the next one in → repeat
+1. 장비를 하나씩 물리적으로 분리한다.
+2. 한 대만 연결된 상태에서 웹 페이지에 접속한다.
+3. IP를 바꾸고 다음 장비를 연결한다.
+4. 장비 수만큼 반복한다.
 
-Do that forty times from the top of a ladder and the day is gone.
+장비가 많거나 천장·랙 안쪽에 설치돼 있으면 단순 IP 설정 작업에 많은 시간이 들어갑니다.  
+또한 일반 스캐너는 IP 충돌의 존재를 감지하더라도, **“같은 IP를 쓰는 장비가 정확히 몇 대인지”** 또는 **“그중 어느 장비에 접속했는지”**까지 해결해 주지 못했습니다.
 
-**This tool does it without touching a cable.**
+이 프로젝트의 목표는 진단에서 끝나지 않고, 현장에서 바로 다음 조치를 할 수 있게 만드는 것이었습니다.
 
----
+## 기존 IP 스캐너와의 차이
 
-## How
-
-**1. See every device in the conflict**
-
-Raw ARP replies are read off the wire instead of asking the OS for its ARP table.
-However many devices share an IP, all of them show up.
-
-```
-▼ 192.168.0.13   [4 in conflict]
-    BC-AD-28-11-22-33   Hikvision   IP camera / NVR   DS-2CD2143G0-I
-    BC-AD-28-44-55-66   Hikvision   IP camera / NVR   DS-2CD2043G2-I
-    90-02-A9-AA-BB-CC   Dahua       DVR / NVR         IPC-HDW2431T
-    E4-30-22-DE-AD-01   Hanwha      IP camera         XNV-6081
-```
-
-**2. Isolate one of them**
-
-`Isolate this device only` pins that IP to one MAC with a static ARP entry.
-From then on, connecting to that IP reaches **that one device**.
-
-**3. Open its web page and change the IP**
-
-Change it, save, release, move to the next device. No cable was touched.
-
----
-
-## What makes it different
-
-| | Normal IP scanner | Quiet Scanner |
+| 항목 | 일반 IP 스캐너 | Quiet Scanner |
 |---|---|---|
-| Devices sharing one IP | shows one | **shows all of them** |
-| Isolating one of them | no | **yes** |
-| Working out what a device is | MAC vendor | **ONVIF · ports · mDNS · UPnP** |
-| Camera snapshot preview | no | **yes** |
+| 동일 IP 장비 탐지 | 대표 응답 1대만 보일 수 있음 | ARP 응답을 직접 수집해 충돌 장비를 모두 표시 |
+| 특정 충돌 장비 접속 | 케이블을 분리하며 추적 | 선택 장비의 MAC 주소로 ARP 격리 후 접속 |
+| 장비 식별 | IP·MAC 중심 | 제조사, 장비 종류, 모델, 호스트명, 열린 포트, OS 추정 |
+| 스위치 연계 | 별도 확인 필요 | SNMP로 MAC 주소와 스위치 포트 매핑 |
+| 현장 기록 | 수기 정리 또는 별도 엑셀 | CSV/HTML 내보내기, 스캔 기록 비교, 후보 IP 배정표 |
+| 현장 안전 | 작업자 판단 의존 | 내 PC 포트·스위치 관리 포트·다중 장비 포트의 차단을 방지 |
 
-A few tools *detect* conflicts. Detecting is where they stop. This one takes you
-all the way to "right, now change this one's IP".
+## 핵심 기능
 
----
+### 1. IP 충돌 장비 전체 탐지
 
-## Features
+운영체제의 ARP 테이블이 아닌 원시 ARP 응답을 수집합니다.  
+같은 IP에 여러 MAC 주소가 응답하면 충돌로 판단해 목록 상단에 표시합니다.
 
-**Finding**
-
-- Range scan (`192.168.0.1-254` and CIDR)
-- Several ranges at once — `192.168.0.1-254, 192.168.1.1-254`
-- Conflicting IPs detected and sorted to the top
-- Choose the ports to scan (`80,443,8000-8010`)
-- **Free IPs** — every unused address in the scanned range, one per line
-
-**Identifying**
-
-- **58,471 vendors** from the IEEE registry, built in — works offline
-- Device book — MAC prefix to device type, editable on site
-- Reverse DNS · NetBIOS name · reply time · OS guessed from TTL
-- mDNS (Bonjour) and SSDP (UPnP) — devices announce their own name, model, serial
-- ONVIF probe for cameras; model pulled from the web title and auth realm
-- Camera snapshot preview (ONVIF)
-- **Switch port lookup (SNMP)** — reads the switch's MAC table and shows which
-  port each device is on. Read-only
-
-**Fixing**
-
-- Isolate one device at a time, open it, change the IP
-- Static ARP entries left behind by a crash are cleaned up on the next start
-
-**Recording**
-
-- **HTML site report** — conflicts, device list and free IPs on one page,
-  ready to print or save as PDF
-- JSON · CSV · XML export
-- Save a baseline and compare — **what appeared and what went missing**
-- Search, sort, and choose which columns you want to see
-
----
-
-## Device book
-
-The MAC gets you as far as `Hikvision`. The device book takes it further.
-
-```
-BC:AD:28  →  Hikvision  ·  IP camera / NVR
-00:05:A6  →  Extron     ·  AV equipment
-00:10:7F  →  Crestron   ·  Controller
+```text
+▼ 192.168.0.13   충돌 4대
+    BC-AD-28-11-22-33   Hikvision   IP 카메라
+    BC-AD-28-44-55-66   Hikvision   IP 카메라
+    90-02-A9-AA-BB-CC   Dahua       DVR / NVR
+    E4-30-22-DE-AD-01   Hanwha      IP 카메라
 ```
 
-**150 brands / roughly 2,600 prefixes** ship with it — CCTV, AV, audio,
-projectors, networking, printers, access control, industrial gear.
+### 2. 특정 장비만 격리해 IP 변경
 
-Met something new? **Right-click → Add to device book.** From the next site on,
-it is named the moment you scan.
+충돌 장비 중 하나를 선택하면 해당 IP를 그 장비의 MAC 주소에 연결하도록 ARP를 고정합니다.  
+작업자는 그 장비의 웹 설정 화면에 접속해 IP를 변경한 뒤 격리를 해제하고, 다음 장비를 처리할 수 있습니다.
 
-| Prefix entered | Applies to |
+비정상 종료로 ARP 고정이 남은 경우에는 다음 실행 시 정리하도록 구성했습니다.
+
+### 3. 현장 장비 정보 수집
+
+- IEEE OUI 기반 MAC 제조사 식별
+- 현장 장비 사전: MAC 앞자리 또는 전체 MAC으로 장비 유형 보완
+- Reverse DNS, NetBIOS, mDNS, SSDP(UPnP) 기반 이름·모델 수집
+- HTTP/ONVIF 정보와 열린 포트 기반 장비 유형 추정
+- 응답 시간과 TTL 기반 OS 정보 보조 확인
+- 사용자가 필요로 하는 열만 선택해 화면·CSV에 반영
+
+### 4. 스위치 포트·PoE 작업 지원
+
+관리형 스위치의 SNMP 정보를 읽어 장비 MAC 주소와 물리 포트를 연결합니다.
+
+- 장비가 어느 스위치 포트에 연결됐는지 조회
+- 링크 속도 저하 알림
+- PoE 전원 재시작 및 포트 관리
+- 내 PC가 연결된 포트, 스위치 관리 포트, 여러 장비가 매달린 포트는 차단·전원 차단을 거부
+
+> 쓰기 작업은 스위치 설정에 영향을 줄 수 있으므로, 읽기 실패·MAC 테이블 누락·업링크 가능성이 있는 경우에는 실행하지 않도록 안전장치를 두었습니다.
+
+### 5. 현장 기록과 IP 배정 지원
+
+- CIDR, 단일 IP, 범위, 여러 대역 스캔
+- 실제 서브넷을 반영한 대역 처리
+- 사용 가능 **후보 IP**를 한 행당 하나씩 CSV로 저장
+- CSV·HTML·JSON·XML 내보내기
+- 완료된 스캔 기록을 보관하고 현재 결과와 비교
+- 새로 발견된 장비, 사라진 장비, MAC 기준 IP 변경 확인
+
+## 적용 후 달라진 점
+
+| 이전 | Quiet Scanner 적용 후 |
 |---|---|
-| `BC-AD-28` (6 digits) | **every device** from that vendor |
-| `BC-AD-28-11-22-33` (12 digits) | **that one device** |
+| 충돌 장비를 찾기 위해 케이블을 반복해서 분리 | 충돌 목록에서 장비 수와 MAC 주소를 먼저 확인 |
+| “지금 접속한 장비가 어느 장비인지” 불확실 | 선택 장비만 격리한 상태에서 설정 변경 |
+| 스위치 포트를 현장에서 별도로 추적 | SNMP MAC 테이블로 포트 정보 함께 확인 |
+| 남는 IP를 수기로 정리 | 후보 IP를 CSV 배정표로 내보내 바로 기록 |
+| 작업 전후 변화를 기억이나 사진에 의존 | 스캔 기록 비교로 장비 추가·누락·IP 이동 확인 |
 
-The book is a single file, `src/device-book.json`. Anything you add on site goes
-to `src/device-book.local.json`, which stays out of the repository. Pass it around your team, or send
-additions back here and the next person benefits.
+## AI를 어떻게 활용했나
 
-> Credentials and stream URLs are deliberately not stored. They differ per
-> firmware, a wrong value is worse than none, and a public file is no place for
-> a password.
+이 프로젝트에서 AI는 코드를 대신 작성하는 도구가 아니라, 현장 요구를 빠르게 구현·검증하기 위한 개발 보조 도구로 활용했습니다.
 
----
+- 현장 문제를 기능 단위로 나누고 우선순위를 정리
+- ARP, SNMP, ONVIF 등 네트워크 프로토콜 구현 방향을 검토
+- Electron 화면 구조와 Python 네트워크 엔진의 역할을 분리
+- 예외 상황, 대역 경계, CSV 내보내기, 동시 실행 같은 회귀 시나리오 점검
+- 사용 중 발견한 불편을 즉시 반영하며 UI와 작업 흐름 반복 개선
 
-## Install
+문제 정의, 현장 검증 기준, 안전 규칙과 기능 우선순위는 직접 결정했고, AI는 설계 검토·코드 작성 보조·테스트 관점 확장에 사용했습니다.
 
-**Requirements**
+## 기술 구성
 
-| | |
+- **Desktop**: Electron
+- **Network Engine**: Python
+- **Packet Capture / ARP**: Scapy + Npcap
+- **Switch Integration**: SNMP v2c
+- **Packaging**: PyInstaller, electron-builder
+- **Target Environment**: Windows 10/11, CCTV·AV·네트워크 설치 현장
+
+## 사용 흐름
+
+1. 네트워크 인터페이스와 스캔 대역을 선택합니다.
+2. 대역 스캔을 실행합니다.
+3. 충돌난 IP를 목록 상단에서 확인합니다.
+4. 장비를 우클릭해 정보 검사를 실행하거나 특정 장비만 격리합니다.
+5. 장비 웹 설정 화면에서 IP를 변경합니다.
+6. 격리를 해제하고 다음 장비를 처리합니다.
+7. 필요하면 스위치 포트 조회, 결과 내보내기, 기록 비교를 진행합니다.
+
+## 실행 환경
+
+| 항목 | 요구 사항 |
 |---|---|
-| Windows 10 / 11 | 64-bit |
-| [Npcap](https://npcap.com) | needed to work with ARP directly. Tick **"WinPcap API-compatible mode"** during install |
-| Administrator | needed for isolation (static ARP) |
+| 운영체제 | Windows 10 / 11 64비트 |
+| 패킷 캡처 | [Npcap](https://npcap.com) — 설치 시 `WinPcap API-compatible mode` 선택 |
+| 관리자 권한 | ARP 격리와 일부 네트워크 작업에 필요 |
+| 스위치 연동 | 관리형 스위치 및 SNMP v2c 읽기/쓰기 권한 필요 |
 
-Npcap is **not bundled** — install it yourself; it is free for up to 5 devices.
-([why](docs/third-party.md))
+Npcap 없이도 일부 정보 확인은 가능하지만, 동일 IP 충돌을 정확히 탐지하려면 패킷 캡처 드라이버가 필요합니다.
 
-**From the installer**
+## 한계와 안전 원칙
 
-Run `electron/installer/Quiet Scanner Setup 3.0.0.exe`.
+- ARP와 mDNS는 라우터를 넘어 동작하지 않으므로, 기본적으로 같은 L2 네트워크에서 가장 정확합니다.
+- 응답이 없다고 해서 반드시 비어 있는 IP는 아닙니다. 절전·방화벽·장비 상태에 따라 응답하지 않을 수 있으므로 후보 IP는 현장에서 다시 확인해야 합니다.
+- PoE와 포트 제어는 실제 장비 운영에 영향을 주므로, 보호 조건을 통과한 포트만 제어합니다.
+- 비밀번호, 카메라 스트림 URL 등 민감 정보는 장비 사전에 저장하지 않습니다.
 
-**From source**
+## 라이선스
 
-```
-Python 3.12  ·  Node.js LTS  ·  pip install pyinstaller scapy
-```
-
-```
-build.bat
-```
+GPLv2  
+Scapy와 제조사 OUI 데이터의 라이선스 조건을 따릅니다. 자세한 내용은 [LICENSE.md](LICENSE.md)를 참고하십시오.
 
 ---
 
-## Using it
-
-1. Pick an interface, check the range, hit **Scan range**
-2. Conflicting IPs appear at the top, in red
-3. Right-click a device → **Identify device**
-4. **Isolate this device only** → open it in a browser → change its IP
-5. **Release isolation** → next device
-6. **Export** a site report when you are done
-
-**Tip** — you will be hitting the same IP for several different devices, so use a
-private browsing window. Otherwise the previous device's session gets in the way.
-
----
-
-## Language
-
-Korean and English, throughout — interface, reports and the built-in user guide.
-It picks by your Windows language on first run; the button in the toolbar
-switches it and remembers the choice.
-
----
-
-## What it cannot do
-
-**No conflict detection without Npcap.** Windows sockets only reach the IP layer
-and up. ARP lives below that, at layer 2, and there is no getting at it without a
-driver. Isolation, identification and web access all work without Npcap.
-
-**Same subnet only.** Neither ARP nor mDNS crosses a router. Several ranges can be
-scanned at once, but only devices on the same switch will answer.
-
-**mDNS and SSDP only get answers from devices that answer.** AV gear is good about
-it, CCTV cameras about half the time. When nothing answers, ports get knocked on
-instead.
-
-**Switch port lookup needs SNMP v2c read enabled.** Managed switches only —
-an unmanaged switch does not tell anyone what it knows.
-
----
-
-## Licence
-
-**GPLv2**, because it carries Scapy (GPLv2) and Wireshark's vendor registry
-(GPL-2.0-or-later). See [LICENSE.md](LICENSE.md) and
-[docs/third-party.md](docs/third-party.md).
-
----
-
-Built by **Goyohan** for CCTV, AV and network installation work.
-
----
-
-## Layout
-
-```
-src/         engine (Python), device book, vendor database
-electron/    the window (Electron)
-scripts/     build tooling - build_electron.bat, IPFixBackend.spec
-docs/        field procedure, third-party licences
-tools/       side scripts (ArpDupScan.py, IPFix.ps1)
-manual.html     user guide; F1 opens it from inside the app
-```
-
+**Built by Goyohan**  
+CCTV·AV·네트워크 설치 현장의 반복 작업을 줄이기 위해 만든 도구입니다.
