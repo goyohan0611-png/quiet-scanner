@@ -100,9 +100,9 @@ function createWindow() {
     icon: appIcon,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
-  // This window shows one local page and nothing else, ever. Device names, ONVIF titles
-  // and SNMP aliases are rendered in it, and while they are all escaped, a window that
-  // can be navigated or can spawn another is one bug away from being worth attacking.
+  // This window shows one local page and nothing else, ever. Scan values are rendered
+  // here, and while they are escaped, a window that can be navigated or can spawn
+  // another is one bug away from being worth attacking.
   // Anything that wants a browser gets the real browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
@@ -156,3 +156,4 @@ ipcMain.handle('open:manual', async (_event, lang) => {
   }
   return { ok: false, why: 'manual.html not found (' + spots[0] + ')' };
 });
+
