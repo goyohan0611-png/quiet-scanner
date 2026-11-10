@@ -357,6 +357,15 @@ def _refresh_from_book():
 
 
 def run(action, payload):
+    # This edition intentionally stays narrow: discover local devices, spot duplicate
+    # IP-to-MAC replies, and temporarily pin one MAC while the conflict is resolved.
+    # The former device-name, switch/SNMP, PoE, report and history endpoints are not
+    # available to the renderer or to a local IPC caller.
+    allowed = {"interfaces", "cancel", "scan", "isolate", "release"}
+    if action not in allowed:
+        raise RuntimeError(T("이 기능은 간소화된 스캐너에서 제공하지 않습니다.",
+                             "This feature is not available in the simplified scanner."))
+
     if action == "set_lang":
         # Change the language in the UI and the engine's own log has to follow.
         return {"lang": core.set_lang(payload.get("lang"))}
@@ -592,30 +601,6 @@ def run(action, payload):
                 core.STORE.log(T("2차 확인에서 %d대를 더 찾았습니다.",
                                  "Second pass found %d more devices.") % got_n, "ok")
 
-            # Pass 3 — addresses that were in the last scan and are still silent. Usually
-            #       a power-saving device. Few of them, so ask most patiently of all.
-            stubborn = (previous_scan_ips(target) & set(sub_list)) - set(found)
-            # This third pass is the slowest, so it is capped at 64. If the cut is not
-            # logged it reads as "everything was asked", and nobody notices the rest
-            # leaking out into the free-IP list.
-            asked_list = sorted(stubborn)[:64]
-            got_n = ask_again(asked_list, 1.5, 3,
-                              T("지난 기록 대조", "Checking against history"),
-                              T("지난 스캔에 있던 %d개 확인", "checking %d from the last scan")
-                              % len(asked_list))
-            if stubborn:
-                core.STORE.log(
-                    T("지난 스캔에 있던 %d대 중 %d대를 다시 물었습니다 — %d대 응답",
-                      "%d devices from the last scan: re-asked %d — %d replied")
-                    % (len(stubborn), len(asked_list), got_n), "ok" if got_n else "info")
-                if len(stubborn) > len(asked_list):
-                    core.STORE.log(
-                        T("지난 스캔의 %d개는 시간 때문에 다시 안 물었습니다. "
-                          "빈 IP 목록에 섞여 있을 수 있으니 그대로 믿지 마십시오.",
-                          "%d addresses from the last scan were not re-checked (time). "
-                          "They may show up as free — do not trust that list blindly.")
-                        % (len(stubborn) - len(asked_list)), "warn")
-
             # Last — this adapter itself. ARP never hears its own shout, so this
             # computer is never discovered by it. Leave it out and your own IP goes
             # out as a "free address", and the installer puts a device on it.
@@ -658,132 +643,6 @@ def run(action, payload):
             result["canceled"] = True
             return result
         emit_state()
-        # Once the scan is done, shout across the whole LAN. It is two multicast
-        # packets, not a visit per device, so more devices costs no more time.
-        core.STORE.set_progress(T("장비 이름 수집", "Collecting names"), 0, 1,
-                                T("mDNS · SSDP 응답 기다리는 중", "waiting for mDNS · SSDP replies"))
-        emit_state()
-        try:
-            names = core.mdns_sweep(timeout=2.0)
-            upnp = core.ssdp_sweep(timeout=2.5)
-        except Exception as exc:
-            names, upnp = {}, {}
-            core.STORE.log(T("이름 수집을 건너뜁니다: %s",
-                             "Skipping name collection: %s") % exc, "warn")
-
-        picked = 0
-        skipped = set()
-        with core.STORE.lock:
-            # mDNS and SSDP answer per address. On a conflicting IP exactly one reply comes
-            # back for however many devices are sitting on it, and there is no way to tell
-            # whose it is. Stamped on all of them, four devices get one name, one model and
-            # one serial — the Dahua and the Hanwha both wearing the Hikvision's. An empty
-            # cell is honest; a copied serial is an invented one, and it goes into the
-            # commissioning report as fact. Identification handles these properly: it
-            # isolates one device at a time, so what it finds belongs to that MAC.
-            crowd = {}
-            for dev in core.STORE.devices.values():
-                crowd[dev["ip"]] = crowd.get(dev["ip"], 0) + 1
-            for dev in core.STORE.devices.values():
-                name = names.get(dev["ip"], "")
-                info = upnp.get(dev["ip"]) or {}
-                if crowd.get(dev["ip"], 1) > 1:
-                    if name or info:
-                        skipped.add(dev["ip"])
-                    continue
-                if name:
-                    dev["mdns"] = name
-                if info:
-                    dev["ssdp"] = info.get("name", "")
-                    if info.get("model") and not dev.get("model"):
-                        dev["model"] = info["model"]
-                    if info.get("serial"):
-                        dev["serial"] = info["serial"]
-                if name or info:
-                    picked += 1
-        if picked:
-            core.STORE.log(T("장비 이름 %d대 수집 (mDNS %d · UPnP %d)",
-                             "Collected names for %d devices (mDNS %d · UPnP %d)") % (
-                picked, len(names), len(upnp)), "ok")
-        # Say it out loud. Drop these quietly and the blank cells look like nothing
-        # answered, and someone goes hunting for a fault that is not there.
-        if skipped:
-            core.STORE.log(T("충돌 IP %d곳(%s)은 이름·모델·시리얼을 붙이지 않았습니다 — "
-                             "응답이 한 대 몫뿐이라 어느 장비 것인지 알 수 없습니다. "
-                             "[장비 정보 검사]를 돌리면 한 대씩 격리해서 제대로 채웁니다.",
-                             "Left name, model and serial blank on %d conflicting IP(s) (%s) — "
-                             "only one reply came back for several devices, so there is no "
-                             "telling whose it is. Run Identify device to fill them in "
-                             "properly, one isolated device at a time.")
-                           % (len(skipped), ", ".join(sorted(skipped)[:6])), "warn")
-
-        if core.STORE.cancel.is_set():
-            core.STORE.set_progress(T("대역 스캔", "Range scan"), len(scanned), len(targets),
-                                    T("중지됨", "stopped"))
-            core.STORE.log(T("스캔 중지 — 이름 수집 뒤에 종료했습니다.",
-                             "Scan stopped after name collection."), "warn")
-            result = serialize()
-            result["canceled"] = True
-            return result
-
-        # A port typed in means "show only the devices using that port".
-        # Knock on that port on every device ARP found, and drop the ones with nothing open.
-        ports_text = (payload.get("ports") or "").strip()
-        if ports_text:
-            wanted = core.parse_ports(ports_text)
-            with core.STORE.lock:
-                targets = list(core.STORE.devices.values())
-            core.STORE.set_progress(
-                T("포트 확인", "Checking ports"), 0, len(targets),
-                T("포트 {p} 열린 장비만", "keeping only devices with {p} open")
-                .format(p=ports_text))
-            emit_state()
-
-            def probe(dev):
-                return dev, core.scan_ports(dev["ip"], wanted)
-
-            done = 0
-            keep = []
-            with futures.ThreadPoolExecutor(max_workers=32) as pool:
-                for dev, open_ports in pool.map(probe, targets):
-                    if core.STORE.cancel.is_set():
-                        break
-                    dev["ports"] = open_ports
-                    if open_ports:
-                        keep.append(dev["key"])
-                    done += 1
-                    if done % 8 == 0:
-                        core.STORE.set_progress(T("포트 확인", "Checking ports"),
-                                                done, len(targets), "")
-                        emit_state()
-
-            if core.STORE.cancel.is_set():
-                # Stop pressed means no filtering. Leave a half-filtered list and
-                # devices that were never checked go out as free IPs.
-                core.STORE.log(T("포트 확인 중지 — 거르지 않고 그대로 둡니다.",
-                                 "Port check stopped — leaving the list unfiltered."), "warn")
-                result = serialize()
-                result["canceled"] = True
-                return result
-
-            dropped = len(targets) - len(keep)
-            with core.STORE.lock:
-                kept = set(keep)
-                hidden = {d["ip"] for d in targets if d["key"] not in kept}
-                core.STORE.devices = {k: v for k, v in core.STORE.devices.items() if k in kept}
-                core.STORE.order = [k for k in core.STORE.order if k in kept]
-                # A hidden device's IP has to come out of "swept addresses" too.
-                # Otherwise a used IP goes out on the free list — the worst answer there is.
-                still = {d["ip"] for d in core.STORE.devices.values()}
-                core.STORE.scanned = [ip for ip in core.STORE.scanned
-                                      if ip not in (hidden - still)]
-            core.STORE.log(
-                T("포트 {p} 로 걸러 {n}대 남김 ({d}대는 해당 포트가 닫혀 있어 숨김)",
-                  "Filtered by port {p} — {n} kept, {d} hidden (port closed)")
-                .format(p=ports_text, n=len(keep), d=dropped),
-                "ok" if keep else "warn")
-            found = {ip: macs for ip, macs in found.items()
-                     if any(core.STORE.key(ip, m) in kept for m in macs)}
 
         conflicts = sum(1 for macs in found.values() if len(macs) > 1)
         core.STORE.scan_done = True
@@ -793,14 +652,7 @@ def run(action, payload):
                          "Scan complete — {ips} IPs answered / {devs} devices / {conf} in conflict")
                        .format(ips=len(found), devs=sum(map(len, found.values())), conf=conflicts),
                        "warn" if conflicts else "ok")
-        record = core.save_scan_history(current_devices(), target,
-                                        " + ".join(c.get("desc") or c.get("name", "")
-                                                    for c, _ in plan))
-        core.STORE.log(T("스캔 기록 저장 — 최근 %d회까지 보관", "Scan history saved — keeping the latest %d")
-                       % core.HISTORY_LIMIT, "info")
-        result = serialize()
-        result["historyId"] = record["id"]
-        return result
+        return serialize()
 
     if action == "identify":
         dev = core.STORE.devices[payload["key"]]
@@ -1469,3 +1321,4 @@ def serve():
 # Guarded so tests can import this file and call run() directly.
 if __name__ == "__main__":
     serve()
+
