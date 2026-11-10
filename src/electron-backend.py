@@ -346,14 +346,9 @@ def _refresh_from_book():
             dev["book"] = seen["from_book"]
             dev["book_exact"] = seen["exact"]
             dev["book_note"] = seen["note"]
-            if seen["from_book"]:
-                dev["vendor"] = seen["vendor"]
-                # Do not overwrite a type that was already worked out by probing.
-                # Unless someone registered the full MAC by hand — that name wins.
-                if seen["exact"] or not dev.get("identified"):
-                    if seen["kind"]:
-                        dev["kind"] = seen["kind"]
-                        dev["kind_confidence"] = "confirmed" if seen["exact"] else "estimated"
+            dev["vendor"] = seen["vendor"]
+            dev["kind"] = seen["kind"]
+            dev["kind_confidence"] = ("confirmed" if seen["exact"] else "estimated") if seen["kind"] else ""
 
 
 def run(action, payload):
@@ -361,7 +356,8 @@ def run(action, payload):
     # IP-to-MAC replies, and temporarily pin one MAC while the conflict is resolved.
     # The former device-name, switch/SNMP, PoE, report and history endpoints are not
     # available to the renderer or to a local IPC caller.
-    allowed = {"interfaces", "cancel", "scan", "isolate", "release"}
+    allowed = {"interfaces", "cancel", "scan", "isolate", "release",
+               "book_list", "book_lookup", "book_save", "book_remove"}
     if action not in allowed:
         raise RuntimeError(T("이 기능은 간소화된 스캐너에서 제공하지 않습니다.",
                              "This feature is not available in the simplified scanner."))
@@ -1225,6 +1221,11 @@ def run(action, payload):
         return {"entry": core.BOOK.lookup(payload.get("prefix", ""))}
 
     if action == "book_save":
+        prefix = str(payload.get("prefix", "")).strip()
+        digits = core.hex_mac(prefix)
+        if not (6 <= len(digits) <= 12 and len(digits) % 2 == 0) or any(
+                c not in "0123456789abcdefABCDEF:- .\t" for c in prefix):
+            raise ValueError("MAC 앞자리는 3~6바이트로 입력하십시오. 예: 70-B3-D5-21")
         created = core.BOOK.upsert(
             payload.get("prefix", ""), payload.get("vendor", ""),
             payload.get("kind", ""), payload.get("note", ""))
@@ -1321,4 +1322,3 @@ def serve():
 # Guarded so tests can import this file and call run() directly.
 if __name__ == "__main__":
     serve()
-

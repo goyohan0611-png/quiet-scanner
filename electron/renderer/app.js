@@ -15,6 +15,7 @@ let isolateKey = null;
 const COLUMNS = [
   ['IP / 장비 MAC', '2.4fr'],
   ['제조사', '1.35fr'],
+  ['등록 종류', '.9fr'],
   ['응답', '.75fr'],
   ['상태', '.85fr'],
 ];
@@ -103,7 +104,7 @@ function isOwnIp(ip) {
 
 function matchesFilter(group, device) {
   if (!filterText) return true;
-  const text = [group.ip, device.mac, device.vendor].join(' ').toLowerCase();
+  const text = [group.ip, device.mac, device.vendor, device.kind].join(' ').toLowerCase();
   return text.includes(filterText);
 }
 
@@ -126,6 +127,7 @@ function rowHtml(device) {
   return `<div class="device-row" data-key="${esc(device.key)}">
     <div class="mac">${esc(macText(device))}</div>
     <div>${esc(device.vendor || '미확인')}</div>
+    <div>${esc(device.book ? device.kind : '') || '—'}</div>
     <div>${esc(responseText(device))}</div>
     <div>${statusHtml(device)}</div>
   </div>`;
@@ -136,6 +138,7 @@ function soloHtml(group, device) {
   return `<div class="solo-row${own}" data-key="${esc(device.key)}">
     <div class="ip-cell"><button class="ip ip-copy" data-copy-ip="${esc(group.ip)}" title="IP 주소 복사">${esc(group.ip)}</button><span class="mac-sub">${esc(macText(device))}</span></div>
     <div>${esc(device.vendor || '미확인')}</div>
+    <div>${esc(device.book ? device.kind : '') || '—'}</div>
     <div>${esc(responseText(device))}</div>
     <div>${statusHtml(device)}</div>
   </div>`;
@@ -382,6 +385,7 @@ $('#contextMenu').addEventListener('click', async (event) => {
   hideContextMenu();
   try {
     if (action === 'isolate') return openIsolate(key);
+    if (action === 'book') return await openBook(key);
     if (action === 'release') {
       applyState(await call('release'));
       notice('장비 분리를 해제했습니다.');
@@ -424,6 +428,7 @@ document.addEventListener('keydown', (event) => {
     hideContextMenu();
     closeInterfaceMenu();
     closeIsolate();
+    $('#bookDialog').hidden = true;
   }
 });
 
@@ -449,7 +454,81 @@ function finishResize(event) {
 resizeHandle.addEventListener('pointerup', finishResize);
 resizeHandle.addEventListener('pointercancel', finishResize);
 
+let bookRows = [];
+function bookDigits(value) {
+  return String(value || '').replace(/[:-]|\s|\./g, '').toLowerCase();
+}
+function bookFields(prefix = '', vendor = '', kind = '', note = '') {
+  $('#bookPrefix').value = prefix;
+  $('#bookVendor').value = vendor;
+  $('#bookKind').value = kind;
+  $('#bookNote').value = note;
+  $('#bookMessage').textContent = '';
+  $('#bookDelete').disabled = !bookRows.some(row => row[0] === bookDigits(prefix));
+}
+function renderBook() {
+  const query = $('#bookSearch').value.trim().toLowerCase();
+  const matches = bookRows.filter(row => row.join(' ').toLowerCase().includes(query));
+  $('#bookList').innerHTML = matches.slice(0, 200).map(row =>
+    `<button type="button" data-prefix="${esc(row[0])}"><b>${esc(row[0].match(/.{1,2}/g).join('-').toUpperCase())}</b><span>${esc(row[1])}</span><span>${esc(row[2])}</span></button>`
+  ).join('') || '<p class="modal-hint">등록된 항목이 없습니다.</p>';
+  if (matches.length > 200) $('#bookList').insertAdjacentHTML('beforeend', '<p class="modal-hint">검색어를 입력하면 나머지 항목도 찾을 수 있습니다.</p>');
+}
+async function openBook(key) {
+  bookRows = (await call('book_list')).rows || [];
+  const device = deviceOf(key);
+  const prefix = device ? bookDigits(device.mac).slice(0, 6) : '';
+  const row = bookRows.find(row => row[0] === prefix);
+  bookFields(...(row || [prefix, device?.vendor || '', device?.book ? device.kind : '', '']));
+  $('#bookSearch').value = '';
+  renderBook();
+  $('#bookDialog').hidden = false;
+  $('#bookPrefix').focus();
+}
+$('#bookBtn').addEventListener('click', () => openBook().catch(() => {}));
+$('#bookClose').addEventListener('click', () => { $('#bookDialog').hidden = true; });
+$('#bookNew').addEventListener('click', () => { bookFields(); $('#bookPrefix').focus(); });
+$('#bookSearch').addEventListener('input', renderBook);
+$('#bookPrefix').addEventListener('input', () => {
+  $('#bookDelete').disabled = !bookRows.some(row => row[0] === bookDigits($('#bookPrefix').value));
+});
+$('#bookList').addEventListener('click', event => {
+  const button = event.target.closest('[data-prefix]');
+  if (!button) return;
+  const row = bookRows.find(row => row[0] === button.dataset.prefix);
+  if (row) bookFields(...row);
+});
+$('#bookForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  $('#bookSave').disabled = true;
+  try {
+    const result = await call('book_save', {
+      prefix: $('#bookPrefix').value.trim(), vendor: $('#bookVendor').value.trim(),
+      kind: $('#bookKind').value.trim(), note: $('#bookNote').value.trim()
+    });
+    bookRows = result.rows;
+    applyState(result.state);
+    renderBook();
+    $('#bookDelete').disabled = false;
+    $('#bookMessage').textContent = '저장했습니다. 현재 목록과 다음 스캔에 반영됩니다.';
+  } catch (error) { $('#bookMessage').textContent = cleanMessage(error.message); }
+  finally { $('#bookSave').disabled = false; }
+});
+$('#bookDelete').addEventListener('click', async () => {
+  const prefix = $('#bookPrefix').value.trim();
+  if (!window.confirm(`${prefix} 등록을 삭제할까요?`)) return;
+  $('#bookDelete').disabled = true;
+  try {
+    const result = await call('book_remove', { prefix });
+    bookRows = result.rows;
+    applyState(result.state);
+    bookFields();
+    renderBook();
+    $('#bookMessage').textContent = '등록을 삭제했습니다.';
+  } catch (error) { $('#bookMessage').textContent = cleanMessage(error.message); }
+  finally { $('#bookDelete').disabled = !bookRows.some(row => row[0] === bookDigits($('#bookPrefix').value)); }
+});
+
 window.ipfix.onState(applyState);
 render();
 loadInterfaces().catch(() => {});
-

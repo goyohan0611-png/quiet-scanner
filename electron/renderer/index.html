@@ -9,7 +9,6 @@
   </head>
   <body>
     <main>
-      <header class="simple-appbar"><strong>Quiet Scanner</strong><span>IP 충돌 확인 · 장비 분리</span></header>
       <section class="control-panel">
         <div class="field interface-field">
           <label>네트워크 인터페이스</label>
@@ -24,6 +23,7 @@
       <section class="workbar">
         <div><strong id="titleCount">대기 중</strong><span id="subTitle">인터페이스를 선택하고 스캔을 시작하십시오.</span></div>
         <input id="filterInput" class="filter-input" placeholder="검색 — IP · MAC · 제조사" />
+        <button id="bookBtn" class="ghost-btn">장비 사전</button>
       </section>
       <section class="table-shell">
         <div class="table-head" id="tableHead"></div>
@@ -43,6 +43,7 @@
       <button data-menu="release">분리 해제</button>
       <span></span>
       <button data-menu="copyMac">MAC 주소 복사</button>
+      <button data-menu="book">MAC 앞자리 등록…</button>
     </div>
     <div id="isolateDialog" class="modal" hidden>
       <div class="modal-card">
@@ -52,7 +53,24 @@
         <footer><span class="spacer"></span><button id="isolateCancel" class="ghost">취소</button><button id="isolateConfirm" class="primary danger">이 장비만 분리</button></footer>
       </div>
     </div>
+    <div id="bookDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header><strong>장비 사전</strong><button id="bookClose" title="닫기">×</button></header>
+        <p class="modal-hint">MAC 앞자리로 제조사와 장비 종류를 등록합니다. 70-B3-D5-21처럼 4바이트도 등록할 수 있고, 전체 MAC은 한 장비에만 적용됩니다.</p>
+        <form id="bookForm">
+          <div class="modal-grid">
+            <label>MAC 앞자리<input id="bookPrefix" placeholder="70-B3-D5-21" maxlength="23" required /></label>
+            <label>제조사<input id="bookVendor" maxlength="100" /></label>
+            <label>장비 종류<input id="bookKind" placeholder="녹화기" maxlength="100" /></label>
+            <label>메모<input id="bookNote" maxlength="300" /></label>
+          </div>
+          <p id="bookMessage" class="modal-hint" role="status"></p>
+          <footer><button id="bookDelete" type="button" class="ghost">등록 삭제</button><button id="bookNew" type="button" class="ghost">새로 등록</button><span class="spacer"></span><button id="bookSave" type="submit" class="primary">저장</button></footer>
+        </form>
+        <input id="bookSearch" class="filter-input" placeholder="사전 검색 — MAC · 제조사 · 종류" />
+        <div id="bookList" class="simple-book-list"></div>
+      </div>
+    </div>
     <script src="app.js"></script>
   </body>
 </html>
-
