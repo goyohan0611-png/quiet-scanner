@@ -1,6 +1,6 @@
 {
   "name": "quiet-scanner-electron",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Field tool for clearing duplicate IPs",
   "main": "main.js",
   "scripts": {
@@ -49,3 +49,4 @@
     "electron-builder": "^26.0.0"
   }
 }
+
