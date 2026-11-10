@@ -655,6 +655,23 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 .danger-btn:hover:not(:disabled) { background:#fdeceb; }
 .danger-btn:disabled { color:#c3cbd5; border-color:#e6ebf1; background:#f7f9fb; cursor:not-allowed; }
 
+/* ── Simple scanner edition ────────────────────────────────────────── */
+.simple-appbar { display:flex; align-items:baseline; gap:10px; min-height:44px;
+                 padding:0 var(--pad); border-bottom:1px solid var(--line); background:#fff; }
+.simple-appbar strong { font-size:14px; letter-spacing:-.1px; }
+.simple-appbar span { color:var(--muted); font-size:11.5px; }
+.control-panel .interface-control button,
+.control-panel .toolbar-actions button,
+.ghost-btn,
+.context-menu,
+.context-menu button,
+.modal-card footer button { border-radius:6px; }
+.context-menu { width:180px; }
+.table-head,.group-row,.device-row,.solo-row { grid-template-columns:var(--grid-cols); }
+.group-row.conflict { grid-template-columns:var(--grid-cols); }
+.group-row .group-note { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.simple-appbar + .control-panel { padding-top:10px; padding-bottom:10px; }
+
 /* The write community is only needed when you actually write, so it lives on the bottom action row. */
 .ports-foot { align-items:center; gap:10px; }
 .ports-comm { display:flex; align-items:center; gap:8px; margin:0; }
@@ -663,4 +680,5 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 
 /* A port drawing power over PoE. Green means "there is current flowing here". */
 .poe { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#f0f3f7; font-style:normal; font-size:10.5px; font-weight:600; }
+
 
