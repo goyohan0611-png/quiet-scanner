@@ -21,7 +21,7 @@ const COLUMNS = [
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&#39;' }[char]));
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
 
 function macText(device) {
