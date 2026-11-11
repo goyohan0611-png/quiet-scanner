@@ -87,13 +87,6 @@ if not exist "dist\IPFixBackend\_internal\oui.dat.gz" (
 )
 echo        vendor database + device book bundled OK
 
-if exist "IPFixBackend" rmdir /s /q "IPFixBackend"
-xcopy /e /i /y "dist\IPFixBackend" "IPFixBackend" >> "%LOG%" 2>&1
-if errorlevel 1 (
-  echo    ERROR: could not copy backend folder.
-  goto :fail
-)
-
 rem ---- 2. electron deps ----------------------------------------
 echo [2/4] checking electron dependencies...
 cd electron
@@ -169,3 +162,4 @@ echo   Full details are in:  build.log
 echo.
 pause
 exit /b 1
+

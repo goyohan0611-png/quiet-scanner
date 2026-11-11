@@ -121,7 +121,27 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { if (backend && !backend.killed) backend.kill(); });
+let exiting = false;
+app.on('before-quit', (event) => {
+  if (exiting || !backend || backend.killed) {
+    if (backend && !backend.killed) backend.kill();
+    return;
+  }
+  event.preventDefault();
+  exiting = true;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    if (backend && !backend.killed) backend.kill();
+    app.quit();
+  };
+  // Give normal exits a chance to release. On a hung engine/crash the saved
+  // isolation record remains, so the next launch can retry safely.
+  const timer = setTimeout(finish, 5000);
+  request('cancel').then(() => request('release')).catch(() => {}).finally(finish);
+});
 
 ipcMain.handle('network:request', (_event, action, payload) => request(action, payload));
 // The save dialog hands back {canceled, filePath}. The renderer only needs the one

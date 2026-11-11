@@ -361,6 +361,8 @@ def run(action, payload):
     if action not in allowed:
         raise RuntimeError(T("이 기능은 간소화된 스캐너에서 제공하지 않습니다.",
                              "This feature is not available in the simplified scanner."))
+    if action in {"interfaces", "isolate", "release"} and (SCAN_RUNNING or core.STORE.busy):
+        raise RuntimeError("스캔을 중지하거나 완료한 뒤에 실행하십시오.")
 
     if action == "set_lang":
         # Change the language in the UI and the engine's own log has to follow.
@@ -419,10 +421,22 @@ def run(action, payload):
         target = payload["target"]
         # Parse the range first. If this is going to be rejected, no reason to have wiped the list.
         targets = core.parse_target(target)
+        if not targets:
+            raise ValueError("스캔할 대역을 입력하십시오.")
         if len(targets) > core.MAX_TARGETS:
             raise ValueError(T("대상이 너무 많습니다 (%d개). 범위를 좁혀 주십시오.",
                                "Too many targets (%d). Narrow the range.") % len(targets))
         KNOWN_MACS.update(c.get("mac", "") for c in cards if c.get("mac"))
+        # Re-read live addresses/indexes before sending, including after a DHCP change.
+        live_cards = core.list_ifaces()
+        fresh = []
+        for card in cards:
+            match = next((c for c in live_cards
+                          if c["scapyName"] == card.get("scapyName")), None)
+            if match is None:
+                raise RuntimeError("선택한 인터페이스가 사라졌습니다. 새로고침 후 다시 선택하십시오.")
+            fresh.append(match)
+        cards = fresh
 
         # Release any standing isolation before swapping in a new STORE.
         #
@@ -438,6 +452,8 @@ def run(action, payload):
                 ok, why = core.arp_unpin(
                     stuck["ip"], stuck.get("ifindex") or core.STORE.ifindex,
                     stuck.get("ifname") or core.STORE.iface)
+                if not ok:
+                    raise RuntimeError("분리를 해제하지 못해 스캔을 시작하지 않았습니다: %s" % why)
                 untangle = (ok, stuck["ip"], why)
             core.STORE.isolated = None
 
@@ -573,7 +589,7 @@ def run(action, payload):
                         break
                     part = order[i:i + 64]
                     again, _ = core.arp_sweep(",".join(part), core.STORE.iface,
-                                              timeout=timeout, retry=retry)
+                                              timeout=timeout, retry=retry, on_found=on_found)
                     for ip, macs in again.items():
                         for mac in macs:
                             core.STORE.upsert(ip, mac)
@@ -597,6 +613,13 @@ def run(action, payload):
                 core.STORE.log(T("2차 확인에서 %d대를 더 찾았습니다.",
                                  "Second pass found %d more devices.") % got_n, "ok")
 
+            # Revisit responding IPs too: another device sharing the IP may have
+            # missed the first request. Keep every MAC already seen.
+            responding = [ip for ip in sub_list if ip in found]
+            ask_again(responding, 0.7, 1, T("충돌 재확인", "Conflict recheck"),
+                      T("응답 IP %d개의 다른 MAC 확인", "Checking other MACs on %d responding IPs")
+                      % len(responding))
+
             # Last — this adapter itself. ARP never hears its own shout, so this
             # computer is never discovered by it. Leave it out and your own IP goes
             # out as a "free address", and the installer puts a device on it.
@@ -611,10 +634,12 @@ def run(action, payload):
 
             my_mac = card.get("mac", "")
             for own in (card.get("ips") or []):
-                if own and own in set(swept) and own not in found and my_mac:
+                if own and own in set(swept) and my_mac:
                     device = core.STORE.upsert(own, my_mac)
                     device["note"] = T("이 컴퓨터", "this computer")
-                    found[own] = [core.norm_mac(my_mac)]
+                    own_macs = found.setdefault(own, [])
+                    if core.norm_mac(my_mac) not in own_macs:
+                        own_macs.append(core.norm_mac(my_mac))
                     core.STORE.log(T("이 컴퓨터(%s)를 목록에 넣었습니다 — ARP 로는 자기 자신을 못 찾습니다.",
                                      "Added this computer (%s) — ARP cannot discover itself.") % own,
                                    "info")
@@ -678,6 +703,8 @@ def run(action, payload):
 
     if action == "isolate":
         dev = core.STORE.devices[payload["key"]]
+        if core.hex_mac(dev["mac"]) in {core.hex_mac(m) for m in core.STORE.mymacs}:
+            raise RuntimeError("이 컴퓨터의 주소는 분리할 수 없습니다.")
         core.STORE.set_progress(T("장비 격리", "Isolating"), 0, 1, dev["ip"])
         core.STORE.log(T("격리 시작 — {ip} / {mac}",
                          "Isolating — {ip} / {mac}").format(ip=dev["ip"], mac=dev["mac"]))
@@ -685,14 +712,20 @@ def run(action, payload):
         if core.STORE.isolated and core.STORE.isolated != dev["key"]:
             previous = core.STORE.devices.get(core.STORE.isolated)
             if previous:
-                core.arp_unpin(previous["ip"],
+                released, reason = core.arp_unpin(previous["ip"],
                                previous.get("ifindex") or core.STORE.ifindex,
                                previous.get("ifname") or core.STORE.iface)
+                if not released:
+                    raise RuntimeError("이전 장비의 분리를 해제하지 못했습니다: %s" % reason)
                 previous["status"] = "pending"
+                core.STORE.isolated = None
         ok, detail = core.arp_pin(dev["ip"], dev["mac"],
                                   dev.get("ifindex") or core.STORE.ifindex,
                                   dev.get("ifname") or core.STORE.iface)
         if not ok:
+            core.STORE.isolated = dev["key"]
+            dev["status"] = "isolation_unknown"
+            emit_state()
             raise RuntimeError(detail or T("ARP 격리에 실패했습니다.", "ARP isolation failed."))
         core.STORE.isolated = dev["key"]
         dev["status"] = "isolated"
@@ -704,9 +737,11 @@ def run(action, payload):
     if action == "release":
         if core.STORE.isolated:
             dev = core.STORE.devices[core.STORE.isolated]
-            core.arp_unpin(dev["ip"],
+            released, reason = core.arp_unpin(dev["ip"],
                            dev.get("ifindex") or core.STORE.ifindex,
                            dev.get("ifname") or core.STORE.iface)
+            if not released:
+                raise RuntimeError("분리 해제를 확인하지 못했습니다: %s" % reason)
             dev["status"] = "pending"
             core.STORE.isolated = None
             core.STORE.log(T("격리 해제 — {ip}", "Isolation released — {ip}").format(ip=dev["ip"]), "ok")
@@ -1322,3 +1357,4 @@ def serve():
 # Guarded so tests can import this file and call run() directly.
 if __name__ == "__main__":
     serve()
+

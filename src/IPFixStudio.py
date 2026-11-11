@@ -78,9 +78,12 @@ def ensure_scapy():
     if SCAPY_OK is not None:
         return SCAPY_OK
     try:
-        from scapy.all import ARP as _ARP, Ether as _Ether
-        from scapy.all import conf as _conf, srp as _srp
-        from scapy.all import IP as _IP, TCP as _TCP, sr1 as _sr1
+        from scapy.layers.l2 import ARP as _ARP, Ether as _Ether
+        from scapy.config import conf as _conf
+        from scapy.sendrecv import srp as _srp, sr1 as _sr1
+        from scapy.layers.inet import IP as _IP, TCP as _TCP
+        import scapy.arch
+        import scapy.route
         ARP, Ether, srp, conf = _ARP, _Ether, _srp, _conf
         IP, TCP, sr1 = _IP, _TCP, _sr1
         SCAPY_OK = True
@@ -782,6 +785,21 @@ def run_ps(script, timeout=20):
 
 def ipv4_prefixes():
     """Read the prefix length (a value like /24) Windows knows for each IPv4 address."""
+    if os.name == "nt":
+        try:
+            from scapy.arch.windows.structures import GetAdaptersAddresses
+            result = {}
+            for adapter in GetAdaptersAddresses(socket.AF_INET):
+                unicast = adapter.get("first_unicast_address")
+                for item in unicast if isinstance(unicast, list) else []:
+                    addr = item["address"]["address"].contents
+                    prefix = int(item["on_link_prefix_length"])
+                    if addr.si_family == socket.AF_INET and 0 <= prefix <= 32:
+                        ip = socket.inet_ntop(socket.AF_INET, bytes(addr.Ipv4.sin_addr.byte))
+                        result[ip] = prefix
+            return result
+        except Exception:
+            pass  # Older Windows/Scapy: use the existing PowerShell fallback.
     script = (
         "$ErrorActionPreference='SilentlyContinue'; "
         "Get-NetIPAddress -AddressFamily IPv4 | "
@@ -859,8 +877,9 @@ def list_ifaces():
                 "index": getattr(nif, "index", None),
                 "mac": mac,
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        raise RuntimeError(T("인터페이스 정보를 읽지 못했습니다: %s",
+                             "Could not read interfaces: %s") % exc) from exc
     out.sort(key=lambda x: (0 if x["ips"] else 1, x["desc"]))
     return out
 
@@ -1239,7 +1258,7 @@ def _pin_read():
         return []
 
 
-def _pin_write(pins):
+def _pin_write(pins, strict=False):
     try:
         tmp = _pin_path() + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -1247,7 +1266,8 @@ def _pin_write(pins):
                        "pins": pins}, fh, ensure_ascii=False, indent=2)
         os.replace(tmp, _pin_path())
     except OSError:
-        pass
+        if strict:
+            raise
 
 
 def pin_remember(ip, mac, ifindex, ifname):
@@ -1255,7 +1275,7 @@ def pin_remember(ip, mac, ifindex, ifname):
         pins = [x for x in _pin_read() if x.get("ip") != ip]
         pins.append({"ip": ip, "mac": mac, "ifindex": ifindex, "ifname": ifname,
                      "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-        _pin_write(pins)
+        _pin_write(pins, strict=True)
 
 
 def pin_forget(ip):
@@ -1309,6 +1329,8 @@ def arp_pin(ip, mac, ifindex, ifname):
         if not ifindex:
             return False, "인터페이스 인덱스를 알 수 없습니다"
 
+        # Keep a recovery record even if the command succeeds but verification fails.
+        pin_remember(ip, mac, ifindex, ifname)
         # First choice: netsh. Same result as PowerShell but far faster — powershell.exe
         # takes 0.5~1.5s just to start up, and one probe calls it twice, pin and unpin.
         # That was a big share of the time a tech spends waiting after clicking a device.
@@ -1317,8 +1339,7 @@ def arp_pin(ip, mac, ifindex, ifname):
         rc, out, err = run_cmd(["netsh", "interface", "ipv4", "add",
                                 "neighbors", str(ifindex), ip, dash_mac(mac)])
         if rc == 0:
-            pin_remember(ip, mac, ifindex, ifname)
-            return True, ""
+            return verify_pin(ip, mac, ifindex)
 
         # Second choice: PowerShell. There are boxes where the netsh syntax does not take.
         # (New-NetNeighbor has no -Store option. It stores to memory by default, so it
@@ -1331,8 +1352,7 @@ def arp_pin(ip, mac, ifindex, ifname):
         ).format(i=ifindex, ip=ip, m=dash_mac(mac))
         rc2, out2, err2 = run_ps(ps)
         if rc2 == 0 and not err2.strip():
-            pin_remember(ip, mac, ifindex, ifname)
-            return True, "PowerShell 방식으로 처리"
+            return verify_pin(ip, mac, ifindex)
         detail = (err.strip() or out.strip() or "")[:200]
         detail2 = (err2.strip() or out2.strip() or "")[:200]
         return False, "netsh: %s / PowerShell: %s" % (detail, detail2)
@@ -1371,33 +1391,39 @@ def _arp_unpin_now(ip, ifindex, ifname):
         if ifindex:
             rc, out, err = run_cmd(["netsh", "interface", "ipv4", "delete",
                                     "neighbors", str(ifindex), ip])
-            if rc == 0 and not _still_pinned(ip, ifindex):
+            if _still_pinned(ip, ifindex) is False:
                 return True, ""
         ps = ("Remove-NetNeighbor -InterfaceIndex {i} -IPAddress {ip} "
               "-Confirm:$false -ErrorAction Stop").format(i=ifindex or 0, ip=ip)
         rc2, out2, err2 = run_ps(ps)
-        if rc2 == 0 and not err2.strip():
-            return True, ""
-        if not _still_pinned(ip, ifindex):
+        if _still_pinned(ip, ifindex) is False:
             return True, ""       # both complained, but it is actually gone
-        return False, (err2.strip() or out2.strip() or "지우지 못했습니다")[:200]
+        return False, (err2.strip() or out2.strip() or "분리 해제를 확인하지 못했습니다. 다시 해제하십시오.")[:200]
     rc, out, err = run_cmd(["ip", "neigh", "del", ip, "dev", ifname])
     return (rc == 0), (err.strip() or out.strip())
 
 
 def _still_pinned(ip, ifindex):
-    """Check whether that IP is still pinned (Permanent). False if it cannot be read."""
+    """True = pinned, False = verified released, None = cannot verify."""
     if os.name != "nt" or not ifindex:
-        return False
-    rc, out, _err = run_cmd(["netsh", "interface", "ipv4", "show", "neighbors",
-                             str(ifindex)])
-    if rc != 0:
-        return False
-    for line in out.splitlines():
-        bits = line.split()
-        if len(bits) >= 3 and bits[0] == ip:
-            return "permanent" in line.lower() or "정적" in line
-    return False
+        return None
+    try:
+        from win_neighbor import read_neighbor
+        entry = read_neighbor(ip, ifindex)
+        return bool(entry and entry["permanent"])
+    except Exception:
+        return None
+
+
+def verify_pin(ip, mac, ifindex):
+    try:
+        from win_neighbor import read_neighbor
+        entry = read_neighbor(ip, ifindex)
+        if entry and entry["permanent"] and hex_mac(entry["mac"]) == hex_mac(mac):
+            return True, ""
+        return False, "선택한 MAC 주소로 고정된 것을 확인하지 못했습니다. 분리 해제 후 다시 시도하십시오."
+    except Exception as exc:
+        return False, "분리 상태를 확인할 수 없습니다: %s" % exc
 
 
 # ---------------------------------------------------------------------------
@@ -1467,8 +1493,33 @@ def arp_sweep(target, iface, timeout=1.5, retry=1, chunk=64,
         part = targets[i:i + chunk]
         scanned.extend(part)
         pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=part)
+        pending = {}
+        wanted = set(part)
+        last_update = 0.0
+
+        def publish(force=False):
+            nonlocal last_update
+            if pending and on_found and (force or time.monotonic() - last_update >= 0.1):
+                hits = {ip: list(macs) for ip, macs in pending.items()}
+                pending.clear()
+                on_found(hits)
+                last_update = time.monotonic()
+
+        def receive(packet):
+            # srp keeps its matching/retry logic. This hook only publishes replies
+            # while srp is still listening, instead of waiting for the whole chunk.
+            if packet.haslayer(ARP):
+                reply = packet[ARP]
+                if int(reply.op) == 2 and reply.psrc in wanted:
+                    ip, mac = reply.psrc, norm_mac(reply.hwsrc)
+                    if mac not in res.setdefault(ip, []):
+                        res[ip].append(mac)
+                        pending.setdefault(ip, []).append(mac)
+                        publish()
+            return STORE.cancel.is_set()
+
         ans, _ = srp(pkt, timeout=timeout, retry=retry, iface=iface,
-                     multi=True, verbose=0)
+                     multi=True, verbose=0, stop_filter=receive)
         found = {}
         for _, rcv in ans:
             ip = rcv.psrc
@@ -1479,6 +1530,7 @@ def arp_sweep(target, iface, timeout=1.5, retry=1, chunk=64,
                 found.setdefault(ip, []).append(mac)
         if on_found and found:
             on_found(found)
+        publish(force=True)
         if on_progress:
             on_progress(min(i + chunk, total), total)
     return res, scanned
@@ -4518,3 +4570,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

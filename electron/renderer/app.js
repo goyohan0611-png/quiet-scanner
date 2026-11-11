@@ -7,6 +7,8 @@ let selectedInterface = null;
 let expandedGroups = new Set();
 let filterText = '';
 let scanRunning = false;
+let operationRunning = false;
+let interfacesLoading = true;
 let progressVisible = false;
 let progressRun = 0;
 let contextKey = null;
@@ -83,8 +85,9 @@ function renderInterfaceMenu() {
 }
 
 async function loadInterfaces(keep = selectedInterface) {
-  const button = $('#refreshInterfaces');
-  button.disabled = true;
+  if (scanRunning || operationRunning) return;
+  interfacesLoading = true;
+  paintScanButton();
   try {
     interfaces = await call('interfaces');
     const saved = interfaces.find((card) => card.scapyName === keep);
@@ -93,8 +96,14 @@ async function loadInterfaces(keep = selectedInterface) {
     renderInterfaceMenu();
     setTarget();
     notice('네트워크 인터페이스를 불러왔습니다.');
+  } catch (error) {
+    interfaces = [];
+    selectedInterface = null;
+    $('#ifaceBtn').textContent = '인터페이스 조회 실패 — 새로고침하십시오';
+    notice(cleanMessage(error.message), true);
   } finally {
-    button.disabled = false;
+    interfacesLoading = false;
+    paintScanButton();
   }
 }
 
@@ -118,6 +127,7 @@ function responseText(device) {
 }
 
 function statusHtml(device) {
+  if (device.status === 'isolation_unknown') return '<span class="status isolated">분리 확인 필요</span>';
   return state.isolated === device.key
     ? '<span class="status isolated">분리됨</span>'
     : '<span class="status">확인됨</span>';
@@ -254,7 +264,10 @@ function paintScanButton() {
   const button = $('#scanBtn');
   button.textContent = scanRunning ? '스캔 중지' : '대역 스캔';
   button.classList.toggle('danger', scanRunning);
-  button.disabled = false;
+  button.disabled = operationRunning || interfacesLoading || (!scanRunning && !selectedCard());
+  $('#ifaceBtn').disabled = scanRunning || operationRunning || interfacesLoading || !selectedCard();
+  $('#refreshInterfaces').disabled = scanRunning || operationRunning || interfacesLoading;
+  $('#bookBtn').disabled = scanRunning || operationRunning || interfacesLoading;
 }
 
 function closeInterfaceMenu() {
@@ -274,6 +287,9 @@ function showContextMenu(event, key) {
   const menu = $('#contextMenu');
   menu.querySelector('[data-menu="isolate"]').hidden = state.isolated === key;
   menu.querySelector('[data-menu="release"]').hidden = state.isolated !== key;
+  for (const button of menu.querySelectorAll('button')) {
+    button.disabled = button.dataset.menu !== 'copyMac' && (scanRunning || operationRunning || interfacesLoading);
+  }
   menu.hidden = false;
   menu.style.left = `${Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)}px`;
   menu.style.top = `${Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)}px`;
@@ -317,6 +333,7 @@ $('#ifaceMenu').addEventListener('click', (event) => {
 $('#refreshInterfaces').addEventListener('click', () => loadInterfaces(selectedInterface));
 
 $('#scanBtn').addEventListener('click', async () => {
+  if (operationRunning || interfacesLoading) return;
   if (scanRunning) {
     $('#scanBtn').disabled = true;
     notice('스캔 중지 요청을 보냈습니다.');
@@ -344,6 +361,7 @@ $('#scanBtn').addEventListener('click', async () => {
     const result = await call('scan', { iface: card, ifaces: [card], target });
     applyState(result);
     notice(result.canceled ? '스캔을 중지했습니다.' : '스캔을 완료했습니다.');
+  } catch (_) { /* call() reports the failure */
   } finally {
     scanRunning = false;
     paintScanButton();
@@ -382,13 +400,21 @@ $('#contextMenu').addEventListener('click', async (event) => {
   const action = event.target.dataset.menu;
   const key = contextKey;
   if (!action || !key) return;
+  if (action !== 'copyMac' && (scanRunning || operationRunning || interfacesLoading)) return;
   hideContextMenu();
   try {
     if (action === 'isolate') return openIsolate(key);
     if (action === 'book') return await openBook(key);
     if (action === 'release') {
-      applyState(await call('release'));
-      notice('장비 분리를 해제했습니다.');
+      operationRunning = true;
+      paintScanButton();
+      try {
+        applyState(await call('release'));
+        notice('장비 분리를 해제했습니다.');
+      } finally {
+        operationRunning = false;
+        paintScanButton();
+      }
       return;
     }
     if (action === 'copyMac') {
@@ -404,16 +430,21 @@ $('#isolateDialog').addEventListener('mousedown', (event) => {
   if (event.target === $('#isolateDialog')) closeIsolate();
 });
 $('#isolateConfirm').addEventListener('click', async () => {
-  if (!isolateKey) return;
+  if (!isolateKey || scanRunning || operationRunning || interfacesLoading) return;
   const key = isolateKey;
   closeIsolate();
+  operationRunning = true;
+  paintScanButton();
   showProgress();
   state.progress = { pct: 0, msg: '선택한 장비로 연결을 고정하는 중' };
   renderActivity();
   try {
     applyState(await call('isolate', { key }));
     notice('선택한 장비만 연결되도록 분리했습니다.');
+  } catch (_) { /* keep the backend's verified/unknown state visible */
   } finally {
+    operationRunning = false;
+    paintScanButton();
     hideProgressLater();
     renderActivity();
   }
@@ -532,3 +563,4 @@ $('#bookDelete').addEventListener('click', async () => {
 window.ipfix.onState(applyState);
 render();
 loadInterfaces().catch(() => {});
+

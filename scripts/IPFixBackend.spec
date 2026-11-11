@@ -14,10 +14,11 @@
 
 import os
 
-from PyInstaller.utils.hooks import collect_submodules
-
-hiddenimports = ['scapy.layers.all']
-hiddenimports += collect_submodules('scapy')
+hiddenimports = [
+    'scapy.layers.l2', 'scapy.layers.inet', 'scapy.layers.inet6',
+    'scapy.arch.windows', 'scapy.arch.windows.structures',
+    'scapy.arch.libpcap', 'win_neighbor',
+]
 
 # Paths resolve against **the directory this spec file lives in**, not the directory
 # you called it from (CWD) — assuming otherwise and writing them relative to the root
@@ -76,3 +77,4 @@ coll = COLLECT(
     upx_exclude=[],
     name='IPFixBackend',
 )
+
