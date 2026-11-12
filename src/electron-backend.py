@@ -43,6 +43,9 @@ OUTPUT_LOCK = threading.Lock()
 SCAN_LOCK = threading.Lock()
 SCAN_CANCEL = threading.Event()
 SCAN_RUNNING = False
+# Held while a DHCP check is on the wire. A scan and a DHCP check on the same adapter
+# at the same moment would read each other's replies, so each refuses while the other runs.
+DHCP_LOCK = threading.Lock()
 
 # Clear any isolation left behind by a previous crash before anything else runs.
 _left = core.pin_sweep(log=core.STORE.log)
@@ -356,13 +359,19 @@ def run(action, payload):
     # IP-to-MAC replies, and temporarily pin one MAC while the conflict is resolved.
     # The former device-name, switch/SNMP, PoE, report and history endpoints are not
     # available to the renderer or to a local IPC caller.
-    allowed = {"interfaces", "cancel", "scan", "isolate", "release",
+    # The one addition is the DHCP server check: a second DHCP server is a common
+    # cause of the very conflicts this tool is brought in to clear.
+    allowed = {"interfaces", "cancel", "scan", "isolate", "release", "dhcp_servers",
                "book_list", "book_lookup", "book_save", "book_remove"}
     if action not in allowed:
         raise RuntimeError(T("이 기능은 간소화된 스캐너에서 제공하지 않습니다.",
                              "This feature is not available in the simplified scanner."))
-    if action in {"interfaces", "isolate", "release"} and (SCAN_RUNNING or core.STORE.busy):
+    if action in {"interfaces", "isolate", "release", "dhcp_servers"} and (
+            SCAN_RUNNING or core.STORE.busy):
         raise RuntimeError("스캔을 중지하거나 완료한 뒤에 실행하십시오.")
+    if action in {"interfaces", "scan", "isolate", "release"} and DHCP_LOCK.locked():
+        raise RuntimeError(T("DHCP 서버 확인이 끝난 뒤에 실행하십시오.",
+                             "Wait for the DHCP server check to finish."))
 
     if action == "set_lang":
         # Change the language in the UI and the engine's own log has to follow.
@@ -403,6 +412,44 @@ def run(action, payload):
                                     key=lambda x: tuple(int(n) for n in x.split(".")))
         core.STORE.scan_done = True
         return serialize()
+
+    if action == "dhcp_servers":
+        if not DHCP_LOCK.acquire(blocking=False):
+            raise RuntimeError(T("이미 DHCP 서버를 확인하는 중입니다.",
+                                 "A DHCP server check is already running."))
+        try:
+            card = payload.get("iface") or {}
+            # Read the adapter again rather than trusting what the screen sent: the
+            # address or even the adapter itself may have changed since it was listed.
+            live = next((c for c in core.list_ifaces()
+                         if c["scapyName"] == card.get("scapyName")), None)
+            if live is None:
+                raise RuntimeError("선택한 인터페이스가 사라졌습니다. 새로고침 후 다시 선택하십시오.")
+            label = live.get("desc") or live["name"]
+            core.STORE.log(T("DHCP 서버 확인 중 — %s", "Looking for DHCP servers — %s") % label, "info")
+            emit_state()
+            servers = core.dhcp_discover(live.get("scapyName") or live["name"],
+                                         live.get("mac", ""))
+            for server in servers:
+                gateway = ", ".join(server["router"]) or "-"
+                core.STORE.log(
+                    T("DHCP 서버 %s (%s %s) — 제안 주소 %s, 게이트웨이 %s",
+                      "DHCP server %s (%s %s) — offered %s, gateway %s")
+                    % (server["ip"] or "?", core.dash_mac(server["mac"]),
+                       server["vendor"] or T("제조사 미확인", "unknown vendor"),
+                       server["offered"] or "-", gateway),
+                    "warn" if len(servers) > 1 else "ok")
+            if not servers:
+                core.STORE.log(T("응답한 DHCP 서버가 없습니다. 고정 IP만 쓰는 망이면 정상입니다.",
+                                 "No DHCP server answered. Normal on a static-only network."), "info")
+            elif len(servers) > 1:
+                core.STORE.log(
+                    T("DHCP 서버가 %d대 응답했습니다. 의도하지 않은 공유기가 연결되어 있는지 확인하십시오.",
+                      "%d DHCP servers answered. Check for a router that should not be there.")
+                    % len(servers), "warn")
+            return {"servers": servers, "iface": label, "state": serialize()}
+        finally:
+            DHCP_LOCK.release()
 
     if action == "cancel":
         if not SCAN_RUNNING:
@@ -1307,7 +1354,10 @@ def run(action, payload):
 # ~30s during which the stdin loop reads nothing at all — Stop included, which is the
 # exact hazard finish()'s comment describes.
 SLOW_ACTIONS = ("report_export", "switch_ports", "snmp_ports", "poe_restart",
-                "port_admin", "poe_admin", "port_link")
+                "port_admin", "poe_admin", "port_link",
+                # Waits several seconds for offers. On the reader thread that would
+                # hold every other request back for as long.
+                "dhcp_servers")
 
 
 def serve():
@@ -1357,4 +1407,3 @@ def serve():
 # Guarded so tests can import this file and call run() directly.
 if __name__ == "__main__":
     serve()
-

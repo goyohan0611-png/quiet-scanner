@@ -23,6 +23,7 @@
       <section class="workbar">
         <div><strong id="titleCount">대기 중</strong><span id="subTitle">인터페이스를 선택하고 스캔을 시작하십시오.</span></div>
         <input id="filterInput" class="filter-input" placeholder="검색 — IP · MAC · 제조사" />
+        <button id="dhcpBtn" class="ghost-btn" title="이 네트워크에서 응답하는 DHCP 서버를 모두 찾습니다" disabled>DHCP 서버 확인</button>
         <button id="bookBtn" class="ghost-btn">장비 사전</button>
       </section>
       <section class="table-shell">
@@ -53,6 +54,16 @@
         <footer><span class="spacer"></span><button id="isolateCancel" class="ghost">취소</button><button id="isolateConfirm" class="primary danger">이 장비만 분리</button></footer>
       </div>
     </div>
+    <div id="dhcpDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <header><strong>DHCP 서버 확인</strong><button id="dhcpClose" title="닫기">×</button></header>
+        <p class="modal-hint" id="dhcpSummary"></p>
+        <p class="modal-caution" id="dhcpCaution" hidden></p>
+        <div id="dhcpList" class="dhcp-list"></div>
+        <p class="modal-hint">주소를 요청만 하고 받지는 않으므로 이 PC의 IP와 서버의 임대 목록은 바뀌지 않습니다.</p>
+        <footer><span class="spacer"></span><button id="dhcpAgain" class="ghost">다시 확인</button><button id="dhcpOk" class="primary">닫기</button></footer>
+      </div>
+    </div>
     <div id="bookDialog" class="modal" hidden>
       <div class="modal-card modal-card--wide">
         <header><strong>장비 사전</strong><button id="bookClose" title="닫기">×</button></header>
@@ -74,4 +85,3 @@
     <script src="app.js"></script>
   </body>
 </html>
-

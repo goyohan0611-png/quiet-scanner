@@ -684,3 +684,14 @@ body.dense .net-tab { height:26px; padding:0 10px; }
 /* A port drawing power over PoE. Green means "there is current flowing here". */
 .poe { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#f0f3f7; font-style:normal; font-size:10.5px; font-weight:600; }
 
+
+/* ── DHCP server check ─────────────────────────────────────────────── */
+.dhcp-list { max-height:46vh; overflow:auto; margin-top:10px; }
+.dhcp-list:empty { display:none; }
+.dhcp-row { padding:10px 2px; border-top:1px solid var(--line); }
+.dhcp-row:last-child { border-bottom:1px solid var(--line); }
+.dhcp-who { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; }
+.dhcp-who b { font-size:14px; }
+.dhcp-who span { color:var(--muted); font-size:12px; }
+.dhcp-facts { display:flex; flex-wrap:wrap; gap:4px 18px; margin-top:6px; font-size:12px; }
+.dhcp-facts i { margin-right:6px; color:var(--muted); font-style:normal; }

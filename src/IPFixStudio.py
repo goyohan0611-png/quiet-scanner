@@ -59,7 +59,7 @@ from datetime import datetime
 _T_START = time.time()
 
 APP_NAME = "Quiet Scanner"
-APP_VER = "3.0"
+APP_VER = "3.1"
 
 # ---------------------------------------------------------------------------
 # scapy (demo mode runs fine without it)
@@ -1534,6 +1534,162 @@ def arp_sweep(target, iface, timeout=1.5, retry=1, chunk=64,
         if on_progress:
             on_progress(min(i + chunk, total), total)
     return res, scanned
+
+
+# ---------------------------------------------------------------------------
+# DHCP server discovery
+#
+# A second DHCP server on the wire — usually a home router someone plugged in by a
+# LAN port — hands out addresses from its own pool, and a good share of "IP
+# conflicts" on site start there. One DISCOVER shows every server that answers.
+#
+# Nothing is leased. A DISCOVER only asks for offers; no REQUEST follows, so each
+# server drops its offer a few seconds later. The adapter's real MAC is used, so the
+# server sees the client it already knows and no stray entry appears in its table.
+# ---------------------------------------------------------------------------
+BOOTP = DHCP = UDP = None
+DHCP_ERR = ""
+# subnet mask, router, DNS, domain, lease time, server id
+DHCP_WANTED = [1, 3, 6, 15, 51, 54]
+
+
+def ensure_dhcp():
+    """Load the DHCP layer on first use.
+
+    Kept out of ensure_scapy on purpose: every extra layer imported there is paid
+    for on each start, and most runs never touch DHCP.
+    """
+    global BOOTP, DHCP, UDP, DHCP_ERR
+    if BOOTP is not None:
+        return True
+    if not ensure_scapy():
+        DHCP_ERR = SCAPY_ERR
+        return False
+    try:
+        from scapy.layers.inet import UDP as _UDP
+        from scapy.layers.dhcp import BOOTP as _BOOTP, DHCP as _DHCP
+        BOOTP, DHCP, UDP = _BOOTP, _DHCP, _UDP
+        return True
+    except Exception as e:
+        DHCP_ERR = str(e)
+        return False
+
+
+def _dhcp_option(options, name):
+    """Values of one DHCP option, as a list. Scapy stores options as (name, v1, v2, ...)."""
+    for item in options or []:
+        if isinstance(item, tuple) and item and item[0] == name:
+            return list(item[1:])
+    return []
+
+
+def _dhcp_text(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace").strip("\x00 ")
+    return str(value or "")
+
+
+def parse_dhcp_offer(packet, xid=None):
+    """Pull the useful fields out of one DHCPOFFER. None for anything else.
+
+    "Anything else" includes our own DISCOVER coming back off the wire, a NAK, and an
+    offer meant for some other client's transaction.
+    """
+    if BOOTP is None or not packet.haslayer(BOOTP) or not packet.haslayer(DHCP):
+        return None
+    boot = packet[BOOTP]
+    if int(boot.op) != 2:               # 2 = BOOTREPLY. Our own DISCOVER is 1.
+        return None
+    if xid is not None and int(boot.xid) != int(xid):
+        return None
+    options = packet[DHCP].options
+    kind = _dhcp_option(options, "message-type")
+    if not kind or kind[0] not in (2, "offer"):
+        return None
+
+    def first(name):
+        values = _dhcp_option(options, name)
+        return values[0] if values else ""
+
+    server = _dhcp_text(first("server_id"))
+    if not server and packet.haslayer(IP):
+        server = packet[IP].src
+    # Through a relay agent the frame's source MAC is the relay's, not the server's.
+    relay = str(boot.giaddr or "")
+    if relay == "0.0.0.0":
+        relay = ""
+    mac = norm_mac(str(getattr(packet, "src", "") or ""))
+    seen = describe(mac)
+    lease = first("lease_time")
+    try:
+        lease = int(lease)
+    except (TypeError, ValueError):
+        lease = None
+    offered = str(boot.yiaddr or "")
+    return {
+        "ip": server,
+        "mac": mac,
+        "vendor": seen["vendor"],
+        "kind": seen["kind"] if seen["from_book"] else "",
+        "offered": "" if offered == "0.0.0.0" else offered,
+        "mask": _dhcp_text(first("subnet_mask")),
+        "router": [_dhcp_text(v) for v in _dhcp_option(options, "router")],
+        "dns": [_dhcp_text(v) for v in _dhcp_option(options, "name_server")],
+        "domain": _dhcp_text(first("domain")),
+        "lease": lease,
+        "relay": relay,
+    }
+
+
+def dhcp_discover(iface, mac, timeout=3.0, tries=2):
+    """Broadcast a DHCPDISCOVER and list every server that makes an offer.
+
+    Asks a second time only if the first round was silent — some servers probe the
+    address they are about to offer before answering, and that can outlast one wait.
+    """
+    if not ensure_dhcp():
+        raise RuntimeError(T("scapy를 불러오지 못했습니다: %s",
+                             "Could not load scapy: %s") % DHCP_ERR)
+    digits = hex_mac(mac)
+    if len(digits) != 12 or not digits.strip("0"):
+        raise ValueError(T("이 인터페이스의 MAC 주소를 확인할 수 없습니다.",
+                           "Could not read this interface's MAC address."))
+    hardware = bytes.fromhex(digits)
+    source = ":".join(digits[i:i + 2] for i in range(0, 12, 2))
+    found = {}
+    # An offer comes from the server's own address, not from 255.255.255.255 where the
+    # DISCOVER went. With the address check on, scapy matches none of them to our
+    # request and every offer is thrown away. Put the setting back whatever happens —
+    # it is process-wide.
+    before = conf.checkIPaddr
+    conf.checkIPaddr = False
+    try:
+        for _ in range(max(1, int(tries))):
+            xid = random.getrandbits(32)
+            packet = (Ether(src=source, dst="ff:ff:ff:ff:ff:ff")
+                      / IP(src="0.0.0.0", dst="255.255.255.255")
+                      / UDP(sport=68, dport=67)
+                      # Broadcast flag: the answer comes back to everyone, so it reaches
+                      # us even on an adapter that has no address yet.
+                      / BOOTP(chaddr=hardware, xid=xid, flags=0x8000)
+                      / DHCP(options=[("message-type", "discover"),
+                                      ("param_req_list", DHCP_WANTED), "end"]))
+            answers, _ = srp(packet, iface=iface, timeout=timeout, multi=True, verbose=0)
+            for _, reply in answers:
+                offer = parse_dhcp_offer(reply, xid)
+                if offer:
+                    found.setdefault((offer["ip"], offer["mac"]), offer)
+            if found:
+                break
+    finally:
+        conf.checkIPaddr = before
+
+    def order(item):
+        try:
+            return (0, int(ipaddress.IPv4Address(item["ip"])), item["mac"])
+        except ValueError:
+            return (1, 0, item["mac"])
+    return sorted(found.values(), key=order)
 
 
 def parse_ports(text):
@@ -4570,4 +4726,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

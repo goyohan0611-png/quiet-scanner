@@ -268,6 +268,8 @@ function paintScanButton() {
   $('#ifaceBtn').disabled = scanRunning || operationRunning || interfacesLoading || !selectedCard();
   $('#refreshInterfaces').disabled = scanRunning || operationRunning || interfacesLoading;
   $('#bookBtn').disabled = scanRunning || operationRunning || interfacesLoading;
+  $('#dhcpBtn').disabled = scanRunning || operationRunning || interfacesLoading || !selectedCard();
+  $('#dhcpAgain').disabled = $('#dhcpBtn').disabled;
 }
 
 function closeInterfaceMenu() {
@@ -460,6 +462,7 @@ document.addEventListener('keydown', (event) => {
     closeInterfaceMenu();
     closeIsolate();
     $('#bookDialog').hidden = true;
+    $('#dhcpDialog').hidden = true;
   }
 });
 
@@ -560,7 +563,76 @@ $('#bookDelete').addEventListener('click', async () => {
   finally { $('#bookDelete').disabled = !bookRows.some(row => row[0] === bookDigits($('#bookPrefix').value)); }
 });
 
+function leaseText(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value >= 0xffffffff) return '무제한';
+  if (value % 86400 === 0) return `${value / 86400}일`;
+  if (value >= 3600) return `${Math.round(value / 360) / 10}시간`;
+  if (value >= 60) return `${Math.round(value / 60)}분`;
+  return `${value}초`;
+}
+
+function dhcpRowHtml(server) {
+  const who = [server.vendor || '제조사 미확인', server.kind].filter(Boolean).join(' · ');
+  const offered = server.offered ? `${server.offered}${server.mask ? ' / ' + server.mask : ''}` : '';
+  const facts = [
+    ['제안 주소', offered],
+    ['게이트웨이', (server.router || []).join(', ')],
+    ['DNS', (server.dns || []).join(', ')],
+    ['임대', leaseText(server.lease)],
+    ['도메인', server.domain],
+    ['중계', server.relay],
+  ].filter((fact) => fact[1]);
+  return `<div class="dhcp-row">
+    <div class="dhcp-who"><b>${esc(server.ip || '주소 미확인')}</b><span class="mac-sub">${esc(macText(server))}</span><span>${esc(who)}</span></div>
+    <div class="dhcp-facts">${facts.map((fact) => `<span><i>${esc(fact[0])}</i>${esc(fact[1])}</span>`).join('')}</div>
+  </div>`;
+}
+
+function renderDhcp(result) {
+  const servers = result.servers || [];
+  const where = result.iface ? `${result.iface} — ` : '';
+  $('#dhcpSummary').textContent = servers.length
+    ? `${where}응답한 DHCP 서버 ${servers.length}대`
+    : `${where}응답한 DHCP 서버가 없습니다. 고정 IP만 쓰는 망이면 정상입니다.`;
+  const caution = $('#dhcpCaution');
+  caution.hidden = servers.length < 2;
+  caution.textContent = servers.length < 2 ? ''
+    : 'DHCP 서버가 2대 이상입니다. 의도하지 않은 공유기가 연결되어 있으면 장비마다 다른 대역의 주소를 받아 IP 충돌과 통신 장애가 생깁니다. 아래 MAC과 제조사로 장비를 찾아 확인하십시오.';
+  $('#dhcpList').innerHTML = servers.map(dhcpRowHtml).join('');
+  $('#dhcpDialog').hidden = false;
+  $('#dhcpOk').focus();
+}
+
+async function runDhcp() {
+  if (scanRunning || operationRunning || interfacesLoading) return;
+  const card = selectedCard();
+  if (!card) return notice('네트워크 인터페이스를 선택하십시오.', true);
+  operationRunning = true;
+  paintScanButton();
+  notice('DHCP 서버를 확인하는 중입니다… (최대 6초)');
+  try {
+    const result = await call('dhcp_servers', { iface: card });
+    if (result.state) applyState(result.state);
+    renderDhcp(result);
+    const count = (result.servers || []).length;
+    notice(count ? `DHCP 서버 ${count}대를 확인했습니다.` : '응답한 DHCP 서버가 없습니다.', count > 1);
+  } catch (_) { /* call() reports the failure */
+  } finally {
+    operationRunning = false;
+    paintScanButton();
+  }
+}
+
+$('#dhcpBtn').addEventListener('click', runDhcp);
+$('#dhcpAgain').addEventListener('click', runDhcp);
+$('#dhcpClose').addEventListener('click', () => { $('#dhcpDialog').hidden = true; });
+$('#dhcpOk').addEventListener('click', () => { $('#dhcpDialog').hidden = true; });
+$('#dhcpDialog').addEventListener('mousedown', (event) => {
+  if (event.target === $('#dhcpDialog')) $('#dhcpDialog').hidden = true;
+});
+
 window.ipfix.onState(applyState);
 render();
 loadInterfaces().catch(() => {});
-

@@ -18,6 +18,7 @@ hiddenimports = [
     'scapy.layers.l2', 'scapy.layers.inet', 'scapy.layers.inet6',
     'scapy.arch.windows', 'scapy.arch.windows.structures',
     'scapy.arch.libpcap', 'win_neighbor',
+    'scapy.layers.dhcp',   # loaded on first use by the DHCP server check
 ]
 
 # Paths resolve against **the directory this spec file lives in**, not the directory
@@ -77,4 +78,3 @@ coll = COLLECT(
     upx_exclude=[],
     name='IPFixBackend',
 )
-
