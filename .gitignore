@@ -40,6 +40,12 @@ electron/node_modules/
 __pycache__/
 *.pyc
 build.log
+/node_modules/
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/rust-*.log
+/rust-*.json
+/_smoke/
 
 # ── Editors / OS ──────────────────────────────────────────────────────
 .vscode/

@@ -1,5 +1,6 @@
 /* Quiet Scanner — local ARP scan and IP-conflict separation */
 const $ = (selector) => document.querySelector(selector);
+const copyText = (text) => window.ipfix.copyText ? window.ipfix.copyText(text) : navigator.clipboard.writeText(text);
 
 let state = { groups: [], summary: {}, progress: {}, logs: [], isolated: null };
 let interfaces = [];
@@ -212,6 +213,7 @@ function renderActivity() {
 }
 
 function applyState(next) {
+  if (next.revision != null && next.revision < (state.revision || 0)) return;
   state = { ...state, ...next };
   render();
 }
@@ -357,6 +359,8 @@ $('#scanBtn').addEventListener('click', async () => {
   scanRunning = true;
   expandedGroups.clear();
   showProgress();
+  state.progress = { phase: 'scan', pct: 0, msg: '인터페이스 확인 · 스캔 준비' };
+  renderActivity();
   paintScanButton();
   notice('대역을 스캔하는 중입니다…');
   try {
@@ -381,7 +385,7 @@ $('#deviceList').addEventListener('click', (event) => {
   const copyIp = event.target.closest('[data-copy-ip]')?.dataset.copyIp;
   if (copyIp) {
     event.stopPropagation();
-    navigator.clipboard.writeText(copyIp)
+    copyText(copyIp)
       .then(() => notice(`${copyIp}을(를) 클립보드에 복사했습니다.`))
       .catch(() => notice('IP 주소를 복사하지 못했습니다.', true));
     return;
@@ -420,7 +424,7 @@ $('#contextMenu').addEventListener('click', async (event) => {
       return;
     }
     if (action === 'copyMac') {
-      await navigator.clipboard.writeText(macText(deviceOf(key)));
+      await copyText(macText(deviceOf(key)));
       notice('MAC 주소를 클립보드에 복사했습니다.');
     }
   } catch (_) { /* call() displays the error */ }
@@ -599,7 +603,7 @@ function renderDhcp(result) {
   const caution = $('#dhcpCaution');
   caution.hidden = servers.length < 2;
   caution.textContent = servers.length < 2 ? ''
-    : 'DHCP 서버가 2대 이상입니다. 의도하지 않은 공유기가 연결되어 있으면 장비마다 다른 대역의 주소를 받아 IP 충돌과 통신 장애가 생깁니다. 아래 MAC과 제조사로 장비를 찾아 확인하십시오.';
+    : 'DHCP 응답이 여러 개입니다. 정상적인 이중화 구성일 수도 있으므로, 의도한 서버와 제안 대역인지 확인하십시오. 중계가 있으면 아래 MAC이 실제 서버의 MAC과 다를 수 있습니다.';
   $('#dhcpList').innerHTML = servers.map(dhcpRowHtml).join('');
   $('#dhcpDialog').hidden = false;
   $('#dhcpOk').focus();

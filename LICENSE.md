@@ -19,9 +19,9 @@ counts.
 
 ## Why GPLv2
 
-Handling ARP frames directly means shipping **Scapy** (GPLv2). The vendor
-registry comes from **Wireshark's manuf file** (GPL-2.0-or-later). Distributing
-GPL work puts the whole program under the same terms.
+The vendor registry comes from **Wireshark's manuf file** (GPL-2.0-or-later).
+The project remains GPL-2.0-or-later after the Rust/Tauri migration. The 4.0
+installer does not bundle Scapy or Python.
 
 Everything borrowed is listed in [`docs/third-party.md`](docs/third-party.md).
 
