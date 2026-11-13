@@ -127,7 +127,8 @@ fn unit_state() -> Result<(bool, bool), String> {
     Ok((!["inactive", "failed"].contains(state), *boot == "enabled"))
 }
 fn table(family: &str, name: &str) -> Result<Value, String> {
-    json_command(NFT, &["-j", "list", "table", family, name])
+    // Omit potentially huge IP set contents; health needs only set/rule metadata.
+    json_command(NFT, &["-j", "-t", "list", "table", family, name])
 }
 fn dependencies() -> bool {
     [CSCLI, NFT, SYSTEMCTL, BOUNCER]

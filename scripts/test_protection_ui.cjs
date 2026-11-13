@@ -19,7 +19,7 @@ await page.locator('#protectionToggle').click();assert.equal(await page.locator(
 await page.waitForFunction(()=>document.querySelector('#protectionState').textContent==='보호 중');assert.equal(await page.locator('#protectionBadge.is-on').count(),1);
 assert.equal(await page.locator('.protection-decision').count(),2);
 await page.screenshot({path:'_smoke/protection-on.png'});
-await page.evaluate(()=>guardFixture.fail=true);await page.locator('#protectionRefresh').click();await page.waitForFunction(()=>document.querySelector('#protectionState').textContent==='상태 확인 실패');assert.equal(await page.locator('#protectionBadge.is-on').count(),0,'failed verification removes stale green');
+await page.evaluate(()=>guardFixture.fail=true);await page.locator('#protectionRefresh').click();await page.waitForFunction(()=>document.querySelector('#protectionState').textContent==='상태 확인 실패');assert.equal(await page.locator('#protectionBadge.is-on').count(),0,'failed verification removes stale green');assert.equal(await page.locator('#protectionToggle').isDisabled(),true,'unknown state requires a refresh before another toggle');
 await page.evaluate(()=>guardFixture.fail=false);await page.locator('#protectionRefresh').click();await page.waitForFunction(()=>document.querySelector('#protectionState').textContent==='보호 중');
 page.on('dialog',dialog=>dialog.accept());await page.locator('#protectionAllowIp').fill('198.51.100.99');await page.locator('#protectionAllowAdd').click();await page.locator('[data-remove-allow-ip="198.51.100.99"]').waitFor();
 await page.locator('[data-remove-allow-ip="198.51.100.99"]').click();await page.waitForFunction(()=>!document.querySelector('[data-remove-allow-ip]'));

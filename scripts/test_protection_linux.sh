@@ -32,7 +32,7 @@ test "$(stat -c %a /etc/quiet-scanner/protection/firewall.yaml)" = 600
 "$GUARD" '{"operation":"enable"}' > "$TEMP/enable.json"
 wait_phase on
 python3 -c 'import json,sys;s=json.load(open(sys.argv[1]));assert s["protecting"] and all(s["checks"].values())' "$TEMP/status.json"
-echo 'PASS: real engine API, bouncer pull, boot setting and both nftables DROP rules verified'
+echo 'PASS: real engine API, bouncer pull, boot setting and both nftables input paths verified'
 
 ip addr add 198.51.100.42/32 dev lo
 python3 -m http.server 38563 --bind 127.0.0.1 --directory "$TEMP" >/dev/null 2>&1 & HTTP_PID=$!

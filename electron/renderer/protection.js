@@ -24,11 +24,12 @@
     badge.classList.toggle('is-on', status.protecting === true && !working);
     badge.classList.toggle('is-error', ['degraded','error'].includes(phase));
     const toggle = el('protectionToggle');
+    const shouldStop = ['on','degraded'].includes(phase);
     toggle.setAttribute('aria-checked', String(status.protecting === true));
-    toggle.disabled = busy || working || !authorized || !status.prepared || !status.dependencies;
-    toggle.setAttribute('aria-label', status.protecting ? '보호 모드 끄기' : '보호 모드 켜기');
+    toggle.disabled = busy || working || phase === 'error' || !authorized || !status.prepared || !status.dependencies;
+    toggle.setAttribute('aria-label', shouldStop ? '보호 모드 끄기' : '보호 모드 켜기');
     // A degraded/stopped service with residual rules must still offer OFF.
-    toggle.dataset.stop = String(['on','degraded'].includes(phase));
+    toggle.dataset.stop = String(shouldStop);
     el('protectionRefresh').disabled = busy || status.supported === false;
     el('protectionPrepare').hidden = !status.supported || !status.dependencies || status.prepared;
     el('protectionPrepare').disabled = busy || working;
