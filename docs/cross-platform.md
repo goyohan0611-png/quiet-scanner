@@ -51,3 +51,5 @@ CI의 관리자 연결 확인은 실제 데스크톱에서 뜨는 macOS·Linux �
 4.1.0-beta.1은 [운영체제별 빌드 검사](https://github.com/goyohan0611-png/quiet-scanner/actions/runs/43357788785)를 통과했습니다. macOS는 각 38개, Linux는 37개의 Rust 테스트를 통과했으며, 관리자 작업 프로세스 인증과 실제 libpcap 캡처 열기를 확인했습니다. Windows에서는 33개 Rust 테스트와 코드 검사를 통과했습니다.
 
 macOS 미리보기는 Apple Developer ID 서명·공증이 없는 테스트 빌드입니다. 일반 사용자용 정식 배포에는 Apple 서명·공증 절차가 추가로 필요합니다.
+
+유료 개발자 계정으로 맥 없이 준비하는 절차는 [macOS 서명 안내](macos-signing.md)에 정리했습니다.

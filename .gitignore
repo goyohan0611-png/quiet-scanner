@@ -62,3 +62,12 @@ desktop.ini
 /IPFixStudio.ico
 _old_*
 _paths_test.py
+
+# Apple signing keys and local certificate requests
+*.p12
+*.p8
+*.key.pem
+*.key.enc.pem
+*.certSigningRequest
+*.dpapi
+*-certificate-base64.txt
