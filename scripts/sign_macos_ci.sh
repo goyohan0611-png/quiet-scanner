@@ -54,26 +54,20 @@ APPLE_TEAM_ID="$(python3 -c 'import os,json; print(json.loads(os.environ["IDENTI
 export APPLE_SIGNING_IDENTITY APPLE_TEAM_ID
 unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD IDENTITIES IDENTITY_METADATA
 
-# Tauri uses the temporary keychain identity and app-specific notarization
-# password, submits to Apple, waits for approval, and staples the ticket.
-node node_modules/@tauri-apps/cli/tauri.js bundle --bundles app,dmg --target "$CARGO_BUILD_TARGET" --ci
+# Sign with the imported identity, but keep notarization out of the bundler's
+# blocking wait. Submit only the final disk image; Apple also checks its app.
+env -u APPLE_ID -u APPLE_PASSWORD -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH \
+  node node_modules/@tauri-apps/cli/tauri.js bundle --bundles app,dmg --target "$CARGO_BUILD_TARGET" --ci
 
 APP="src-tauri/target/$CARGO_BUILD_TARGET/release/bundle/macos/Quiet Scanner.app"
 codesign --verify --deep --strict --verbose=2 "$APP"
-xcrun stapler validate "$APP"
-spctl --assess --type execute --verbose=2 "$APP"
-found=0
-for dmg in "src-tauri/target/$CARGO_BUILD_TARGET/release/bundle/dmg/"*.dmg; do
-  [[ -f "$dmg" ]] || continue
-  hdiutil verify "$dmg"
-  # Some bundler versions notarize the .app before creating the DMG. Obtain a
-  # ticket for the outer image as well instead of assuming it already has one.
-  if ! xcrun stapler validate "$dmg" >/dev/null 2>&1; then
-    xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait --output-format json > "$SIGNING_DIR/dmg-status.json"
-    python3 -c 'import json,sys; result=json.load(open(sys.argv[1])); sys.exit(0 if result.get("status")=="Accepted" else "Apple did not accept the DMG notarization")' "$SIGNING_DIR/dmg-status.json"
-    xcrun stapler staple "$dmg"
-  fi
-  xcrun stapler validate "$dmg"
-  found=1
-done
-[[ "$found" == 1 ]] || { printf 'Signed DMG not found\n' >&2; exit 1; }
+shopt -s nullglob
+DMGS=("src-tauri/target/$CARGO_BUILD_TARGET/release/bundle/dmg/"*.dmg)
+[[ "${#DMGS[@]}" == 1 ]] || { printf 'Expected exactly one signed DMG\n' >&2; exit 1; }
+codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "${DMGS[0]}"
+codesign --verify --strict "${DMGS[0]}"
+hdiutil verify "${DMGS[0]}"
+VERSION="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+export NOTARY_TEAM_ID="$APPLE_TEAM_ID"
+python3 scripts/macos_notarization.py submit --dmg "${DMGS[0]}" \
+  --output "notarization-pending/$CARGO_BUILD_TARGET" --version "$VERSION"

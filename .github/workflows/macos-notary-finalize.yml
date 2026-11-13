@@ -1,0 +1,68 @@
+name: Finalize accepted macOS installers
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed macos-signed.yml run containing pending DMGs
+        required: true
+        type: string
+      team_id:
+        description: Apple Team ID (must match the signing certificate)
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  finalize:
+    if: github.ref == 'refs/heads/main'
+    environment: macos-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - platform: macos-intel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      NOTARY_TEAM_ID: ${{ inputs.team_id }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate original signing workflow before downloading artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid source run ID' >&2; exit 1; }
+          [[ "$NOTARY_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo 'Invalid Team ID' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          python3 scripts/macos_notarization.py source "$RUNNER_TEMP/source-run.json"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: pending-quiet-scanner-${{ matrix.platform }}
+          path: notarization-pending
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Check Apple approval, staple and verify retained installer
+        id: verify
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: python3 scripts/macos_notarization.py finalize --input notarization-pending --output notarization-verified
+      - name: Upload only verified notarized installers
+        if: steps.verify.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-quiet-scanner-${{ matrix.platform }}
+          path: notarization-verified/
+          if-no-files-found: error
+          retention-days: 30

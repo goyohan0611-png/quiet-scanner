@@ -1,4 +1,4 @@
-name: Signed macOS installers
+name: Build and submit macOS notarization
 on:
   workflow_dispatch:
 permissions:
@@ -48,20 +48,23 @@ jobs:
           npm ci
       - name: Build and test without signing credentials
         run: |
+          python3 -m unittest discover -s scripts -p test_macos_notarization.py
           cargo test --manifest-path src-tauri/Cargo.toml --locked
           cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
           npm run build -- --bundles app,dmg --target "$CARGO_BUILD_TARGET"
-      - name: Sign, notarize and verify
+      - name: Sign and submit once without waiting for Apple
+        id: submit
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: bash scripts/sign_macos_ci.sh
-      - name: Upload verified signed installers
+      - name: Preserve signed DMG and submission receipt for later finalization
+        if: always() && hashFiles('notarization-pending/**/manifest.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: signed-quiet-scanner-${{ matrix.platform }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          name: pending-quiet-scanner-${{ matrix.platform }}
+          path: notarization-pending/${{ matrix.target }}/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

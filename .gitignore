@@ -70,4 +70,6 @@ _paths_test.py
 *.key.enc.pem
 *.certSigningRequest
 *.dpapi
+notarization-pending/
+notarization-verified/
 *-certificate-base64.txt
