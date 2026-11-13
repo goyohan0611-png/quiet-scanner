@@ -10,6 +10,8 @@ Quiet Scanner는 CCTV·AV·네트워크 설치 현장에서 반복되는 IP 충�
 
 **[Windows 설치 파일 받기](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.0.1/Quiet.Scanner.Setup.4.0.1.exe)** · [4.0.1 변경 사항](docs/release-v4.0.1.md)
 
+macOS·Linux 지원은 **4.1 미리보기**에서 추가합니다. Apple Silicon·Intel 맥과 Ubuntu 24.04 이상 x64를 대상으로 하며, 설치·권한·검증 범위는 [다른 운영체제 안내](docs/cross-platform.md)를 참고하십시오. Windows 안정 버전은 4.0.1입니다.
+
 ![Quiet Scanner 장비 목록 — 설명용 예시 데이터](docs/images/quiet-scanner.jpg)
 
 ## 핵심 기능
@@ -88,7 +90,7 @@ DHCP REQUEST를 보내지 않으며 이 PC의 주소 설정은 변경하지 않�
 설치 프로그램 첫 화면에서 **Npcap / Microsoft Edge WebView2 Runtime** 두 항목의 설치 상태를 확인합니다. 미설치는 빨간색, 설치 완료는 초록색으로 표시합니다. **설치하러 가기**를 누르면 공식 다운로드 페이지가 열립니다. 내려받은 구성 요소를 설치하면 약 1초마다 다시 확인해 상태를 갱신하며, **두 항목이 모두 설치돼야 다음 단계로 진행**합니다. 이미 설치된 항목은 다시 설치하지 않아도 됩니다.
 
 - Windows 10 / 11 64비트
-- macOS·Linux는 지원하지 않습니다.
+- Windows 4.0.1 안내입니다. macOS·Linux 미리보기의 설치 방식은 [별도 안내](docs/cross-platform.md)를 확인하십시오.
 - 관리자 권한 필요. 실행 시 Windows 권한 확인 창이 표시됩니다.
 - [Npcap](https://npcap.com) 설치 필요. 기본 설치 위치의 Npcap API를 사용하며 설치 파일에 Npcap을 포함하지 않습니다.
 - Microsoft Edge WebView2 Runtime 필요. 없으면 체크리스트의 설치 버튼으로 Microsoft 공식 설치 프로그램을 받아 설치합니다. 새로 받으려면 인터넷 연결이 필요합니다.

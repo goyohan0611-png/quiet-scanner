@@ -1,6 +1,6 @@
 [package]
 name = "quiet-scanner"
-version = "4.0.1"
+version = "4.1.0-beta.1"
 description = "Local network scanner and IP conflict tool"
 authors = ["Goyohan"]
 edition = "2021"
@@ -18,13 +18,19 @@ libloading = "0.8"
 flate2 = "1"
 rand = "0.8"
 chrono = "0.4"
-clipboard-win = "5"
 socket2 = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = "5"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation", "Win32_NetworkManagement_IpHelper",
   "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock",
   "Win32_UI_Shell", "Win32_System_SystemInformation", "Win32_System_IO"
 ] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+arboard = { version = "3", default-features = false }
 
 [profile.release]
 strip = true

@@ -793,9 +793,7 @@ impl Engine {
     }
     fn isolate(&self, device_key: &str) -> Result<Value, String> {
         self.storage_ready()?;
-        if !native::admin() {
-            return Err("분리 기능은 관리자 권한이 필요합니다.".into());
-        }
+        native::authorize()?;
         let d = self
             .state
             .lock()
@@ -919,9 +917,7 @@ impl Engine {
     pub fn self_test_neighbor(&self, card: &Iface) -> Result<Value, String> {
         let _op = self.guard()?;
         self.storage_ready()?;
-        if !native::admin() {
-            return Err("네이티브 동작 확인에는 관리자 권한이 필요합니다.".into());
-        }
+        native::authorize()?;
         if !self.state.lock().unwrap().pins.is_empty() {
             return Err("현재 분리 기록이 있으므로 테스트를 시작하지 않았습니다.".into());
         }
@@ -956,6 +952,11 @@ impl Engine {
 }
 
 /// Import only known legacy locations, never search site folders or overwrite existing records.
+#[cfg(not(windows))]
+pub fn migrate_legacy(_directory: &Path) -> Result<(), String> {
+    Ok(())
+}
+#[cfg(windows)]
 pub fn migrate_legacy(directory: &Path) -> Result<(), String> {
     let mut roots = Vec::new();
     if let Ok(exe) = std::env::current_exe() {

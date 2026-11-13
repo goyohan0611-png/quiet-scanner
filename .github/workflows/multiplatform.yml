@@ -1,0 +1,73 @@
+name: Native platform builds
+on:
+  push:
+    branches: [codex/macos-linux]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: platform-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - platform: macos-intel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - platform: linux-x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libpcap0.8t64 iproute2 iputils-ping pkexec xvfb
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup target add "$CARGO_BUILD_TARGET"
+      - name: Install build tools
+        run: npm ci
+      - name: Tests and lint
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          node scripts/test_tauri_bridge.cjs
+          python3 -m unittest discover -s scripts -p test_vendor_data.py
+      - name: Build native installers
+        run: npm run build -- --bundles "${{ matrix.bundles }}"
+      - name: Read-only interfaces and authenticated capture worker
+        run: |
+          APP="src-tauri/target/$CARGO_BUILD_TARGET/release/quiet-scanner"
+          "$APP" --smoke interfaces
+          "$APP" --smoke transport
+      - name: Upload native installers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: quiet-scanner-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+          if-no-files-found: error
+          retention-days: 14

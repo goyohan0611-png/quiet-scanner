@@ -1,10 +1,12 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod book;
 mod capture;
 mod engine;
 mod native;
 mod packet;
+#[cfg(unix)]
+mod privilege;
 mod probe;
 
 use engine::Engine;
@@ -37,13 +39,55 @@ fn copy_text(text: String) -> Result<(), String> {
     if text.len() > 128 * 1024 {
         return Err("복사할 내용이 너무 깁니다.".into());
     }
-    clipboard_win::set_clipboard_string(&text).map_err(|e| format!("클립보드 복사 실패: {e}"))
+    #[cfg(windows)]
+    {
+        clipboard_win::set_clipboard_string(&text).map_err(|e| format!("클립보드 복사 실패: {e}"))
+    }
+    #[cfg(unix)]
+    {
+        static CLIPBOARD: std::sync::OnceLock<std::sync::Mutex<Option<arboard::Clipboard>>> =
+            std::sync::OnceLock::new();
+        let mut clipboard = CLIPBOARD
+            .get_or_init(|| std::sync::Mutex::new(None))
+            .lock()
+            .map_err(|_| "클립보드 잠금 오류")?;
+        if clipboard.is_none() {
+            *clipboard = Some(arboard::Clipboard::new().map_err(|e| e.to_string())?);
+        }
+        clipboard
+            .as_mut()
+            .unwrap()
+            .set_text(text)
+            .map_err(|e| format!("클립보드 복사 실패: {e}"))
+    }
 }
+#[cfg(windows)]
 fn data_directory() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
         .join("Quiet Scanner")
+}
+#[cfg(target_os = "macos")]
+fn data_directory() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Library/Application Support/Quiet Scanner")
+}
+#[cfg(target_os = "linux")]
+fn data_directory() -> PathBuf {
+    if let Some(path) = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+    {
+        path.join("quiet-scanner")
+    } else {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join(".local/share/quiet-scanner")
+    }
 }
 fn smoke(args: &[String]) -> Result<Value, String> {
     let started = std::time::Instant::now();
@@ -54,6 +98,8 @@ fn smoke(args: &[String]) -> Result<Value, String> {
         std::env::temp_dir().join(format!("quiet-smoke-{}", std::process::id()))
     });
     match args.first().map(String::as_str).unwrap_or("interfaces") {
+        #[cfg(unix)]
+        "transport" => privilege::transport_test(),
         "interfaces" => Ok(
             json!({"interfaces":cards,"elapsedMs":started.elapsed().as_millis(),"diagnostics":e.diagnostics()}),
         ),
@@ -92,6 +138,14 @@ fn smoke(args: &[String]) -> Result<Value, String> {
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(unix)]
+    if args.first().is_some_and(|a| a == "--privileged-worker") {
+        if let Err(error) = privilege::worker(&args[1..]) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.first().is_some_and(|a| a == "--smoke") {
         let result = smoke(&args[1..]);
         if args.get(1).is_some_and(|a| a == "neighbor") {
@@ -149,6 +203,8 @@ fn main() {
                 let engine = app.state::<Arc<Engine>>().inner().clone();
                 tauri::async_runtime::spawn(async move {
                     let _ = tauri::async_runtime::spawn_blocking(move || engine.shutdown()).await;
+                    #[cfg(unix)]
+                    privilege::shutdown();
                     app.exit(0);
                 });
             }

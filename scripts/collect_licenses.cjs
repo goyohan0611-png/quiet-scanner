@@ -3,12 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--filter-platform', 'x86_64-pc-windows-msvc', '--format-version', '1'], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true }));
+const target = process.env.CARGO_BUILD_TARGET || execFileSync('rustc', ['-vV'], { encoding: 'utf8', windowsHide: true }).match(/^host: (.+)$/m)?.[1]?.trim();
+if (!target) throw new Error('Cannot determine the Rust build target');
+const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--filter-platform', target, '--format-version', '1'], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true }));
 const nodes = new Map(metadata.resolve.nodes.map(node => [node.id, node]));
 const included = new Set();
 function visit(id) { if (included.has(id)) return; included.add(id); for (const child of nodes.get(id)?.dependencies || []) visit(child); }
 visit(metadata.resolve.root);
-const sections = ['Quiet Scanner: locked Windows Rust dependency notices\nIncludes Windows build dependencies.\nSource: https://github.com/goyohan0611-png/quiet-scanner\n'];
+const sections = [`Quiet Scanner: locked ${target} Rust dependency notices\nIncludes build dependencies for this target.\nSource: https://github.com/goyohan0611-png/quiet-scanner\n`];
 const missing = [];
 (async () => {
 for (const pkg of metadata.packages.sort((a,b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`))) {
@@ -47,5 +49,5 @@ for (const pkg of metadata.packages.sort((a,b) => `${a.name}@${a.version}`.local
 if (missing.length) throw new Error(`Dependency license files missing: ${missing.join(', ')}`);
 fs.mkdirSync(path.join(root, 'LICENSES'), { recursive: true });
 fs.writeFileSync(path.join(root, 'LICENSES/rust-dependencies.txt'), sections.join('\n'));
-console.log(`Collected notices for ${metadata.packages.filter(pkg => pkg.source && included.has(pkg.id)).length} locked Windows Rust dependencies.`);
+console.log(`Collected notices for ${metadata.packages.filter(pkg => pkg.source && included.has(pkg.id)).length} locked ${target} Rust dependencies.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

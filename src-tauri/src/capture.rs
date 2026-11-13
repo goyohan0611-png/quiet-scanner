@@ -1,13 +1,14 @@
 use libloading::Library;
-use std::{
-    ffi::{c_char, c_int, c_void, CStr, CString},
-    path::PathBuf,
-};
+use std::ffi::{c_char, c_int, c_void, CStr, CString};
 
 #[repr(C)]
 struct Header {
+    #[cfg(windows)]
     seconds: i32,
+    #[cfg(windows)]
     microseconds: i32,
+    #[cfg(unix)]
+    timestamp: libc::timeval,
     caplen: u32,
     len: u32,
 }
@@ -26,7 +27,7 @@ type Compile = unsafe extern "C" fn(*mut c_void, *mut Program, *const c_char, c_
 type SetFilter = unsafe extern "C" fn(*mut c_void, *mut Program) -> c_int;
 type Free = unsafe extern "C" fn(*mut Program);
 type Datalink = unsafe extern "C" fn(*mut c_void) -> c_int;
-pub struct Capture {
+pub struct LocalCapture {
     handle: *mut c_void,
     next: Next,
     send: Send,
@@ -34,6 +35,7 @@ pub struct Capture {
     close: Close,
     _library: Library,
 }
+#[cfg(windows)]
 fn library() -> Result<Library, String> {
     let mut buffer = [0u16; 512];
     let n = unsafe {
@@ -45,7 +47,7 @@ fn library() -> Result<Library, String> {
     if n == 0 || n >= buffer.len() {
         return Err("Windows 시스템 폴더를 확인하지 못했습니다.".into());
     }
-    let sys = PathBuf::from(String::from_utf16_lossy(&buffer[..n]));
+    let sys = std::path::PathBuf::from(String::from_utf16_lossy(&buffer[..n]));
     for path in [sys.join("Npcap").join("wpcap.dll"), sys.join("wpcap.dll")] {
         if path.is_file() {
             let loaded =
@@ -64,7 +66,7 @@ pub fn available() -> Result<(), String> {
     let _ = library()?;
     Ok(())
 }
-impl Capture {
+impl LocalCapture {
     pub fn open(iface: &str, filter: &str) -> Result<Self, String> {
         let lib = library()?;
         let symbol = |e: libloading::Error| format!("Npcap 함수 확인 실패: {e}");
@@ -163,8 +165,80 @@ impl Capture {
         }
     }
 }
-impl Drop for Capture {
+impl Drop for LocalCapture {
     fn drop(&mut self) {
         unsafe { (self.close)(self.handle) }
+    }
+}
+#[cfg(unix)]
+fn library() -> Result<Library, String> {
+    #[cfg(target_os = "macos")]
+    let paths = ["/usr/lib/libpcap.A.dylib", "/usr/lib/libpcap.dylib"];
+    #[cfg(target_os = "linux")]
+    let paths = [
+        "/usr/lib/x86_64-linux-gnu/libpcap.so.0.8",
+        "/lib/x86_64-linux-gnu/libpcap.so.0.8",
+        "/usr/lib/aarch64-linux-gnu/libpcap.so.0.8",
+        "/lib/aarch64-linux-gnu/libpcap.so.0.8",
+        "/usr/lib64/libpcap.so.1",
+        "/usr/lib/libpcap.so.1",
+    ];
+    for path in paths {
+        // macOS system libraries can live in dyld's cache without a visible file.
+        if let Ok(library) = unsafe { Library::new(path) } {
+            return Ok(library);
+        }
+    }
+    Err("libpcap을 불러오지 못했습니다. Linux에서는 libpcap 패키지를 설치하십시오.".into())
+}
+
+pub enum Capture {
+    Local(LocalCapture),
+    #[cfg(unix)]
+    Remote(u64),
+}
+impl Capture {
+    pub fn open(iface: &str, filter: &str) -> Result<Self, String> {
+        #[cfg(unix)]
+        if !crate::native::admin() {
+            return crate::privilege::open_capture(iface, filter).map(Self::Remote);
+        }
+        LocalCapture::open(iface, filter).map(Self::Local)
+    }
+    pub fn send(&self, packet: &[u8]) -> Result<(), String> {
+        match self {
+            Self::Local(capture) => capture.send(packet),
+            #[cfg(unix)]
+            Self::Remote(id) => crate::privilege::send(*id, packet),
+        }
+    }
+    pub fn next(&self) -> Result<Option<Vec<u8>>, String> {
+        match self {
+            Self::Local(capture) => capture.next(),
+            #[cfg(unix)]
+            Self::Remote(id) => crate::privilege::next(*id),
+        }
+    }
+}
+impl Drop for Capture {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Self::Remote(id) = self {
+            crate::privilege::close_capture(*id);
+        }
+    }
+}
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+    #[test]
+    fn pcap_header_matches_platform_timeval() {
+        #[cfg(windows)]
+        assert_eq!(std::mem::offset_of!(Header, caplen), 8);
+        #[cfg(unix)]
+        assert_eq!(
+            std::mem::offset_of!(Header, caplen),
+            std::mem::size_of::<libc::timeval>()
+        );
     }
 }

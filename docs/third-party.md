@@ -10,12 +10,16 @@ Quiet Scanner is released under **GPLv2** because it carries the work below.
 | **IEEE Registration Authority** | Current MA-L, MA-M and MA-S assignments merged into the bundled vendor data | Public registry data; original source URLs and retrieval metadata in `vendor-data.json` |
 | **SUIT Variable** | Screen typeface, bundled WOFF2 | SIL OFL 1.1 |
 
-The 4.0 installer contains the Rust/Tauri app. The Electron host, Python,
+The 4.x installers contain the Rust/Tauri app. The Electron host, Python,
 Scapy and PyInstaller sources retained in this repository are legacy code and
 are not bundled in the 4.0 installer. The current ARP/DHCP frame codec is in
 `src-tauri/src/packet.rs`.
 
 ## Npcap is not bundled
+
+Npcap is used only on Windows. macOS uses its system libpcap; Linux uses the
+distribution's libpcap package. The macOS/Linux preview includes target-specific
+Rust dependency notices generated from the same Cargo lockfile.
 
 Working with ARP directly needs the Npcap driver, but it is **not included in the
 installer.** Download and install it yourself — https://npcap.com

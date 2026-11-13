@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "targets": ["deb"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
+    "linux": {
+      "deb": { "depends": ["libpcap0.8t64", "iproute2", "iputils-ping", "pkexec"] }
+    }
+  }
+}

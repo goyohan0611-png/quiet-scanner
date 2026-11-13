@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc"
 cd /d "%~dp0.."
 where node >nul 2>nul
 if errorlevel 1 (
