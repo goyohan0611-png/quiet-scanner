@@ -1,0 +1,59 @@
+name: Host protection integration
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/host-protection]
+    paths:
+      - 'src-tauri/src/protection.rs'
+      - 'src-tauri/src/protection/**'
+      - 'scripts/protection-harness/**'
+      - 'scripts/test_protection*'
+      - 'electron/renderer/protection.js'
+      - '.github/workflows/host-protection.yml'
+permissions:
+  contents: read
+jobs:
+  scanner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Native scanner libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libpcap0.8t64 iproute2 iputils-ping pkexec
+      - name: Test complete Linux scanner and privileged worker
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+  ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile actual protection backend without GTK
+        run: |
+          cargo test --manifest-path scripts/protection-harness/Cargo.toml --locked
+          cargo clippy --manifest-path scripts/protection-harness/Cargo.toml --all-targets -- -D warnings
+          cargo build --manifest-path scripts/protection-harness/Cargo.toml --locked
+      - name: Prepare a clean Ubuntu server with a supported service
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-server python3-yaml
+          sudo systemctl start ssh.service
+          python3 scripts/test_protection_setup.py
+          bash -n src-tauri/src/protection/install.sh
+      - name: One-click first-use installation and repeat ON/OFF
+        env:
+          QUIET_PROTECTION_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_PROTECTION_DISPOSABLE_VM bash scripts/test_protection_install.sh scripts/protection-harness/target/debug/quiet-protection-check
+      - name: Test real block, exception, OFF cleanup and failure status
+        env:
+          QUIET_PROTECTION_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_PROTECTION_DISPOSABLE_VM bash scripts/test_protection_linux.sh scripts/protection-harness/target/debug/quiet-protection-check
+      - name: UI state and scanner bridge tests
+        run: |
+          mkdir -p _smoke
+          npm install --prefix "$RUNNER_TEMP/protection-ui" playwright-core@1.65.0
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/protection-ui/node_modules/playwright-core" EDGE_PATH=/usr/bin/google-chrome node scripts/test_protection_ui.cjs
+          node scripts/test_tauri_bridge.cjs

@@ -289,6 +289,9 @@ impl Engine {
         native::live(id)
     }
     pub fn request(&self, action: &str, payload: Value) -> Result<Value, String> {
+        if action.starts_with("protection_") {
+            return crate::protection::request(action, payload);
+        }
         if action == "cancel" {
             self.cancel.store(true, Ordering::Release);
             return Ok(json!({"state": self.snapshot()}));
