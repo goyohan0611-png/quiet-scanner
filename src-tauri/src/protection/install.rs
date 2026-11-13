@@ -57,8 +57,16 @@ fn unit_property(name: &str) -> Result<String, String> {
 }
 pub fn running() -> bool {
     Path::new(SETUP_UNIT_PATH).exists()
-        && unit_property("ActiveState")
+        && (unit_property("ActiveState")
             .is_ok_and(|v| matches!(v.as_str(), "activating" | "active" | "deactivating"))
+            || unit_property("Job").is_ok_and(|v| queued_job(&v)))
+}
+fn queued_job(value: &str) -> bool {
+    value
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse::<u32>().ok())
+        .is_some_and(|id| id > 0)
 }
 pub fn configured() -> bool {
     read_json(REPORT).is_some_and(|v| v["inputs"].as_array().is_some_and(|a| !a.is_empty()))
@@ -137,7 +145,9 @@ pub fn state() -> Option<Value> {
         "cancelled" => (100, "설치는 완료됐고 보호 시작은 취소됐습니다."),
         _ => (3, "보호 모드 설치를 준비하는 중"),
     };
-    if matches!(active.as_str(), "activating" | "active" | "deactivating") {
+    if matches!(active.as_str(), "activating" | "active" | "deactivating")
+        || unit_property("Job").is_ok_and(|v| queued_job(&v))
+    {
         return Some(
             json!({"phase":"installing","protecting":false,"installation":{"stage":code,"pct":pct,"cancelled":cancelled()},"message":if cancelled(){"설치는 안전하게 마무리하고 보호 시작은 취소합니다."}else{message}}),
         );
@@ -149,6 +159,7 @@ pub fn state() -> Option<Value> {
     }
     None
 }
+
 fn replace_owned(path: &str, content: &[u8], mode: u32) -> Result<(), String> {
     if Path::new(path).exists() {
         let m = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
@@ -217,4 +228,15 @@ pub fn start() -> Result<(), String> {
     }
     run(SYSTEMCTL, &["--no-block", "start", SETUP_UNIT])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn queued_setup_is_busy_before_active_state_changes() {
+        assert!(super::queued_job("42 /org/freedesktop/systemd1/job/42"));
+        assert!(!super::queued_job("0"));
+        assert!(!super::queued_job(""));
+        assert!(!super::queued_job("unavailable"));
+    }
 }

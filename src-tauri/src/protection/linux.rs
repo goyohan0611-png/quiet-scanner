@@ -414,6 +414,11 @@ fn status() -> Result<Value, String> {
 
 pub fn execute(command: GuardCommand) -> Result<Value, String> {
     root()?;
+    // Observations must not contend with the installer's finalization lock.
+    // Files are replaced atomically; partial/unknown health never reports ON.
+    if matches!(command, GuardCommand::Status {}) {
+        return status();
+    }
     // Serialize app/CLI operations across processes so OFF cannot race an ON.
     secure_directory()?;
     let lock = fs::OpenOptions::new()
@@ -425,14 +430,21 @@ pub fn execute(command: GuardCommand) -> Result<Value, String> {
         .custom_flags(libc::O_NOFOLLOW)
         .open(format!("{DIRECTORY}/operation.lock"))
         .map_err(|_| "보호 작업 잠금 실패")?;
-    if unsafe {
-        libc::flock(
-            std::os::fd::AsRawFd::as_raw_fd(&lock),
-            libc::LOCK_EX | libc::LOCK_NB,
-        )
-    } != 0
-    {
-        return Err("다른 보호 작업이 진행 중입니다. 잠시 후 다시 확인하십시오.".into());
+    let lock_deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if unsafe {
+            libc::flock(
+                std::os::fd::AsRawFd::as_raw_fd(&lock),
+                libc::LOCK_EX | libc::LOCK_NB,
+            )
+        } == 0
+        {
+            break;
+        }
+        if Instant::now() >= lock_deadline {
+            return Err("다른 보호 작업이 진행 중입니다. 잠시 후 다시 확인하십시오.".into());
+        }
+        thread::sleep(Duration::from_millis(50));
     }
     match command {
         GuardCommand::Status {} => {}

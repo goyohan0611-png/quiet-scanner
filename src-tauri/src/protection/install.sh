@@ -68,6 +68,10 @@ if [[ ! -x /usr/bin/crowdsec-firewall-bouncer ]]; then
   # that a no-op, so only Quiet Scanner's explicit ON can add blocking rules.
   [[ -z "$(systemctl show --property=FragmentPath --value crowdsec-firewall-bouncer.service)" ]]
   install -d -m 755 "$(dirname "$DROPIN")"
+  [[ ! -L "$DROPIN" ]]
+  if [[ -e "$DROPIN" ]]; then
+    [[ -f "$DROPIN" && "$(head -n 1 "$DROPIN")" == "$MARKER" ]]
+  fi
   printf '%s\n[Unit]\nConditionPathExists=/etc/quiet-scanner/protection/enable-vendor-default\n' "$MARKER" > "$DROPIN"
   chmod 644 "$DROPIN"
   [[ ! -e "$DIR/enable-vendor-default" ]]
