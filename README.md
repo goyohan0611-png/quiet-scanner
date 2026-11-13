@@ -1,6 +1,6 @@
 # Quiet Scanner
 
-> **현장에서 IP 충돌을 찾고, 케이블을 뽑지 않고 한 대씩 분리해 처리하는 Windows 도구**
+> **현장에서 IP 충돌을 찾고, 케이블을 뽑지 않고 한 대씩 분리해 처리하는 데스크톱 도구**
 
 Quiet Scanner는 CCTV·AV·네트워크 설치 현장에서 반복되는 IP 충돌 작업을 단순하게 처리하기 위해 만들었습니다.
 
@@ -10,7 +10,7 @@ Quiet Scanner는 CCTV·AV·네트워크 설치 현장에서 반복되는 IP 충�
 
 **[Windows 설치 파일 받기](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.0.1/Quiet.Scanner.Setup.4.0.1.exe)** · [4.0.1 변경 사항](docs/release-v4.0.1.md)
 
-macOS·Linux 지원은 **4.1 미리보기**에서 추가합니다. Apple Silicon·Intel 맥과 Ubuntu 24.04 이상 x64를 대상으로 하며, 설치·권한·검증 범위는 [다른 운영체제 안내](docs/cross-platform.md)를 참고하십시오. Windows 안정 버전은 4.0.1입니다.
+**[4.1 미리보기 받기 — macOS·Linux·Windows](https://github.com/goyohan0611-png/quiet-scanner/releases/tag/v4.1.0-beta.1)**: Apple Silicon·Intel 맥과 Ubuntu 24.04 이상 x64를 지원합니다. 설치·권한·검증 범위는 [다른 운영체제 안내](docs/cross-platform.md)를 참고하십시오. 맥 빌드는 Apple 서명·공증 전 테스트 버전이며, Windows 안정 버전은 4.0.1입니다.
 
 ![Quiet Scanner 장비 목록 — 설명용 예시 데이터](docs/images/quiet-scanner.jpg)
 

@@ -6,9 +6,9 @@
 
 | 운영체제 | 대상 | 파일 |
 |---|---|---|
-| macOS 13 이상 | Apple Silicon | arm64 DMG |
-| macOS 13 이상 | Intel | x64 DMG |
-| Ubuntu 24.04 이상 | x64 | DEB |
+| macOS 13 이상 | Apple Silicon | [arm64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.macOS.AppleSilicon.dmg) |
+| macOS 13 이상 | Intel | [x64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.macOS.Intel.dmg) |
+| Ubuntu 24.04 이상 | x64 | [DEB](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.Ubuntu24.04.x64.deb) |
 
 다른 Linux 배포판은 소스 빌드를 이용할 수 있지만, 이번 설치 파일의 지원·검증 대상으로 포함하지 않습니다.
 
@@ -47,5 +47,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 GitHub의 해당 운영체제 환경에서 컴파일·테스트·설치 파일 생성을 실행합니다. 인증 연결 테스트는 CI의 비대화형 sudo 권한으로 별도 작업 프로세스를 실행하고 실제 인터페이스와 libpcap 캡처 열기를 확인합니다. 이 테스트는 ARP 패킷이나 DHCP 요청을 보내지 않습니다.
 
 CI의 관리자 연결 확인은 실제 데스크톱에서 뜨는 macOS·Linux 인증 대화상자를 대신 검증하지 않습니다. 실제 현장의 중복 IP·드라이버·무선랜 조합에서 분리·해제와 화면 동작을 확인한 뒤 안정 버전 지원으로 전환해야 합니다.
+
+4.1.0-beta.1은 [운영체제별 빌드 검사](https://github.com/goyohan0611-png/quiet-scanner/actions/runs/43357788785)를 통과했습니다. macOS는 각 38개, Linux는 37개의 Rust 테스트를 통과했으며, 관리자 작업 프로세스 인증과 실제 libpcap 캡처 열기를 확인했습니다. Windows에서는 33개 Rust 테스트와 코드 검사를 통과했습니다.
 
 macOS 미리보기는 Apple Developer ID 서명·공증이 없는 테스트 빌드입니다. 일반 사용자용 정식 배포에는 Apple 서명·공증 절차가 추가로 필요합니다.
