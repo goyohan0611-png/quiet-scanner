@@ -10,6 +10,8 @@ pub enum Command {
     Status {},
     Prepare {},
     Enable {},
+    AutoEnable {},
+    FinishInstall {},
     Disable {},
     Allow { ip: String },
     RemoveAllow { ip: String },
@@ -22,7 +24,7 @@ pub fn request(action: &str, payload: Value) -> Result<Value, String> {
     let command = match action {
         "protection_status" => Command::Status {},
         "protection_prepare" => Command::Prepare {},
-        "protection_enable" => Command::Enable {},
+        "protection_enable" => Command::AutoEnable {},
         "protection_disable" => Command::Disable {},
         "protection_allow" => Command::Allow {
             ip: address(&payload)?,
@@ -70,6 +72,9 @@ pub fn info() -> Value {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[path = "protection/install.rs"]
+mod install;
 #[cfg(target_os = "linux")]
 #[path = "protection/linux.rs"]
 pub mod linux;

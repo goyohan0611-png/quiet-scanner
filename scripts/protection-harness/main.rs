@@ -9,6 +9,11 @@ mod privilege {
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(target_os="linux")]
+    if args.first().is_some_and(|a|a=="--protection-finalize") {
+        if let Err(e)=protection::linux::execute(protection::Command::FinishInstall {}) {eprintln!("{e}");std::process::exit(1);}
+        return;
+    }
     if args.first().is_some_and(|a| a == "info") {
         println!("{}", protection::info());
         return;

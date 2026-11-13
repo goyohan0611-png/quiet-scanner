@@ -36,18 +36,17 @@ jobs:
           cargo test --manifest-path scripts/protection-harness/Cargo.toml --locked
           cargo clippy --manifest-path scripts/protection-harness/Cargo.toml --all-targets -- -D warnings
           cargo build --manifest-path scripts/protection-harness/Cargo.toml --locked
-      - name: Install real engine and official firewall bouncer in disposable VM
+      - name: Prepare a clean Ubuntu server with a supported service
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y curl gnupg nftables
-          curl --fail --silent --show-error --location https://packagecloud.io/crowdsec/crowdsec/gpgkey -o "$RUNNER_TEMP/crowdsec-key.asc"
-          gpg --batch --dearmor --output "$RUNNER_TEMP/crowdsec-key.gpg" "$RUNNER_TEMP/crowdsec-key.asc"
-          sudo install -m 644 "$RUNNER_TEMP/crowdsec-key.gpg" /etc/apt/keyrings/quiet-protection-test.gpg
-          echo 'deb [signed-by=/etc/apt/keyrings/quiet-protection-test.gpg] https://packagecloud.io/crowdsec/crowdsec/any any main' | sudo tee /etc/apt/sources.list.d/quiet-protection-test.list >/dev/null
-          sudo apt-get update -qq
-          sudo apt-get install -y crowdsec crowdsec-firewall-bouncer-nftables
-          sudo systemctl disable --now crowdsec-firewall-bouncer.service
-          sudo systemctl start crowdsec.service
+          sudo apt-get install -y openssh-server python3-yaml
+          sudo systemctl start ssh.service
+          python3 scripts/test_protection_setup.py
+          bash -n src-tauri/src/protection/install.sh
+      - name: One-click first-use installation and repeat ON/OFF
+        env:
+          QUIET_PROTECTION_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_PROTECTION_DISPOSABLE_VM bash scripts/test_protection_install.sh scripts/protection-harness/target/debug/quiet-protection-check
       - name: Test real block, exception, OFF cleanup and failure status
         env:
           QUIET_PROTECTION_DISPOSABLE_VM: YES

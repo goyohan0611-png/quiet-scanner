@@ -139,11 +139,22 @@ fn smoke(args: &[String]) -> Result<Value, String> {
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(target_os = "linux")]
+    if args.first().is_some_and(|a| a == "--protection-finalize") {
+        match protection::linux::execute(protection::Command::FinishInstall {}) {
+            Ok(_) => {}
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     if args.first().is_some_and(|a| a == "--protection") {
         let command = match args.get(1).map(String::as_str) {
             Some("status") => protection::Command::Status {},
             Some("prepare") => protection::Command::Prepare {},
-            Some("on") => protection::Command::Enable {},
+            Some("on") => protection::Command::AutoEnable {},
             Some("off") => protection::Command::Disable {},
             Some("allow") if args.len() == 3 => protection::Command::Allow {
                 ip: args[2].clone(),

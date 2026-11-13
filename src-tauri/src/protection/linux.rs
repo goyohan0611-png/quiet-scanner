@@ -12,16 +12,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-const DIRECTORY: &str = "/etc/quiet-scanner/protection";
+pub(super) const DIRECTORY: &str = "/etc/quiet-scanner/protection";
 const CONFIG: &str = "/etc/quiet-scanner/protection/firewall.yaml";
 const UNIT_PATH: &str = "/etc/systemd/system/quiet-scanner-protection.service";
 const UNIT: &str = "quiet-scanner-protection.service";
 const ALLOWLIST: &str = "quiet-scanner-user";
-const MARKER: &str = "# Managed by Quiet Scanner protection v1";
+pub(super) const MARKER: &str = "# Managed by Quiet Scanner protection v1";
 const MAX_OUTPUT: u64 = 384 * 1024;
 const CSCLI: &str = "/usr/bin/cscli";
 const NFT: &str = "/usr/sbin/nft";
-const SYSTEMCTL: &str = "/usr/bin/systemctl";
+pub(super) const SYSTEMCTL: &str = "/usr/bin/systemctl";
 const BOUNCER: &str = "/usr/bin/crowdsec-firewall-bouncer";
 
 fn root() -> Result<(), String> {
@@ -33,7 +33,7 @@ fn root() -> Result<(), String> {
 
 // No shell, inherited PATH, child input, unbounded output or credential-bearing
 // stderr is exposed to the UI. cscli uses the root-owned local credentials.
-fn run(program: &str, arguments: &[&str]) -> Result<String, String> {
+pub(super) fn run(program: &str, arguments: &[&str]) -> Result<String, String> {
     let mut child = Command::new(program)
         .args(arguments)
         .env_clear()
@@ -92,7 +92,7 @@ fn run(program: &str, arguments: &[&str]) -> Result<String, String> {
     }
     String::from_utf8(bytes).map_err(|_| "보호 작업 응답을 읽지 못했습니다.".into())
 }
-fn json_command(program: &str, args: &[&str]) -> Result<Value, String> {
+pub(super) fn json_command(program: &str, args: &[&str]) -> Result<Value, String> {
     serde_json::from_str(&run(program, args)?)
         .map_err(|_| "보호 구성요소의 JSON 응답 형식이 잘못됐습니다.".into())
 }
@@ -137,7 +137,7 @@ fn dependencies() -> bool {
         && Path::new("/run/systemd/system").is_dir()
 }
 pub fn info() -> Value {
-    json!({"supported":true,"platform":"linux","phase":"unchecked","protecting":false,"dependencies":dependencies(),"prepared":Path::new(CONFIG).is_file() && Path::new(UNIT_PATH).is_file(),"message":"관리자 승인 후 탐지 엔진과 방화벽 적용을 확인합니다."})
+    json!({"supported":true,"autoInstallSupported":super::install::supported(),"platform":"linux","phase":"unchecked","protecting":false,"dependencies":dependencies(),"prepared":Path::new(CONFIG).is_file() && Path::new(UNIT_PATH).is_file(),"message":"보호를 켜면 관리자 승인 후 필요한 구성요소를 자동 설치·설정합니다."})
 }
 fn owned_file(path: &str) -> Result<String, String> {
     let metadata = fs::symlink_metadata(path)
@@ -172,7 +172,7 @@ fn check_owned() -> Result<(), String> {
     owned_file(UNIT_PATH)?;
     Ok(())
 }
-fn secure_directory() -> Result<(), String> {
+pub(super) fn secure_directory() -> Result<(), String> {
     for path in ["/etc/quiet-scanner", DIRECTORY] {
         if !Path::new(path).exists() {
             fs::create_dir(path).map_err(|e| e.to_string())?;
@@ -183,6 +183,40 @@ fn secure_directory() -> Result<(), String> {
         if !m.is_dir() || m.uid() != 0 || m.mode() & 0o022 != 0 {
             return Err("보호 설정 폴더의 소유자·권한을 확인하십시오.".into());
         }
+    }
+    Ok(())
+}
+pub(super) fn write_private_json(path: &str, value: &Value) -> Result<(), String> {
+    let temporary = format!("{path}.{}.tmp", std::process::id());
+    let result = (|| {
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&temporary)
+            .map_err(|e| e.to_string())?;
+        f.write_all(&serde_json::to_vec(value).map_err(|e| e.to_string())?)
+            .and_then(|_| f.sync_all())
+            .map_err(|e| e.to_string())?;
+        fs::rename(&temporary, path).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temporary);
+    }
+    result
+}
+fn enable_service() -> Result<(), String> {
+    check_owned()?;
+    if !active("crowdsec.service") && !super::install::managed_engine() {
+        return Err(
+            "탐지 엔진이 실행 중이 아닙니다. 기존 CrowdSec 설정과 로그 수집을 확인하십시오.".into(),
+        );
+    }
+    run(SYSTEMCTL, &["enable", UNIT])?;
+    if let Err(e) = run(SYSTEMCTL, &["--no-block", "start", UNIT]) {
+        let _ = run(SYSTEMCTL, &["disable", UNIT]);
+        return Err(e);
     }
     Ok(())
 }
@@ -273,6 +307,13 @@ fn prepare() -> Result<(), String> {
 
 fn status() -> Result<Value, String> {
     let mut result = info();
+    if let Some(installation) = super::install::state() {
+        for (key, value) in installation.as_object().unwrap() {
+            result[key] = value.clone();
+        }
+        return Ok(result);
+    }
+    result["sources"] = super::install::sources();
     if !dependencies() {
         result["phase"] = json!("missing");
         result["message"] = json!("보호 구성요소를 설치한 뒤 다시 확인하십시오.");
@@ -396,19 +437,41 @@ pub fn execute(command: GuardCommand) -> Result<Value, String> {
     match command {
         GuardCommand::Status {} => {}
         GuardCommand::Prepare {} => prepare()?,
-        GuardCommand::Enable {} => {
-            check_owned()?;
-            if !active("crowdsec.service") {
-                return Err("탐지 엔진이 실행 중이 아닙니다. CrowdSec 상태와 로그 수집 설정을 확인하십시오.".into());
+        GuardCommand::Enable {} => enable_service()?,
+        GuardCommand::AutoEnable {} => {
+            if super::install::running() {
+                return status();
             }
-            // Non-blocking systemd command stays within the worker IPC deadline.
-            run(SYSTEMCTL, &["enable", UNIT])?;
-            if let Err(e) = run(SYSTEMCTL, &["--no-block", "start", UNIT]) {
-                let _ = run(SYSTEMCTL, &["disable", UNIT]);
-                return Err(e);
+            let failed = super::install::state().is_some_and(|v| v["phase"] == "install_failed");
+            if dependencies() && check_owned().is_ok() && super::install::configured() && !failed {
+                enable_service()?;
+            } else {
+                super::install::start()?;
+            }
+        }
+        GuardCommand::FinishInstall {} => {
+            if !super::install::configured() {
+                return Err("로그 수집 자동 설정을 확인하지 못했습니다.".into());
+            }
+            prepare()?;
+            if !super::install::cancelled() {
+                enable_service()?;
+            } else if super::install::managed_engine() && !super::install::others_use_engine() {
+                run(SYSTEMCTL, &["disable", "crowdsec.service"])?;
+                run(SYSTEMCTL, &["--no-block", "stop", "crowdsec.service"])?;
             }
         }
         GuardCommand::Disable {} => {
+            if super::install::running() {
+                super::install::cancel()?;
+                // Finalization holds this same lock. A late cancellation must
+                // stop an already queued bouncer, without killing apt/dpkg.
+                if check_owned().is_ok() {
+                    run(SYSTEMCTL, &["disable", UNIT])?;
+                    run(SYSTEMCTL, &["--no-block", "stop", UNIT])?;
+                }
+                return status();
+            }
             check_owned()?;
             run(SYSTEMCTL, &["disable", UNIT])?;
             run(SYSTEMCTL, &["--no-block", "stop", UNIT])?;
@@ -419,6 +482,11 @@ pub fn execute(command: GuardCommand) -> Result<Value, String> {
                     }
                 }
             }
+            if super::install::managed_engine() && !super::install::others_use_engine() {
+                run(SYSTEMCTL, &["disable", "crowdsec.service"])?;
+                run(SYSTEMCTL, &["--no-block", "stop", "crowdsec.service"])?;
+            }
+            super::install::clear_failure()?;
             // The bouncer removes only its own tables when it stops. The UI
             // stays degraded/stopping until both tables are actually absent.
         }

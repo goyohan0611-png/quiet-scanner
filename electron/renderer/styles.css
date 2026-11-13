@@ -296,3 +296,10 @@ main { display: grid; grid-template-rows: auto auto minmax(0, 1fr) 6px var(--log
 .protection-allow-form { display: flex; gap: 8px; }.protection-allow-form input { flex: 1; }
 .protection-allowlist > div { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 @media (max-width: 760px) { .toolbar-actions { flex-wrap: wrap; }.protection-section-head { flex-wrap: wrap; gap: 4px; }.protection-decision { grid-template-columns: minmax(0, 1fr) 72px auto; gap: 8px; } }
+.protection-install { padding: 12px 0; }
+.protection-install > div { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; }
+.protection-install span { color:var(--muted, #60718b); font-variant-numeric:tabular-nums; }
+.protection-install progress { width:100%; height:6px; margin:10px 0 4px; border:0; border-radius:6px; overflow:hidden; background:#e6edf7; accent-color:#2878f5; }
+.protection-install progress::-webkit-progress-bar { background:#e6edf7; border-radius:6px; }
+.protection-install progress::-webkit-progress-value { background:#2878f5; border-radius:6px; }
+#protectionSources:empty { display:none; }
