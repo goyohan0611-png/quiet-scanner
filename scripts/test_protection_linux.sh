@@ -21,6 +21,8 @@ wait_phase() {
   local target=$1
   for _ in $(seq 1 35); do status; test "$(phase)" != "$target" || return 0; sleep 2; done
   cat "$TEMP/status.json"; journalctl -u quiet-scanner-protection.service --no-pager -n 30
+  nft -j list table ip quiet_scanner || true
+  nft -j list table ip6 quiet_scanner6 || true
   echo "Expected phase $target"; exit 1
 }
 # Leave unrelated rules in place throughout the entire test.

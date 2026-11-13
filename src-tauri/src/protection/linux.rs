@@ -302,12 +302,20 @@ fn status() -> Result<Value, String> {
         .is_ok_and(|v| model::fresh_pull(&v, chrono::Utc::now().timestamp()));
     let v4 = table("ip", "quiet_scanner");
     let v6 = table("ip6", "quiet_scanner6");
-    let firewall4 = v4
-        .as_ref()
-        .is_ok_and(|v| model::firewall_verified(v, "ip", "quiet_scanner", "quiet_scanner_bans"));
-    let firewall6 = v6
-        .as_ref()
-        .is_ok_and(|v| model::firewall_verified(v, "ip6", "quiet_scanner6", "quiet_scanner_bans6"));
+    let bans4 = decisions.as_ref().is_ok_and(|ds| {
+        ds.iter()
+            .any(|d| d.ip.parse::<std::net::Ipv4Addr>().is_ok())
+    });
+    let bans6 = decisions.as_ref().is_ok_and(|ds| {
+        ds.iter()
+            .any(|d| d.ip.parse::<std::net::Ipv6Addr>().is_ok())
+    });
+    let firewall4 = v4.as_ref().is_ok_and(|v| {
+        model::firewall_verified(v, "ip", "quiet_scanner", "quiet_scanner_bans", bans4)
+    });
+    let firewall6 = v6.as_ref().is_ok_and(|v| {
+        model::firewall_verified(v, "ip6", "quiet_scanner6", "quiet_scanner_bans6", bans6)
+    });
     let tables = json_command(NFT, &["-j", "list", "tables"]);
     let absent = tables
         .as_ref()
@@ -337,7 +345,7 @@ fn status() -> Result<Value, String> {
         "off"
     };
     let message = match phase {
-        "on" => "탐지 엔진 연결과 IPv4·IPv6 차단 규칙을 확인했습니다.",
+        "on" => "탐지 엔진 연결과 IPv4·IPv6 수신 경로를 확인했습니다.",
         "off" => "보호 모드가 꺼져 있습니다.",
         _ => "보호 상태를 확인하지 못했습니다. 일부 차단 규칙은 남아 있을 수 있습니다.",
     };

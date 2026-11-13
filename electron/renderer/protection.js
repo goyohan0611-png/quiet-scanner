@@ -33,7 +33,7 @@
     el('protectionPrepare').hidden = !status.supported || !status.dependencies || status.prepared;
     el('protectionPrepare').disabled = busy || working;
     el('protectionAllowAdd').disabled = busy || working || !authorized || !status.prepared;
-    const checks = {engine:'탐지 엔진',service:'차단 서비스',boot:'재부팅 후 유지',connection:'엔진 연결',ipv4:'IPv4 규칙',ipv6:'IPv6 규칙',decisions:'차단 목록'};
+    const checks = {engine:'탐지 엔진',service:'차단 서비스',boot:'재부팅 후 유지',connection:'엔진 연결',ipv4:'IPv4 경로',ipv6:'IPv6 경로',decisions:'차단 목록'};
     el('protectionChecks').innerHTML = Object.entries(status.checks || {}).map(([key,ok]) => `<span class="${ok ? 'ok' : 'unknown'}">${icon(ok ? 'check' : 'stop')}${esc(checks[key] || key)} ${ok ? '확인' : '미확인'}</span>`).join('');
     const rows = status.decisions || [];
     el('protectionCount').textContent = authorized ? `${rows.length}건` : '상태 확인 후 표시';

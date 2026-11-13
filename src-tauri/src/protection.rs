@@ -1,8 +1,8 @@
 //! Optional host protection. The renderer never receives engine credentials.
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 #[cfg(not(target_os = "linux"))]
 use serde_json::json;
+use serde_json::Value;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -160,7 +160,13 @@ mod model {
             .map_err(|_| "잘못된 IP 주소입니다.".into())
     }
 
-    pub fn firewall_verified(value: &Value, family: &str, table: &str, set: &str) -> bool {
+    pub fn firewall_verified(
+        value: &Value,
+        family: &str,
+        table: &str,
+        set_prefix: &str,
+        require_drop: bool,
+    ) -> bool {
         let Some(rows) = value.get("nftables").and_then(Value::as_array) else {
             return false;
         };
@@ -171,34 +177,45 @@ mod model {
         let chain = rows.iter().any(|row| {
             row.get("chain").is_some_and(|c| {
                 owned(c)
-                    && c["name"] == "quiet_scanner_input"
+                    && c["name"] == "quiet_scanner_input-input"
                     && c["hook"] == "input"
                     && c["type"] == "filter"
             })
         });
-        let set_exists = rows
+        let sets: Vec<_> = rows
             .iter()
-            .any(|row| row.get("set").is_some_and(|s| owned(s) && s["name"] == set));
-        let drop = rows.iter().any(|row| {
-            row.get("rule").is_some_and(|r| {
-                if !owned(r) || r["chain"] != "quiet_scanner_input" {
-                    return false;
-                }
-                let Some(expr) = r["expr"].as_array() else {
-                    return false;
-                };
-                let source = expr.iter().any(|e| {
-                    e.get("match").is_some_and(|m| {
-                        m["op"] == "=="
-                            && m["left"]["payload"]["field"] == "saddr"
-                            && m["left"]["payload"]["protocol"] == family
-                            && m["right"].as_str() == Some(&format!("@{set}"))
-                    })
-                });
-                source && expr.iter().any(|e| e.get("drop").is_some())
+            .filter_map(|row| row.get("set"))
+            .filter(|s| owned(s))
+            .filter_map(|s| s["name"].as_str())
+            .filter(|name| *name == set_prefix || name.starts_with(&format!("{set_prefix}-")))
+            .collect();
+        // The official bouncer creates an empty hooked chain at startup, then
+        // creates a source set + DROP rule lazily for each decision origin.
+        // A local ban must never be considered enforced by an empty chain.
+        if !chain || (require_drop && sets.is_empty()) {
+            return false;
+        }
+        sets.iter().all(|set| {
+            rows.iter().any(|row| {
+                row.get("rule").is_some_and(|r| {
+                    if !owned(r) || r["chain"] != "quiet_scanner_input-input" {
+                        return false;
+                    }
+                    let Some(expr) = r["expr"].as_array() else {
+                        return false;
+                    };
+                    let source = expr.iter().any(|e| {
+                        e.get("match").is_some_and(|m| {
+                            m["op"] == "=="
+                                && m["left"]["payload"]["field"] == "saddr"
+                                && m["left"]["payload"]["protocol"] == family
+                                && m["right"].as_str() == Some(&format!("@{set}"))
+                        })
+                    });
+                    source && expr.iter().any(|e| e.get("drop").is_some())
+                })
             })
-        });
-        chain && set_exists && drop
+        })
     }
 
     #[cfg(test)]
@@ -237,23 +254,44 @@ mod model {
                 &json!({"nftables":[{"table":{"family":"ip","name":"quiet_scanner"}}]}),
                 "ip",
                 "quiet_scanner",
-                "quiet_scanner_bans"
+                "quiet_scanner_bans",
+                true
             ));
         }
         #[test]
         fn verifies_source_set_and_drop_in_input_hook() {
-            let v = json!({"nftables":[{"chain":{"family":"ip","table":"quiet_scanner","name":"quiet_scanner_input","type":"filter","hook":"input"}},{"set":{"family":"ip","table":"quiet_scanner","name":"quiet_scanner_bans"}},{"rule":{"family":"ip","table":"quiet_scanner","chain":"quiet_scanner_input","expr":[{"match":{"op":"==","left":{"payload":{"protocol":"ip","field":"saddr"}},"right":"@quiet_scanner_bans"}},{"drop":null}]}}]});
+            let v = json!({"nftables":[{"chain":{"family":"ip","table":"quiet_scanner","name":"quiet_scanner_input-input","type":"filter","hook":"input"}},{"set":{"family":"ip","table":"quiet_scanner","name":"quiet_scanner_bans-cscli"}},{"rule":{"family":"ip","table":"quiet_scanner","chain":"quiet_scanner_input-input","expr":[{"match":{"op":"==","left":{"payload":{"protocol":"ip","field":"saddr"}},"right":"@quiet_scanner_bans-cscli"}},{"drop":null}]}}]});
             assert!(firewall_verified(
                 &v,
                 "ip",
                 "quiet_scanner",
-                "quiet_scanner_bans"
+                "quiet_scanner_bans",
+                true
             ));
             assert!(!firewall_verified(
                 &v,
                 "ip6",
                 "quiet_scanner6",
-                "quiet_scanner_bans6"
+                "quiet_scanner_bans6",
+                true
+            ));
+        }
+        #[test]
+        fn empty_hooked_chain_is_ready_only_without_active_bans() {
+            let v = json!({"nftables":[{"chain":{"family":"ip","table":"quiet_scanner","name":"quiet_scanner_input-input","type":"filter","hook":"input"}}]});
+            assert!(firewall_verified(
+                &v,
+                "ip",
+                "quiet_scanner",
+                "quiet_scanner_bans",
+                false
+            ));
+            assert!(!firewall_verified(
+                &v,
+                "ip",
+                "quiet_scanner",
+                "quiet_scanner_bans",
+                true
             ));
         }
     }
