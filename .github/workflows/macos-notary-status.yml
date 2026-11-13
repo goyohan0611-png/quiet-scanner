@@ -34,7 +34,7 @@ jobs:
           rows = [
               {key: row.get(key) for key in ('id', 'name', 'status', 'createdDate')}
               for row in history
-              if str(row.get('name', '')).casefold().startswith('quiet scanner')
+              if str(row.get('name', '')).casefold().startswith(('quiet scanner', 'quiet.scanner.'))
           ]
           rows.sort(key=lambda row: str(row.get('createdDate', '')), reverse=True)
           rows = rows[:10]
