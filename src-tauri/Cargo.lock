@@ -2774,7 +2774,7 @@ dependencies = [
 
 [[package]]
 name = "quiet-scanner"
-version = "4.1.0-beta.1"
+version = "4.2.0"
 dependencies = [
  "arboard",
  "chrono",
