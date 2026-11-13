@@ -427,11 +427,10 @@ pub fn worker(arguments: &[String]) -> Result<(), String> {
             }
             Request::Pin { ip, index, mac } => {
                 packet::parse_mac(&packet::mac_text(&mac))?;
-                let result = native::pin(ip, index, mac);
-                if native::is_pinned_to(&native::read(ip, index)?, mac) {
-                    pins.insert((ip, index), mac);
-                }
-                result?;
+                // Only a successful, verified write belongs to this worker.
+                // A rejected pre-existing static entry must never be claimed.
+                native::pin(ip, index, mac)?;
+                pins.insert((ip, index), mac);
                 Ok(Value::Null)
             }
             Request::Release { ip, index, mac } => {
@@ -476,6 +475,16 @@ pub fn transport_test() -> Result<Value, String> {
             .as_u64()
             .ok_or("캡처 번호 오류")?;
         client.call(&Request::Next { id })?;
+        if client
+            .call(&Request::Send {
+                id,
+                data: vec![0; 42],
+            })
+            .is_ok()
+        {
+            return Err("허용되지 않은 패킷 요청을 거부하지 못했습니다.".into());
+        }
+        client.call(&Request::Ready)?;
         client.call(&Request::Close { id })?;
     }
     client.call(&Request::Shutdown)?;
