@@ -1,6 +1,27 @@
 /* Quiet Scanner — local ARP scan and IP-conflict separation */
 const $ = (selector) => document.querySelector(selector);
 const copyText = (text) => window.ipfix.copyText ? window.ipfix.copyText(text) : navigator.clipboard.writeText(text);
+const ICONS = {
+  refresh: 'M20 7v5h-5M4 17v-5h5M6.1 6.1A8 8 0 0 1 19.6 10M4.4 14A8 8 0 0 0 17.9 17.9',
+  scan: 'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5M5 12h14',
+  stop: 'M6 6h12v12H6z',
+  search: 'M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  dhcp: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M16 7h2M16 17h2',
+  available: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  book: 'M12 5v16M3 3h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v16h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3z',
+  copy: 'M9 9h12v12H9zM15 5V3H3v12h2',
+  ping: 'M2 12h4l3-8 6 16 3-8h4',
+  tcp: 'M4 4h16v12h-5v4H9v-4H4zM8 8v3M12 8v3M16 8v3',
+  isolate: 'M9 15l6-6M7 8 5 6M17 16l2 2M8 3v2M16 19v2M3 8h2M19 16h2M7 12l-2 2a4 4 0 0 0 5 5l2-2M12 7l2-2a4 4 0 0 1 5 5l-2 2',
+  release: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2',
+  x: 'M6 6l12 12M18 6 6 18',
+  check: 'M5 12l4 4L19 6',
+  chevron: 'M9 5l7 7-7 7',
+  down: 'M6 9l6 6 6-6'
+};
+function icon(name) {
+  return `<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${ICONS[name] || ''}"/></svg>`;
+}
 
 let state = { groups: [], summary: {}, progress: {}, logs: [], isolated: null };
 let interfaces = [];
@@ -16,11 +37,11 @@ let contextKey = null;
 let isolateKey = null;
 
 const COLUMNS = [
-  ['IP / 장비 MAC', '2.4fr'],
-  ['제조사', '1.35fr'],
-  ['등록 종류', '.9fr'],
-  ['응답', '.75fr'],
-  ['상태', '.85fr'],
+  ['IP / 장비 MAC', 'minmax(220px, 1.5fr)'],
+  ['제조사', '1.5fr'],
+  ['등록 종류', '1fr'],
+  ['응답', '.6fr'],
+  ['상태', '.8fr'],
 ];
 
 function esc(value) {
@@ -77,11 +98,13 @@ function setTarget() {
 }
 
 function renderInterfaceMenu() {
-  $('#ifaceBtn').textContent = interfaceLabel(selectedCard());
+  const current = selectedCard();
+  $('#ifaceBtn').innerHTML = current ? `<span class="iface-name">${esc(current.desc || current.name)}</span><span class="iface-address">${esc(current.ips?.[0] || 'IP 없음')}</span>${icon('down')}` : esc(interfaceLabel(null));
+  $('#ifaceBtn').title = interfaceLabel(current);
   $('#ifaceMenu').innerHTML = interfaces.map((card) => {
     const selected = card.scapyName === selectedInterface;
     const net = card.ipv4?.[0]?.cidr || card.ips?.[0] || 'IP 없음';
-    return `<button data-interface="${esc(card.scapyName)}"><i class="tick">${selected ? '●' : '○'}</i><i class="if-name">${esc(card.desc || card.name)}</i><i class="if-net">${esc(net)}</i></button>`;
+    return `<button class="${selected ? 'selected' : ''}" data-interface="${esc(card.scapyName)}"><i class="tick">${selected ? icon('check') : ''}</i><i class="if-name">${esc(card.desc || card.name)}</i><i class="if-net">${esc(net)}</i></button>`;
   }).join('');
 }
 
@@ -137,9 +160,9 @@ function statusHtml(device) {
 function rowHtml(device) {
   return `<div class="device-row" data-key="${esc(device.key)}">
     <div class="mac">${esc(macText(device))}</div>
-    <div>${esc(device.vendor || '미확인')}</div>
-    <div>${esc(device.book ? device.kind : '') || '—'}</div>
-    <div>${esc(responseText(device))}</div>
+    <div class="vendor-cell" title="${esc(device.vendor || '미확인')}">${esc(device.vendor || '미확인')}</div>
+    <div class="kind-cell">${esc(device.book ? device.kind : '') || '—'}</div>
+    <div class="response-cell">${esc(responseText(device))}</div>
     <div>${statusHtml(device)}</div>
   </div>`;
 }
@@ -147,10 +170,10 @@ function rowHtml(device) {
 function soloHtml(group, device) {
   const own = isOwnIp(group.ip) ? ' own-ip' : '';
   return `<div class="solo-row${own}" data-key="${esc(device.key)}">
-    <div class="ip-cell"><button class="ip ip-copy" data-copy-ip="${esc(group.ip)}" title="IP 주소 복사">${esc(group.ip)}</button><span class="mac-sub">${esc(macText(device))}</span></div>
-    <div>${esc(device.vendor || '미확인')}</div>
-    <div>${esc(device.book ? device.kind : '') || '—'}</div>
-    <div>${esc(responseText(device))}</div>
+    <div class="ip-cell"><div class="ip-line"><button class="ip ip-copy" data-copy-ip="${esc(group.ip)}" title="IP 주소 복사">${esc(group.ip)}</button>${own ? '<span class="own-tag">내 PC</span>' : ''}</div><span class="mac-sub">${esc(macText(device))}</span></div>
+    <div class="vendor-cell" title="${esc(device.vendor || '미확인')}">${esc(device.vendor || '미확인')}</div>
+    <div class="kind-cell">${esc(device.book ? device.kind : '') || '—'}</div>
+    <div class="response-cell">${esc(responseText(device))}</div>
     <div>${statusHtml(device)}</div>
   </div>`;
 }
@@ -158,8 +181,8 @@ function soloHtml(group, device) {
 function groupHtml(group, open) {
   const count = group.devices?.length || group.count || 0;
   return `<div class="group-row conflict" data-ip="${esc(group.ip)}">
-    <div class="ip-cell"><span class="chevron">${open ? '▾' : '▸'}</span><button class="ip ip-copy" data-copy-ip="${esc(group.ip)}" title="IP 주소 복사">${esc(group.ip)}</button><span class="conflict-badge">MAC ${count}개 충돌</span></div>
-    <span class="group-note">클릭해서 충돌 장비를 확인하고, 대상 장비를 우클릭해 분리하십시오.</span>
+    <div class="ip-cell"><button class="chevron${open ? ' open' : ''}" data-toggle-group="${esc(group.ip)}" aria-expanded="${open}" aria-label="${esc(group.ip)} 충돌 장비 ${open ? '접기' : '펼치기'}">${icon('chevron')}</button><button class="ip ip-copy" data-copy-ip="${esc(group.ip)}" title="IP 주소 복사">${esc(group.ip)}</button><span class="conflict-badge">MAC ${count}개 충돌</span></div>
+    <span class="group-note">펼쳐서 장비 확인 · 우클릭으로 분리</span>
   </div>`;
 }
 
@@ -169,9 +192,10 @@ function render() {
   const devices = Number(summary.devices || 0);
   const conflicts = Number(summary.conflictIps || 0);
   $('#titleCount').textContent = conflicts ? `IP 충돌 ${conflicts}곳` : (devices ? `발견 장비 ${devices}대` : '대기 중');
+  $('#titleCount').classList.toggle('has-conflicts', conflicts > 0);
   $('#subTitle').textContent = devices
-    ? `장비 ${devices}대 · 응답 IP ${summary.ips || 0}개${conflicts ? ` · 충돌 IP ${conflicts}곳` : ''}`
-    : '인터페이스를 선택하고 스캔을 시작하십시오.';
+    ? `${conflicts ? `장비 ${devices}대 · ` : ''}응답 IP ${summary.ips || 0}개`
+    : '인터페이스와 대역을 확인하십시오.';
 
   const rows = [];
   let matched = 0;
@@ -216,12 +240,13 @@ function applyState(next) {
   if (next.revision != null && next.revision < (state.revision || 0)) return;
   state = { ...state, ...next };
   render();
+  paintScanButton();
 }
 
 function notice(text, isError = false) {
   const target = $('#notice');
   target.textContent = text;
-  target.style.color = isError ? '#e7475b' : '';
+  target.style.color = isError ? 'var(--red-text)' : '';
 }
 
 function showProgress() {
@@ -264,7 +289,7 @@ function maxTargetSize(target) {
 
 function paintScanButton() {
   const button = $('#scanBtn');
-  button.textContent = scanRunning ? '스캔 중지' : '대역 스캔';
+  button.innerHTML = `${icon(scanRunning ? 'stop' : 'scan')}${scanRunning ? '스캔 중지' : '대역 스캔'}`;
   button.classList.toggle('danger', scanRunning);
   button.disabled = operationRunning || interfacesLoading || (!scanRunning && !selectedCard());
   $('#ifaceBtn').disabled = scanRunning || operationRunning || interfacesLoading || !selectedCard();
@@ -272,10 +297,22 @@ function paintScanButton() {
   $('#bookBtn').disabled = scanRunning || operationRunning || interfacesLoading;
   $('#dhcpBtn').disabled = scanRunning || operationRunning || interfacesLoading || !selectedCard();
   $('#dhcpAgain').disabled = $('#dhcpBtn').disabled;
+  $('#availableBtn').disabled = scanRunning || operationRunning || interfacesLoading || !scanMatchesInterface();
+}
+
+function scanMatchesInterface() {
+  const before = state.completedScan?.card;
+  const now = selectedCard();
+  if (!before || !now) return false;
+  const addresses = card => (card.ipv4 || []).map(ip => `${ip.ip}/${ip.prefix}`).sort().join(',');
+  return before.scapyName.toLowerCase() === now.scapyName.toLowerCase()
+    && before.index === now.index && before.mac.toLowerCase() === now.mac.toLowerCase()
+    && [...before.ips].sort().join(',') === [...now.ips].sort().join(',') && addresses(before) === addresses(now);
 }
 
 function closeInterfaceMenu() {
   $('#ifaceMenu').hidden = true;
+  $('#ifaceBtn').setAttribute('aria-expanded', 'false');
 }
 
 function hideContextMenu() {
@@ -289,10 +326,14 @@ function showContextMenu(event, key) {
   if (!device) return;
   contextKey = key;
   const menu = $('#contextMenu');
-  menu.querySelector('[data-menu="isolate"]').hidden = state.isolated === key;
-  menu.querySelector('[data-menu="release"]').hidden = state.isolated !== key;
   for (const button of menu.querySelectorAll('button')) {
+    button.hidden = false;
     button.disabled = button.dataset.menu !== 'copyMac' && (scanRunning || operationRunning || interfacesLoading);
+  }
+  for (const separator of menu.querySelectorAll(':scope > span')) separator.hidden = false;
+  if (device) {
+    menu.querySelector('[data-menu="isolate"]').hidden = state.isolated === key;
+    menu.querySelector('[data-menu="release"]').hidden = state.isolated !== key;
   }
   menu.hidden = false;
   menu.style.left = `${Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)}px`;
@@ -320,6 +361,7 @@ $('#ifaceBtn').addEventListener('click', (event) => {
   renderInterfaceMenu();
   const box = $('#ifaceBtn').getBoundingClientRect();
   menu.hidden = false;
+  $('#ifaceBtn').setAttribute('aria-expanded', 'true');
   menu.style.left = `${box.left}px`;
   menu.style.top = `${box.bottom + 4}px`;
   menu.style.minWidth = `${box.width}px`;
@@ -332,6 +374,7 @@ $('#ifaceMenu').addEventListener('click', (event) => {
   renderInterfaceMenu();
   setTarget();
   closeInterfaceMenu();
+  paintScanButton();
 });
 
 $('#refreshInterfaces').addEventListener('click', () => loadInterfaces(selectedInterface));
@@ -395,15 +438,17 @@ $('#deviceList').addEventListener('click', (event) => {
   const ip = group.dataset.ip;
   if (expandedGroups.has(ip)) expandedGroups.delete(ip); else expandedGroups.add(ip);
   render();
+  if (event.target.closest('[data-toggle-group]')) $(`[data-toggle-group="${CSS.escape(ip)}"]`)?.focus();
 });
 
 $('#deviceList').addEventListener('contextmenu', (event) => {
   const row = event.target.closest('.device-row, .solo-row');
   if (row) showContextMenu(event, row.dataset.key);
+  else event.preventDefault();
 });
 
 $('#contextMenu').addEventListener('click', async (event) => {
-  const action = event.target.dataset.menu;
+  const action = event.target.closest('[data-menu]')?.dataset.menu;
   const key = contextKey;
   if (!action || !key) return;
   if (action !== 'copyMac' && (scanRunning || operationRunning || interfacesLoading)) return;
@@ -411,6 +456,7 @@ $('#contextMenu').addEventListener('click', async (event) => {
   try {
     if (action === 'isolate') return openIsolate(key);
     if (action === 'book') return await openBook(key);
+    if (action === 'ping' || action === 'tcp') return openDiagnostic(action, key);
     if (action === 'release') {
       operationRunning = true;
       paintScanButton();
@@ -467,12 +513,27 @@ document.addEventListener('keydown', (event) => {
     closeIsolate();
     $('#bookDialog').hidden = true;
     $('#dhcpDialog').hidden = true;
+    closeAvailable();
+    closeDiagnostic();
   }
 });
 
 let resizeStartY = 0;
 let resizeStartHeight = 0;
 const resizeHandle = $('#logResizeHandle');
+function setLogHeight(height) {
+  const maxHeight = Math.max(140, window.innerHeight - 300);
+  const next = Math.round(Math.max(110, Math.min(maxHeight, height)));
+  document.documentElement.style.setProperty('--log-height', `${next}px`);
+  resizeHandle.setAttribute('aria-valuenow', String(next));
+  resizeHandle.setAttribute('aria-valuemax', String(maxHeight));
+}
+resizeHandle.setAttribute('aria-valuemax', String(Math.max(140, window.innerHeight - 300)));
+resizeHandle.addEventListener('keydown', event => {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  setLogHeight($('.activity-panel').getBoundingClientRect().height + (event.key === 'ArrowUp' ? 16 : -16));
+});
 resizeHandle.addEventListener('pointerdown', (event) => {
   resizeStartY = event.clientY;
   resizeStartHeight = $('.activity-panel').getBoundingClientRect().height;
@@ -481,9 +542,7 @@ resizeHandle.addEventListener('pointerdown', (event) => {
 });
 resizeHandle.addEventListener('pointermove', (event) => {
   if (!resizeHandle.hasPointerCapture(event.pointerId)) return;
-  const maxHeight = Math.max(140, window.innerHeight - 300);
-  const next = Math.max(110, Math.min(maxHeight, resizeStartHeight - (event.clientY - resizeStartY)));
-  document.documentElement.style.setProperty('--log-height', `${Math.round(next)}px`);
+  setLogHeight(resizeStartHeight - (event.clientY - resizeStartY));
 });
 function finishResize(event) {
   if (resizeHandle.hasPointerCapture(event.pointerId)) resizeHandle.releasePointerCapture(event.pointerId);
@@ -579,34 +638,34 @@ function leaseText(seconds) {
 
 function dhcpRowHtml(server) {
   const who = [server.vendor || '제조사 미확인', server.kind].filter(Boolean).join(' · ');
-  const offered = server.offered ? `${server.offered}${server.mask ? ' / ' + server.mask : ''}` : '';
+  const addresses = values => values?.length ? values.map(value => `<span>${esc(value)}</span>`).join('') : '미제공';
   const facts = [
-    ['제안 주소', offered],
-    ['게이트웨이', (server.router || []).join(', ')],
-    ['DNS', (server.dns || []).join(', ')],
-    ['임대', leaseText(server.lease)],
-    ['도메인', server.domain],
-    ['중계', server.relay],
-  ].filter((fact) => fact[1]);
-  return `<div class="dhcp-row">
-    <div class="dhcp-who"><b>${esc(server.ip || '주소 미확인')}</b><span class="mac-sub">${esc(macText(server))}</span><span>${esc(who)}</span></div>
-    <div class="dhcp-facts">${facts.map((fact) => `<span><i>${esc(fact[0])}</i>${esc(fact[1])}</span>`).join('')}</div>
-  </div>`;
+    ['제안 IP', `${esc(server.offered || '미제공')}${server.mask ? `<small>마스크 ${esc(server.mask)}</small>` : ''}`],
+    ['게이트웨이', addresses(server.router)],
+    ['DNS', addresses(server.dns)],
+    ['임대 시간', esc(leaseText(server.lease) || '미제공')],
+  ];
+  if (server.domain) facts.push(['도메인', esc(server.domain)]);
+  if (server.relay) facts.push(['중계 주소', esc(server.relay)]);
+  return `<section class="dhcp-row">
+    <div class="dhcp-server-head"><strong>${esc(server.ip || '주소 미확인')}</strong><span>${esc(who)}</span></div>
+    <p class="dhcp-mac">MAC ${esc(macText(server) || '미확인')}</p>
+    <dl class="dhcp-facts">${facts.map(([label,value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>
+  </section>`;
 }
 
-function renderDhcp(result) {
+function renderDhcp(result, reveal = true) {
   const servers = result.servers || [];
-  const where = result.iface ? `${result.iface} — ` : '';
-  $('#dhcpSummary').textContent = servers.length
-    ? `${where}응답한 DHCP 서버 ${servers.length}대`
-    : `${where}응답한 DHCP 서버가 없습니다. 고정 IP만 쓰는 망이면 정상입니다.`;
+  $('#dhcpInterface').textContent = result.iface || '';
+  $('#dhcpSummary').textContent = `응답한 DHCP 서버 ${servers.length}대`;
   const caution = $('#dhcpCaution');
   caution.hidden = servers.length < 2;
   caution.textContent = servers.length < 2 ? ''
-    : 'DHCP 응답이 여러 개입니다. 정상적인 이중화 구성일 수도 있으므로, 의도한 서버와 제안 대역인지 확인하십시오. 중계가 있으면 아래 MAC이 실제 서버의 MAC과 다를 수 있습니다.';
-  $('#dhcpList').innerHTML = servers.map(dhcpRowHtml).join('');
-  $('#dhcpDialog').hidden = false;
-  $('#dhcpOk').focus();
+    : '여러 서버가 응답했습니다. 의도한 서버와 제안 대역인지 확인하십시오. 정상적인 이중화 구성일 수도 있습니다.';
+  $('#dhcpList').innerHTML = servers.length ? servers.map(dhcpRowHtml).join('')
+    : '<div class="dialog-empty"><strong>응답한 서버가 없습니다.</strong><p>고정 IP만 사용하는 망에서는 정상일 수 있습니다.</p></div>';
+  if (reveal) $('#dhcpDialog').hidden = false;
+  if (!$('#dhcpDialog').hidden) $('#dhcpOk').focus();
 }
 
 async function runDhcp() {
@@ -615,15 +674,25 @@ async function runDhcp() {
   if (!card) return notice('네트워크 인터페이스를 선택하십시오.', true);
   operationRunning = true;
   paintScanButton();
+  $('#dhcpInterface').textContent = card.desc || card.name;
+  $('#dhcpSummary').textContent = 'DHCP 서버 확인 중…';
+  $('#dhcpCaution').hidden = true;
+  $('#dhcpList').setAttribute('aria-busy', 'true');
+  $('#dhcpList').innerHTML = '<div class="dhcp-loading" role="status">서버의 주소 제안을 기다리고 있습니다.</div>';
+  $('#dhcpDialog').hidden = false;
+  $('#dhcpClose').focus();
   notice('DHCP 서버를 확인하는 중입니다… (최대 6초)');
   try {
     const result = await call('dhcp_servers', { iface: card });
     if (result.state) applyState(result.state);
-    renderDhcp(result);
+    renderDhcp(result, false);
     const count = (result.servers || []).length;
     notice(count ? `DHCP 서버 ${count}대를 확인했습니다.` : '응답한 DHCP 서버가 없습니다.', count > 1);
-  } catch (_) { /* call() reports the failure */
+  } catch (error) {
+    $('#dhcpSummary').textContent = 'DHCP 서버 확인 실패';
+    $('#dhcpList').innerHTML = `<div class="dialog-empty"><strong>검사를 완료하지 못했습니다.</strong><p>${esc(cleanMessage(error.message))}</p></div>`;
   } finally {
+    $('#dhcpList').removeAttribute('aria-busy');
     operationRunning = false;
     paintScanButton();
   }
@@ -637,6 +706,200 @@ $('#dhcpDialog').addEventListener('mousedown', (event) => {
   if (event.target === $('#dhcpDialog')) $('#dhcpDialog').hidden = true;
 });
 
+let availableIps = [];
+function filteredAvailable() {
+  const query = $('#availableSearch').value.trim();
+  return availableIps.filter(ip => ip.includes(query));
+}
+function renderAvailable() {
+  const ips = filteredAvailable();
+  $('#availableList').innerHTML = ips.map(ip => `<li><button type="button" data-available-ip="${esc(ip)}" aria-label="${esc(ip)} 복사">${esc(ip)}</button></li>`).join('');
+  $('#availableEmpty').hidden = ips.length > 0;
+  $('#availableEmpty').textContent = availableIps.length ? '일치하는 IP가 없습니다.' : '현재 스캔 범위에 사용 후보 IP가 없습니다.';
+  $('#availableCopy').disabled = ips.length === 0;
+}
+function closeAvailable() {
+  const open = !$('#availableDialog').hidden;
+  $('#availableDialog').hidden = true;
+  if (open && !$('#availableBtn').disabled) $('#availableBtn').focus();
+}
+$('#availableBtn').addEventListener('click', async () => {
+  if (scanRunning || operationRunning || interfacesLoading || !scanMatchesInterface()) return;
+  operationRunning = true; paintScanButton();
+  try {
+    const result = await call('available_ips', { iface:selectedCard() });
+    availableIps = result.ips || [];
+    $('#availableSummary').textContent = `사용 후보 ${availableIps.length}개 · ${result.scanned}개 주소 검사`;
+    $('#availableTarget').textContent = result.target;
+    $('#availableTime').textContent = `${result.completedAt} 기준`;
+    $('#availableSearch').value = '';
+    $('#availableStatus').textContent = 'IP를 클릭하면 복사합니다.';
+    renderAvailable();
+    $('#availableDialog').hidden = false;
+    $('#availableSearch').focus();
+  } catch (_) { /* call() reports the failure */ }
+  finally { operationRunning = false; paintScanButton(); }
+});
+$('#availableSearch').addEventListener('input', renderAvailable);
+$('#availableList').addEventListener('click', async event => {
+  const ip = event.target.closest('[data-available-ip]')?.dataset.availableIp;
+  if (!ip) return;
+  try { await copyText(ip); $('#availableStatus').textContent = `${ip} 복사됨`; }
+  catch (_) { $('#availableStatus').textContent = '복사하지 못했습니다. 다시 시도하십시오.'; }
+});
+$('#availableCopy').addEventListener('click', async () => {
+  const ips = filteredAvailable();
+  if (!ips.length) return;
+  try { await copyText(ips.join('\r\n')); $('#availableStatus').textContent = `${ips.length}개 IP 복사됨`; }
+  catch (_) { $('#availableStatus').textContent = '복사하지 못했습니다. 다시 시도하십시오.'; }
+});
+$('#availableClose').addEventListener('click', closeAvailable);
+$('#availableOk').addEventListener('click', closeAvailable);
+$('#availableDialog').addEventListener('mousedown', event => { if (event.target === $('#availableDialog')) closeAvailable(); });
+for (const id of ['#dhcpDialog', '#availableDialog', '#diagnosticDialog', '#bookDialog', '#isolateDialog']) {
+  $(id).addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const controls = [...$(id).querySelectorAll('button:not(:disabled), input:not(:disabled), summary')].filter(control => control.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  });
+}
+
+let diagnostic = null;
+
+function diagnosticLine(result) {
+  const line = document.createElement('div');
+  line.className = `diagnostic-line ${result.ok ? 'success' : 'failure'}`;
+  const now = new Date();
+  const time = [now.getHours(), now.getMinutes(), now.getSeconds()].map(value => String(value).padStart(2, '0')).join(':');
+  const ms = result.ms == null ? '' : (result.ms === 0 ? '<1ms' : `${result.ms}ms`);
+  const isPing = diagnostic?.mode === 'ping';
+  const text = isPing ? (result.ok ? `Reply from ${diagnostic.ip}` : result.status === 'timeout' ? 'Request timed out' : result.status === 'unreachable' ? 'Destination unreachable' : result.message) : result.message;
+  const sequence = isPing ? `<i class="ping-sequence">#${String(diagnostic.sent).padStart(3, '0')}</i>` : '';
+  line.innerHTML = `<time>${esc(time)}</time>${sequence}<span title="${esc(result.message)}">${esc(text)}</span><b>${esc(ms)}</b>`;
+  const list = $('#diagnosticResult');
+  const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
+  list.append(line);
+  while (list.children.length > 60) list.firstElementChild.remove();
+  if (atBottom) list.scrollTop = list.scrollHeight;
+}
+
+function stopPing() {
+  if (!diagnostic || diagnostic.mode !== 'ping') return;
+  diagnostic.active = false;
+  $('#pingRunState').textContent = operationRunning ? 'STOPPING' : 'STOPPED';
+  $('#pingRunState').classList.remove('running');
+  diagnostic.wake?.();
+  $('#pingToggle').disabled = operationRunning;
+  $('#pingToggle').textContent = operationRunning ? '중지 중…' : '다시 시작';
+}
+
+function closeDiagnostic() {
+  stopPing();
+  $('#diagnosticDialog').hidden = true;
+}
+
+function openDiagnostic(mode, key) {
+  if (scanRunning || operationRunning || interfacesLoading) return;
+  const device = deviceOf(key);
+  if (!device || !['ping', 'tcp'].includes(mode)) return;
+  diagnostic = { mode, key, ip: device.ip, active: false, sent: 0, received: 0, totalMs: 0 };
+  $('#diagnosticDialog').classList.toggle('is-ping', mode === 'ping');
+  $('#diagnosticDialog').classList.toggle('is-terminal', mode === 'ping');
+  $('#diagnosticTitle').textContent = mode === 'ping' ? '연속 Ping' : 'TCP 포트 확인';
+  $('#diagnosticTarget').textContent = diagnostic.ip;
+  $('#diagnosticTarget').hidden = mode !== 'tcp';
+  $('#pingTerminalHead').hidden = mode === 'tcp';
+  $('#pingCommand').textContent = `PING ${diagnostic.ip}`;
+  $('#diagnosticConflict').hidden = !state.groups.some(group => group.ip === device.ip && group.conflict) || (state.isolated === key && device.status !== 'isolation_unknown');
+  $('#tcpForm').hidden = mode !== 'tcp';
+  $('#pingRunState').textContent = 'READY'; $('#pingRunState').classList.remove('running');
+  $('#pingToggle').hidden = mode !== 'ping';
+  $('#pingSummary').hidden = mode !== 'ping';
+  $('#pingHint').hidden = mode !== 'ping';
+  $('#diagnosticResult').replaceChildren();
+  $('#diagnosticDialog').hidden = false;
+  if (mode === 'ping') runPing(diagnostic);
+  else { $('#tcpPort').focus(); $('#tcpPort').select(); }
+}
+
+function paintPing(current) {
+  const lost = current.sent - current.received;
+  const loss = current.sent ? Math.round(lost / current.sent * 1000) / 10 : 0;
+  const average = current.received ? `${Math.round(current.totalMs / current.received * 10) / 10}ms` : '—';
+  $('#pingSummary').innerHTML = [['전송',current.sent],['응답',current.received],['손실',`${lost} (${loss}%)`],['평균',average]]
+    .map(([label,value]) => `<span class="ping-metric"><span>${label} </span><b>${esc(value)}</b></span>`).join('');
+}
+
+async function runPing(current) {
+  if (operationRunning || current !== diagnostic) return;
+  current.active = true;
+  current.sent = current.received = current.totalMs = 0;
+  operationRunning = true;
+  paintScanButton(); paintPing(current);
+  $('#diagnosticResult').replaceChildren();
+  $('#pingToggle').disabled = false;
+  $('#pingToggle').textContent = '중지';
+  $('#pingRunState').textContent = 'RUNNING';
+  $('#pingRunState').classList.add('running');
+  let started = false;
+  try {
+    await call('ping_start', { key: current.key });
+    started = true;
+    while (current.active) {
+      const begin = Date.now();
+      const reply = await call('ping', { key: current.key });
+      current.sent += 1;
+      if (reply.ok) { current.received += 1; current.totalMs += reply.ms || 0; }
+      if (current === diagnostic) { diagnosticLine(reply); paintPing(current); }
+      if (!current.active) break;
+      await new Promise(resolve => {
+        const timer = window.setTimeout(() => { current.wake = null; resolve(); }, Math.max(0, 1000 - (Date.now() - begin)));
+        current.wake = () => { window.clearTimeout(timer); current.wake = null; resolve(); };
+      });
+    }
+  } catch (error) {
+    if (current === diagnostic) diagnosticLine({ ok: false, message: cleanMessage(error.message) });
+  } finally {
+    current.active = false;
+    if (started) { try { await call('ping_stop', { key: current.key }); } catch (_) {} }
+    operationRunning = false;
+    paintScanButton();
+    if (current === diagnostic) {
+      $('#pingToggle').disabled = false; $('#pingToggle').textContent = '다시 시작';
+      $('#pingRunState').textContent = 'STOPPED'; $('#pingRunState').classList.remove('running');
+    }
+  }
+}
+
+$('#pingToggle').addEventListener('click', () => {
+  if (diagnostic?.active) stopPing(); else if (diagnostic) runPing(diagnostic);
+});
+$('#tcpForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (operationRunning || diagnostic?.mode !== 'tcp') return;
+  const port = Number($('#tcpPort').value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return $('#tcpPort').reportValidity();
+  const current = diagnostic;
+  operationRunning = true; paintScanButton();
+  $('#tcpRun').disabled = true; $('#tcpPort').disabled = true;
+  $('#diagnosticResult').textContent = `${current.ip}:${port} 연결 확인 중…`;
+  try {
+    const result = await call('tcp_check', { key: current.key, port });
+    if (current === diagnostic) { $('#diagnosticResult').replaceChildren(); diagnosticLine(result); }
+  } catch (error) {
+    if (current === diagnostic) { $('#diagnosticResult').replaceChildren(); diagnosticLine({ ok: false, message: cleanMessage(error.message) }); }
+  } finally {
+    operationRunning = false; paintScanButton();
+    $('#tcpRun').disabled = false; $('#tcpPort').disabled = false;
+  }
+});
+$('#diagnosticClose').addEventListener('click', closeDiagnostic);
+$('#diagnosticOk').addEventListener('click', closeDiagnostic);
+$('#diagnosticDialog').addEventListener('mousedown', event => { if (event.target === $('#diagnosticDialog')) closeDiagnostic(); });
+
+for (const element of document.querySelectorAll('[data-icon]')) element.insertAdjacentHTML('afterbegin', icon(element.dataset.icon));
 window.ipfix.onState(applyState);
 render();
 loadInterfaces().catch(() => {});

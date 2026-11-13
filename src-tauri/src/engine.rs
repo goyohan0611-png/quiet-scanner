@@ -3,6 +3,7 @@ use crate::{
     capture::{self, Capture},
     native::{self, Iface},
     packet::{self, Mac},
+    probe,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -46,6 +47,84 @@ struct Device {
     ifname: String,
     ifindex: u32,
 }
+#[derive(Clone, Serialize)]
+struct CompletedScan {
+    card: Iface,
+    target: String,
+    completed_at: String,
+    #[serde(skip)]
+    targets: Vec<Ipv4Addr>,
+}
+fn same_network(left: &Iface, right: &Iface) -> bool {
+    let addresses = |card: &Iface| {
+        card.ipv4
+            .iter()
+            .map(|ip| (ip.ip.clone(), ip.prefix))
+            .collect::<BTreeSet<_>>()
+    };
+    left.id.eq_ignore_ascii_case(&right.id)
+        && left.index == right.index
+        && left.mac.eq_ignore_ascii_case(&right.mac)
+        && left.ips.iter().collect::<BTreeSet<_>>() == right.ips.iter().collect::<BTreeSet<_>>()
+        && addresses(left) == addresses(right)
+}
+fn unused_addresses(scan: &CompletedScan, used: &BTreeSet<Ipv4Addr>) -> Vec<Ipv4Addr> {
+    let own: BTreeSet<Ipv4Addr> = scan
+        .card
+        .ips
+        .iter()
+        .filter_map(|ip| ip.parse().ok())
+        .collect();
+    // CIDR parsing already excludes its network/broadcast addresses, preserving
+    // valid .0/.255 hosts inside /23 and /22. Explicit ranges use the NIC mask
+    // where known; an unresponsive address is still only an assignment candidate.
+    let mut candidates = BTreeSet::new();
+    for part in scan
+        .target
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
+        if let Ok(ips) = packet::parse_target(part) {
+            for ip in ips {
+                let first = ip.octets()[0];
+                if first == 0
+                    || first == 127
+                    || first >= 224
+                    || own.contains(&ip)
+                    || used.contains(&ip)
+                {
+                    continue;
+                }
+                let reserved = !part.contains('/')
+                    && scan.card.ipv4.iter().any(|address| {
+                        let Ok(source) = address.ip.parse::<Ipv4Addr>() else {
+                            return false;
+                        };
+                        if address.prefix > 30 || !packet::same_subnet(ip, source, address.prefix) {
+                            return false;
+                        }
+                        let mask = if address.prefix == 0 {
+                            0
+                        } else {
+                            u32::MAX << (32 - address.prefix)
+                        };
+                        let network = u32::from(source) & mask;
+                        u32::from(ip) == network || u32::from(ip) == network | !mask
+                    });
+                if !reserved {
+                    candidates.insert(ip);
+                }
+            }
+        }
+    }
+    // Never include an address outside the successfully completed request.
+    let scanned: BTreeSet<_> = scan.targets.iter().copied().collect();
+    candidates
+        .into_iter()
+        .filter(|ip| scanned.contains(ip))
+        .collect()
+}
 struct State {
     revision: u64,
     devices: BTreeMap<String, Device>,
@@ -57,6 +136,7 @@ struct State {
     ifindex: u32,
     canceled: bool,
     storage_error: Option<String>,
+    completed_scan: Option<CompletedScan>,
 }
 pub struct Engine {
     state: Mutex<State>,
@@ -115,6 +195,7 @@ impl Engine {
                 ifindex: 0,
                 canceled: false,
                 storage_error,
+                completed_scan: None,
             }),
             emitter: Mutex::new(None),
             busy: AtomicBool::new(false),
@@ -152,7 +233,7 @@ impl Engine {
         let isolated = s.pins.first().map(|p| key(&p.ip, &p.mac));
         json!({"revision": s.revision, "groups": grouped, "summary": {"ips": groups.len(), "devices": s.devices.len(), "conflictIps": conflicts},
             "progress": s.progress, "logs": s.logs, "iface": s.iface, "ifindex": s.ifindex,
-            "isolated": isolated, "canceled": s.canceled})
+            "isolated": isolated, "canceled": s.canceled, "completedScan": s.completed_scan})
     }
     fn emit(&self) {
         let emitter = self.emitter.lock().unwrap().clone();
@@ -220,7 +301,42 @@ impl Engine {
             }),
             "scan" => self.scan(&payload),
             "dhcp_servers" => self.dhcp(&payload),
+            "available_ips" => self.available_ips(&self.card(&payload)?),
             "isolate" => self.isolate(field(&payload, "key")),
+            "ping" => self.probe_device(field(&payload, "key"), None),
+            "tcp_check" => {
+                let port = payload
+                    .get("port")
+                    .and_then(Value::as_u64)
+                    .filter(|p| (1..=65535).contains(p))
+                    .ok_or("포트는 1~65535 범위의 정수로 입력하십시오.")?
+                    as u16;
+                self.probe_device(field(&payload, "key"), Some(port))
+            }
+            "ping_start" | "ping_stop" => {
+                let d = self
+                    .state
+                    .lock()
+                    .unwrap()
+                    .devices
+                    .get(field(&payload, "key"))
+                    .cloned()
+                    .ok_or("장비를 다시 선택하십시오.")?;
+                self.log(
+                    &format!(
+                        "{} 연속 Ping {}",
+                        d.ip,
+                        if action == "ping_start" {
+                            "시작"
+                        } else {
+                            "중지"
+                        }
+                    ),
+                    "info",
+                );
+                self.emit();
+                Ok(json!({"ok":true}))
+            }
             "release" => self.release_all().map(|_| self.snapshot()),
             "book_list" => Ok(json!({"rows": self.state.lock().unwrap().book.rows()})),
             "book_lookup" => {
@@ -267,6 +383,35 @@ impl Engine {
             },
         );
         true
+    }
+    fn probe_device(&self, device_key: &str, port: Option<u16>) -> Result<Value, String> {
+        let d = self
+            .state
+            .lock()
+            .unwrap()
+            .devices
+            .get(device_key)
+            .cloned()
+            .ok_or("장비를 다시 선택하십시오.")?;
+        let card = native::live(&d.ifname)?;
+        let target: Ipv4Addr = d.ip.parse().map_err(|_| "장비 IP가 잘못됐습니다.")?;
+        let source = card.source_for(target);
+        if source.is_unspecified() {
+            return Err("선택한 인터페이스에 IPv4 주소가 없습니다. 새로고침하십시오.".into());
+        }
+        let result = if let Some(port) = port {
+            probe::tcp(source, target, port)?
+        } else {
+            probe::ping(source, target)?
+        };
+        if let Some(port) = port {
+            self.log(
+                &format!("TCP {}:{} · {}", d.ip, port, result.message),
+                if result.ok { "info" } else { "warn" },
+            );
+            self.emit();
+        }
+        Ok(json!(result))
     }
     fn poll_arp(
         &self,
@@ -359,6 +504,30 @@ impl Engine {
             .filter_map(|d| d.ip.parse().ok())
             .collect()
     }
+    fn available_ips(&self, card: &Iface) -> Result<Value, String> {
+        let s = self.state.lock().unwrap();
+        if s.canceled {
+            return Err("중지된 스캔입니다. 대역 스캔을 완료한 뒤 확인하십시오.".into());
+        }
+        let scan = s
+            .completed_scan
+            .as_ref()
+            .ok_or("대역 스캔을 끝낸 뒤 확인하십시오. 중지·실패한 스캔은 사용할 수 없습니다.")?;
+        if !same_network(&scan.card, card) {
+            return Err(
+                "인터페이스나 IP 설정이 변경됐습니다. 현재 설정으로 다시 스캔하십시오.".into(),
+            );
+        }
+        let found = s
+            .devices
+            .values()
+            .filter_map(|device| device.ip.parse().ok())
+            .collect();
+        let ips = unused_addresses(scan, &found);
+        Ok(
+            json!({"ips":ips,"target":scan.target,"completedAt":scan.completed_at,"scanned":scan.targets.len(),"iface":card.desc}),
+        )
+    }
     fn scan(&self, payload: &Value) -> Result<Value, String> {
         let targets = packet::parse_target(field(payload, "target"))?;
         let card = self.card(payload)?;
@@ -372,6 +541,7 @@ impl Engine {
             s.iface = card.id.clone();
             s.ifindex = card.index;
             s.canceled = false;
+            s.completed_scan = None;
         }
         let target_set: BTreeSet<_> = targets.iter().copied().collect();
         for own in &card.ips {
@@ -471,7 +641,18 @@ impl Engine {
             Ok::<(), String>(())
         })();
         let canceled = self.cancel.load(Ordering::Acquire);
-        self.state.lock().unwrap().canceled = canceled;
+        {
+            let mut s = self.state.lock().unwrap();
+            s.canceled = canceled;
+            if result.is_ok() && !canceled {
+                s.completed_scan = Some(CompletedScan {
+                    card: card.clone(),
+                    target: field(payload, "target").trim().to_string(),
+                    completed_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                    targets,
+                });
+            }
+        }
         let end = if result.is_err() {
             "스캔 오류 · 발견 결과 보존"
         } else if canceled {
@@ -858,6 +1039,86 @@ mod tests {
         let s = e.snapshot();
         assert_eq!(s["summary"]["devices"], 2);
         assert_eq!(s["summary"]["conflictIps"], 1);
+    }
+    fn completed(card: Iface, target: &str) -> CompletedScan {
+        CompletedScan {
+            card,
+            target: target.into(),
+            completed_at: "2026-11-13 12:00:00".into(),
+            targets: packet::parse_target(target).unwrap(),
+        }
+    }
+    #[test]
+    fn available_ips_exclude_own_ips_and_all_responders() {
+        let e = engine();
+        let mut c = card();
+        c.ips.push("192.168.0.2".into());
+        e.add_device("192.168.0.3".parse().unwrap(), [2, 0, 0, 0, 0, 3], &c, None);
+        e.add_device("192.168.0.3".parse().unwrap(), [2, 0, 0, 0, 0, 4], &c, None);
+        e.state.lock().unwrap().completed_scan = Some(completed(c.clone(), "192.168.0.0/29"));
+        let result = e.available_ips(&c).unwrap();
+        assert_eq!(
+            result["ips"],
+            json!(["192.168.0.4", "192.168.0.5", "192.168.0.6"])
+        );
+        assert_eq!(result["scanned"], 6);
+        // Streamed snapshots carry only small scan metadata, never 4,096 targets.
+        assert!(e.snapshot()["completedScan"].get("targets").is_none());
+    }
+    #[test]
+    fn candidate_subnets_preserve_real_zero_and_255_hosts() {
+        for (target, count, last) in [
+            ("192.168.0.0/23", 509, "192.168.1.255"),
+            ("192.168.0.0/22", 1021, "192.168.3.255"),
+        ] {
+            let scan = completed(card(), target);
+            let ips = unused_addresses(&scan, &BTreeSet::new());
+            assert_eq!(ips.len(), count);
+            assert!(ips.contains(&"192.168.0.255".parse().unwrap()));
+            assert!(ips.contains(&"192.168.1.0".parse().unwrap()));
+            assert!(!ips.contains(&"192.168.0.0".parse().unwrap()));
+            assert!(!ips.contains(&last.parse().unwrap()));
+        }
+        let mut c = card();
+        c.ipv4.push(native::Ipv4Info {
+            ip: "192.168.0.1".into(),
+            prefix: 24,
+            cidr: "192.168.0.0/24".into(),
+        });
+        let ips = unused_addresses(&completed(c.clone(), "192.168.0.0-255"), &BTreeSet::new());
+        assert_eq!(ips.len(), 253);
+        assert!(!ips.contains(&"192.168.0.255".parse().unwrap()));
+        assert_eq!(
+            unused_addresses(&completed(c, "192.168.0.0/31"), &BTreeSet::new()),
+            vec!["192.168.0.0".parse::<Ipv4Addr>().unwrap()]
+        );
+    }
+    #[test]
+    fn available_ips_reject_partial_scans_and_network_changes() {
+        let e = engine();
+        let mut c = card();
+        c.ipv4.push(native::Ipv4Info {
+            ip: "192.168.0.1".into(),
+            prefix: 24,
+            cidr: "192.168.0.0/24".into(),
+        });
+        assert!(e.available_ips(&c).is_err());
+        e.state.lock().unwrap().completed_scan = Some(completed(c.clone(), "192.168.0.0/29"));
+        assert!(e.available_ips(&c).is_ok());
+        let mut changed = c.clone();
+        changed.index += 1;
+        assert!(e.available_ips(&changed).is_err());
+        changed = c.clone();
+        changed.ips[0] = "192.168.0.9".into();
+        assert!(e.available_ips(&changed).is_err());
+        changed = c.clone();
+        changed.ipv4[0].prefix = 23;
+        assert!(e.available_ips(&changed).is_err());
+        changed = c.clone();
+        changed.mac = "02:00:00:00:00:02".into();
+        assert!(e.available_ips(&changed).is_err());
+        e.state.lock().unwrap().canceled = true;
+        assert!(e.available_ips(&c).is_err());
     }
     #[test]
     fn busy_and_shutdown_block_mutations() {

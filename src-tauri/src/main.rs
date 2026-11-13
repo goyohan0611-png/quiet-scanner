@@ -5,6 +5,7 @@ mod capture;
 mod engine;
 mod native;
 mod packet;
+mod probe;
 
 use engine::Engine;
 use serde_json::{json, Value};
@@ -32,7 +33,8 @@ async fn request(
 }
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
-    if text.len() > 1024 {
+    // A complete list of up to 4,096 IPv4 candidates fits within this bound.
+    if text.len() > 128 * 1024 {
         return Err("복사할 내용이 너무 깁니다.".into());
     }
     clipboard_win::set_clipboard_string(&text).map_err(|e| format!("클립보드 복사 실패: {e}"))

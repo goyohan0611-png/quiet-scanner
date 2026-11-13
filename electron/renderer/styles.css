@@ -1,697 +1,265 @@
-/* Quiet Scanner — field IP conflict cleanup tool
- * Copyright (C) 2026 고요한
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version. This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details. You should have received a copy of the GNU General Public License
- * along with this program; if not, see <https://www.gnu.org/licenses/>.
+/* Quiet Scanner — compact field workspace.
+ * Copyright (C) 2026 고요한. GPL-2.0-or-later; see LICENSE.md.
+ * Distributed without warranty of any kind.
  */
-@font-face { font-family: Pretendard; src: url('fonts/Pretendard-Regular.ttf'); font-weight: 400; }
-@font-face { font-family: Pretendard; src: url('fonts/Pretendard-SemiBold.ttf'); font-weight: 600; }
-@font-face { font-family: Pretendard; src: url('fonts/Pretendard-Bold.ttf'); font-weight: 700; }
+@font-face {
+  font-family: SUIT;
+  src: url('fonts/SUIT-Variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 :root {
-  --pad: 20px;   /* Window left/right margin. Every row lines up on this value */ --ink:#182230; --muted:#6f7d90; --line:#e7ecf3; --panel:#fff; --bg:#f7f9fc; --blue:#2878f0; --green:#0a9d67; --red:#e7475b; --red-bg:#fff5f6; --amber:#ba7a09;
-  /* The dialogs used to call --mut/--acc/--accbg/--tx/--panel2/--hover, none of
-     which existed, so every one fell through to a hardcoded near-miss: three
-     different blues, and a grey and an ink that were each a shade off the app.
-     Nothing looked broken; everything was three percent out, which reads as cheap.
-     Those names are gone now and these two are the only ones that were missing. */
-  --tint:#f0f4f9; --hover:#eef5ff; --blue-deep:#1769df; --log-height:182px; }
-* { box-sizing:border-box; }
-/* On a laptop scaled to 125%, a 1390px window is 1112px in CSS. Pin the minimum
-   width at 1120 and that window scrolls sideways, cutting off the right-hand buttons. */
-body { margin:0; min-width:1040px; height:100vh; overflow:hidden; color:var(--ink); background:var(--bg); font-family:Pretendard,"Malgun Gothic",sans-serif; font-size:13px; }
-button,input,select { font:inherit; }
-/* One slab, joined edge to edge.
-   Four white cards floating on a grey background read as a web page. Kill the gaps
-   and divide with 1px lines only, and it reads as an instrument panel. The top
-   chrome went 271px -> 143px too — things you touch once were eating a third of the screen. */
-main { height:100vh; padding:0; display:grid;
-       grid-template-rows:auto auto minmax(0,1fr) 8px var(--log-height); gap:0;
-       background:#fff; }
-.control-panel { display:flex; align-items:center; gap:9px; padding:9px var(--pad);
-                 background:#fff; border:0; border-bottom:1px solid var(--line); }
-.field { display:flex; align-items:center; gap:7px; }
-/* Labels are folded away. The value in the field already says what it is (adapter name, range). */
-.field label { display:none; }
-.interface-field { width:auto; flex:0 1 430px; min-width:240px; }
-.target-field { width:auto; flex:0 0 200px; }
-.interface-control { display:flex; gap:6px; flex:1; min-width:0; }
-.field select,.field input { width:100%; height:30px; padding:0 9px; background:#fff;
-                             border:1px solid #d7e0eb; color:var(--ink); outline:none;
-                             font-size:12.5px; }
-.interface-control select { flex:1; width:auto; }
-.interface-control button { flex:0 0 auto; height:30px; padding:0 9px; font-size:12px; }
-/* The adapter field is the one that has to shrink. Hand it a long name like
-   'Bluetooth Device (Personal Area Network)' and a button that won't shrink stretches to match and covers the field beside it. */
-.interface-control > #ifaceBtn { flex:1 1 auto; min-width:0; }
-.workbar-tools { flex:0 0 auto; }
-.field select:focus,.field input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #e9f2ff; }
-.toolbar-actions { display:flex; align-items:center; gap:9px; }
-.control-panel .toolbar-actions button { height:30px; padding:0 13px; font-size:12.5px; }
-button { height:36px; padding:0 12px; color:#415267; background:#fff; border:1px solid #d7e0eb; cursor:pointer; }.primary { color:#fff; background:var(--blue); border-color:var(--blue); font-weight:600; }.primary:hover { background:#1769df; }.summary { display:flex; gap:24px; align-items:center; min-height:56px; padding:0 8px; border-bottom:1px solid var(--line); }.metric { display:flex; align-items:center; gap:8px; color:var(--muted); }.metric i { width:8px; height:8px; border-radius:50%; background:var(--blue); }.metric strong { color:var(--ink); font-size:14px; }.metric.red i { background:var(--red); }.metric.green i { background:var(--green); }.metric.amber i { background:var(--amber); }
-/* One value (--pad) for every left/right margin. Vary it per row and the vertical
-   alignment breaks; let dense mode override it to 0 and the text ends up jammed against the window edge. */
-.workbar { display:flex; align-items:center; gap:12px; min-height:36px;
-           padding:0 var(--pad); background:#fbfcfe;
-           border-bottom:1px solid var(--line); }
-.workbar > div:first-child { flex:1 1 auto; min-width:0; overflow:hidden;
-                             white-space:nowrap; text-overflow:ellipsis; }
-.workbar strong { font-size:12.5px; }
-.workbar span { margin-left:10px; color:var(--muted); font-size:12px; }
-.table-shell { min-height:0; overflow:hidden; display:flex; flex-direction:column; background:#fff; border:0; }.table-head,.group-row,.device-row { display:grid; grid-template-columns:var(--grid-cols, 2fr .85fr 1fr 1.2fr 1.15fr .5fr 1fr .95fr 1fr); align-items:center; }.table-head { flex:0 0 auto; min-height:30px; padding:0 var(--pad); color:#96a3b4; background:#f9fbfd; border-bottom:1px solid var(--line); font-size:11px; }.device-list { min-height:0; overflow:auto; }.empty { display:grid; place-items:center; min-height:180px; color:#98a5b5; }.group-row { min-height:42px; padding:0 var(--pad); border-bottom:1px solid var(--line); background:#fff; color:#65758a; cursor:pointer; }.group-row:hover { background:#f8fbff; }.group-row.conflict { color:var(--red); background:var(--red-bg); border-left:3px solid var(--red); padding-left:11px; }.ip-cell { display:flex; gap:8px; align-items:center; }.chevron { color:#a5b1c0; font-size:11px; }.conflict .chevron { color:var(--red); }.ip { font-family:Consolas,"JetBrains Mono",monospace; font-size:12px; }.conflict .ip { font-weight:600; }.conflict-badge { display:inline-flex; padding:3px 7px; color:var(--red); background:#ffe4e8; font-size:11px; }.device-row { min-height:48px; padding:0 var(--pad) 0 34px; border-bottom:1px solid #edf1f5; color:#65758a; cursor:context-menu; }.device-row:hover { background:#f8fbff; }.mac { color:#263447; font-family:Consolas,"JetBrains Mono",monospace; font-size:12px; }.ports { display:flex; gap:4px; flex-wrap:wrap; }.port { padding:2px 5px; color:#16835c; background:#eaf8f1; font-family:Consolas,monospace; font-size:10px; }.status { display:inline-flex; width:max-content; padding:3px 7px; color:#63758a; background:#f0f3f7; font-size:11px; }.status.isolated { color:#5c43c3; background:#f0ecff; }.status.done { color:#087c53; background:#e8f7ef; }
-.log-resize-handle { position:relative; cursor:row-resize; touch-action:none; }.log-resize-handle::after { content:""; position:absolute; top:3px; right:0; left:0; height:2px; background:#dbe4ef; }.log-resize-handle:hover::after,.log-resize-handle.dragging::after { background:var(--blue); }.activity-panel { min-height:0; margin-top:0; padding:9px var(--pad); overflow:hidden; display:flex; flex-direction:column; background:#fff; border:0; border-top:1px solid var(--line); }.log-progress { display:flex; align-items:center; gap:10px; padding-bottom:10px; color:var(--muted); font-size:11px; }.log-progress[hidden] { display:none; }.log-progress i { flex:1; display:block; height:6px; overflow:hidden; background:#e6edf6; border-radius:99px; }.log-progress b { display:block; width:0; height:100%; background:var(--blue); border-radius:inherit; transition:width .2s ease; }.log-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }.log-head strong { font-size:12px; }.log-head span { color:var(--muted); font-size:12px; }.log-entries { flex:1; min-height:0; margin-top:9px; overflow:auto; color:#65758a; font-size:12px; }.log-entry { display:flex; gap:10px; padding:4px 0; }.log-time { color:#a0acba; font-family:Consolas,monospace; font-size:11px; }.log-entry.ok .log-message { color:#087c53; }.log-entry.warn .log-message { color:#a96d08; }.log-entry.error .log-message { color:var(--red); }.log-empty { padding:18px 0; color:#a0acba; text-align:center; }
-.context-menu { position:fixed; z-index:20; width:196px; padding:5px; background:#fff; border:1px solid #dbe3ed; box-shadow:0 12px 32px #24334b2b; }.context-menu button { display:block; width:100%; height:32px; padding:0 9px; border:0; color:#34465c; text-align:left; }.context-menu button:hover { background:#eef5ff; color:#1769df; }.context-menu span { display:block; height:1px; margin:5px 4px; background:#edf1f5; }
-dialog { width:min(520px,calc(100vw - 40px)); padding:0; border:1px solid var(--line); box-shadow:0 20px 60px #1d2b3d33; }dialog::backdrop { background:#15203355; }dialog form { display:grid; gap:13px; padding:22px; }dialog h2 { margin:0; font-size:16px; }dialog p { margin:0; color:var(--muted); }dialog label { display:grid; gap:6px; color:var(--muted); font-size:12px; }dialog input { height:38px; padding:0 10px; border:1px solid #d7e0eb; }.dialog-actions,.dialog-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; }.dialog-error { color:var(--red); min-height:16px; }.dialog-top { align-items:flex-start; }.dialog-top form { padding:0; }#snapshotDialog { width:min(900px,calc(100vw - 80px)); }#snapshotDialog form { padding:16px; }#snapshotImage { max-width:100%; max-height:70vh; margin:auto; background:#111923; object-fit:contain; }
-
-
-/* ── Device book dialog ─────────────────────────────────────────────── */
-.modal[hidden] { display: none; }
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(9, 14, 20, 0.45);
+  --pad: 20px;
+  --ink: #182230;
+  --muted: #596a80;
+  --line: #e7ecf3;
+  --panel: #fff;
+  --bg: #f7f9fc;
+  --blue: #2878f0;
+  --blue-deep: #1769df;
+  --green: #0a9d67;
+  --red: #e7475b;
+  --red-text: #b82d42;
+  --red-bg: #fff5f6;
+  --amber: #ba7a09;
+  --tint: #f0f4f9;
+  --hover: #eef5ff;
+  --log-height: 134px;
+  font-family: SUIT, 'Malgun Gothic', sans-serif;
+  font-synthesis: none;
+  font-size: 14px;
 }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; height: 100dvh; overflow: hidden; color: var(--ink); background: var(--bg); font-size: 14px; line-height: 1.45; }
+button, input, select { font: inherit; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 12px; border: 1px solid #d7e0eb; border-radius: 7px; background: var(--panel); color: #34465c; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease; }
+button:hover:not(:disabled) { background: var(--hover); border-color: #b7cbed; color: var(--blue-deep); }
+button:active:not(:disabled) { background: #e4efff; }
+button:disabled { color: #8793a5; background: #f8fafc; border-color: var(--line); cursor: default; }
+.primary { background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); font-weight: 600; }
+.primary:hover:not(:disabled) { background: #1158c0; border-color: #1158c0; color: #fff; }
+.primary:active:not(:disabled) { background: #1158c0; border-color: #1158c0; color: #fff; }
+.primary.danger { background: var(--red-text); border-color: var(--red-text); color: #fff; }
+.primary.danger:hover:not(:disabled) { background: #9d2035; border-color: #9d2035; color: #fff; }
+.primary.danger:active:not(:disabled) { background: #9d2035; border-color: #9d2035; color: #fff; }
+.ghost, .ghost-btn { background: #fff; color: #42536b; }
+input { min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #d7e0eb; border-radius: 7px; color: var(--ink); background: #fff; outline: none; font-size: 13px; }
+input::placeholder { color: #63748a; }
+input:focus { border-color: var(--blue); }
+input:disabled { background: var(--bg); color: var(--muted); }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+::selection { color: var(--ink); background: #dceaff; }
+svg.icon { flex: 0 0 auto; width: 16px; height: 16px; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+main { display: grid; grid-template-rows: auto auto minmax(0, 1fr) 6px var(--log-height); height: 100dvh; min-width: 0; background: #fff; }
 
-.modal-card {
-  width: min(520px, calc(100vw - 48px));
-  padding: 18px 20px 16px;
-  border: 1px solid var(--line);
-  /* Square. The main window is an instrument panel divided by 1px lines, and a
-     12px card in front of it reads as a different program. 4px is the seam. */
-  border-radius: 4px;
-  background: var(--panel);
-  box-shadow: 0 18px 48px rgba(16, 26, 40, 0.18);
+/* A short setup strip; the device table owns the vertical space. */
+.control-panel { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(160px, 208px) auto; align-items: end; gap: 14px; padding: 10px var(--pad) 12px; border-bottom: 1px solid var(--line); background: #fff; }
+.field { min-width: 0; }
+.field > label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.interface-control { display: flex; gap: 7px; min-width: 0; }
+.interface-control #ifaceBtn { flex: 1; min-width: 0; justify-content: flex-start; padding: 0 10px; font-weight: 400; }
+.iface-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iface-address { flex: 0 0 auto; margin-left: auto; color: var(--blue-deep); font-variant-numeric: tabular-nums; }
+.iface-btn > .icon { width: 13px; height: 13px; margin-left: 4px; color: #65758a; }
+.target-field input { width: 100%; font-variant-numeric: tabular-nums; }
+.toolbar-actions { display: flex; align-items: center; }
+.toolbar-actions button { min-width: 116px; }
+.workbar { display: flex; align-items: center; gap: 16px; min-height: 52px; padding: 8px var(--pad); border-bottom: 1px solid var(--line); background: #fbfcfe; }
+.result-summary { flex: 1; min-width: 150px; white-space: nowrap; }
+.result-summary strong { font-size: 14px; font-weight: 600; }
+.result-summary strong.has-conflicts { color: var(--red-text); }
+.result-summary > span { margin-left: 9px; color: var(--muted); font-size: 12px; }
+.search-control { position: relative; flex: 0 1 220px; min-width: 150px; }
+.search-control > .icon { position: absolute; left: 10px; top: 9px; color: var(--muted); }
+.search-control input { width: 100%; padding-left: 34px; }
+.workbar-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.workbar-tools button { height: 32px; padding: 0 10px; font-size: 12px; }
+.workbar-tools .icon { width: 14px; height: 14px; }
+
+/* Compact data rows. IP and MAC share the same typeface as the UI. */
+.table-shell { display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: #fff; }
+.table-head, .group-row, .device-row, .solo-row { display: grid; grid-template-columns: var(--grid-cols); align-items: center; gap: 12px; }
+.table-head { flex: 0 0 auto; min-height: 34px; padding: 0 var(--pad); border-bottom: 1px solid var(--line); background: #f8fafc; color: #52647b; font-size: 11.5px; font-weight: 500; }
+.device-list { min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #c3cddd transparent; }
+.solo-row, .device-row { min-height: 40px; padding: 3px var(--pad); border-bottom: 1px solid #eef1f6; color: #34465c; font-size: 13px; cursor: context-menu; }
+.solo-row:hover, .device-row:hover { background: #f8fbff; }
+.solo-row > div, .device-row > div { min-width: 0; }
+.vendor-cell, .kind-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.solo-row .ip-cell { align-items: flex-start; flex-direction: column; gap: 1px; }
+.ip-line { display: flex; align-items: center; gap: 9px; }
+.ip, .mac, .mac-sub, .response-cell { font-family: inherit; font-variant-numeric: tabular-nums; }
+.ip-copy { display: inline-flex; height: auto; min-height: 18px; margin: 0; padding: 0; border: 0; border-radius: 3px; color: var(--ink); background: transparent; font-size: 13.5px; font-weight: 500; line-height: 1.25; }
+.ip-copy:hover:not(:disabled) { color: var(--blue-deep); background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.mac-sub { color: #63748a; font-size: 11px; line-height: 1.3; }
+.mac { color: #34465c; font-size: 12px; letter-spacing: .01em; }
+.own-ip, .own-ip:hover { background: #effaf4; }
+.own-tag { color: #087c53; font-size: 10px; font-weight: 600; line-height: 1.4; }
+.group-row { min-height: 40px; padding: 5px var(--pad); border-bottom: 1px solid #f0dde2; cursor: pointer; }
+.group-row.conflict { background: var(--red-bg); color: var(--red-text); }
+.group-row.conflict:hover { background: #ffecef; }
+.conflict .ip-copy, .conflict .ip-copy:hover:not(:disabled) { color: var(--red-text); }
+.chevron { display: inline-flex; width: 18px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--red-text); }
+.chevron .icon { width: 14px; height: 14px; }
+.chevron.open .icon { transform: rotate(90deg); }
+.conflict-badge { padding: 2px 6px; border-radius: 4px; background: #ffe4e8; font-size: 10.5px; font-weight: 500; white-space: nowrap; }
+.group-note { grid-column: 2 / -1; overflow: hidden; color: #9a4052; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.device-row { padding-left: calc(var(--pad) + 22px); background: #fffafb; }
+.device-row:hover { background: #fff5f6; }
+.status { display: inline-flex; align-items: center; gap: 5px; color: #596a80; font-size: 11.5px; white-space: nowrap; }
+.status.isolated { padding: 2px 7px; border-radius: 4px; background: #f0ecff; color: #5c43c3; }
+.empty { display: grid; place-items: center; min-height: 160px; padding: 36px; color: #63748a; font-size: 13px; }
+
+/* The log remains a separate, resizable pane at the bottom. */
+.log-resize-handle { position: relative; background: #f6f8fb; cursor: row-resize; touch-action: none; }
+.log-resize-handle::after { position: absolute; content: ''; width: 34px; height: 2px; top: 2px; left: calc(50% - 17px); border-radius: 2px; background: #c2cddd; }
+.log-resize-handle:hover::after, .log-resize-handle.dragging::after { background: var(--blue); }
+.activity-panel { display: flex; flex-direction: column; min-height: 0; padding: 9px var(--pad) 8px; overflow: hidden; border-top: 1px solid var(--line); background: #fff; }
+.log-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.log-head strong { font-size: 12px; font-weight: 600; }
+.log-head > span { overflow: hidden; color: var(--muted); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.log-entries { flex: 1; min-height: 0; margin-top: 7px; overflow: auto; color: #52647b; font-size: 11.5px; scrollbar-width: thin; scrollbar-color: #c3cddd transparent; }
+.log-entry { display: flex; align-items: baseline; gap: 14px; padding: 2px 0; }
+.log-time { flex: 0 0 51px; color: #63748a; font-size: 11px; font-variant-numeric: tabular-nums; }
+.log-message { overflow-wrap: anywhere; }
+.log-entry.ok .log-message { color: #087c53; }
+.log-entry.warn .log-message { color: #8f6109; }
+.log-entry.error .log-message { color: var(--red-text); }
+.log-empty { padding: 15px 0; color: #63748a; }
+.log-progress { display: flex; align-items: center; gap: 14px; padding-bottom: 8px; color: #52647b; font-size: 11.5px; }
+.log-progress > span { flex: 0 1 auto; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.log-progress i { flex: 1; height: 4px; overflow: hidden; border-radius: 8px; background: #e6edf6; }
+.log-progress b { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--blue); transition: width 160ms ease; }
+
+/* Shared menu and dialog controls. */
+.context-menu { position: fixed; z-index: 70; min-width: 196px; padding: 5px; border: 0; border-radius: 9px; background: #fff; box-shadow: 0 8px 32px #18223029; }
+.context-menu button { justify-content: flex-start; width: 100%; height: 33px; padding: 0 10px; border: 0; border-radius: 5px; font-size: 12.5px; font-weight: 400; }
+.context-menu > span { display: block; height: 1px; margin: 5px 7px; background: var(--line); }
+.context-menu button[data-menu='isolate'] { color: var(--red-text); }
+.iface-menu { max-width: min(720px, calc(100vw - 40px)); max-height: 380px; overflow: auto; }
+.iface-menu button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; text-align: left; }
+.iface-menu .tick { display: inline-flex; color: var(--blue-deep); }
+.iface-menu .tick .icon { width: 14px; height: 14px; }
+.iface-menu i { font-style: normal; }
+.if-name { overflow: hidden; text-overflow: ellipsis; }
+.if-net { color: #52647b; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.iface-menu .selected { background: var(--hover); }
+.modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px; background: #09142066; }
+.modal-card { width: 520px; max-width: 100%; max-height: calc(100dvh - 48px); overflow: auto; padding: 21px 24px 20px; border: 0; border-radius: 12px; background: #fff; box-shadow: 0 18px 56px #1822302e; }
+.modal-card--wide { width: 680px; }
+.modal-card header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.modal-card header strong { font-size: 16px; font-weight: 650; }
+.modal-card header button { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 5px; color: #52647b; background: transparent; }
+.modal-card footer { display: flex; align-items: center; gap: 7px; margin-top: 18px; }
+.spacer { flex: 1; }
+.modal-hint { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.modal-caution { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #e8d9b9; border-radius: 6px; background: #fff8e9; color: #805a1b; font-size: 12px; line-height: 1.6; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.modal-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; }
+.modal-grid input { width: 100%; }
+.filter-input { height: 32px; }
+.simple-book-list { max-height: 30vh; overflow: auto; margin-top: 12px; border-top: 1px solid var(--line); scrollbar-width: thin; }
+.simple-book-list button { display: grid; grid-template-columns: 150px 1fr 1fr; justify-content: stretch; gap: 12px; width: 100%; min-height: 34px; height: auto; padding: 7px 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; font-size: 12px; }
+.simple-book-list b { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.simple-book-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bookMessage { min-height: 0; margin: 8px 0 0; font-size: 12px; }
+#bookMessage:empty { display: none; }
+#bookSearch { width: 100%; margin-top: 18px; }
+
+/* DHCP: server identity first, followed by aligned network facts. */
+.dhcp-card, .available-card { display: flex; flex-direction: column; }
+.dialog-interface { margin: -8px 0 18px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.dialog-summary { margin: 0 0 15px; color: var(--ink); font-size: 13px; font-weight: 500; }
+.dhcp-list { min-height: 0; max-height: 44vh; overflow: auto; scrollbar-width: thin; }
+.dhcp-row { padding: 17px 0; border-top: 1px solid var(--line); }
+.dhcp-server-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+.dhcp-server-head strong { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dhcp-server-head > span { color: #52647b; font-size: 12px; overflow-wrap: anywhere; }
+.dhcp-mac { margin: 5px 0 17px; color: #63748a; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dhcp-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 32px; margin: 0; }
+.dhcp-facts > div { min-width: 0; }
+.dhcp-facts dt { margin-bottom: 4px; color: var(--muted); font-size: 11.5px; }
+.dhcp-facts dd { margin: 0; color: #26364c; font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dhcp-facts dd > span, .dhcp-facts small { display: block; }
+.dhcp-facts small { margin-top: 3px; color: #63748a; font-size: 11.5px; }
+.dhcp-help { padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+.dhcp-help p { margin: 0; }
+.dhcp-help details { margin-top: 5px; }
+.dhcp-help summary { width: fit-content; cursor: pointer; }
+.dhcp-help details p { margin-top: 6px; }
+.dhcp-loading, .dialog-empty { padding: 26px 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.dialog-empty strong { color: var(--ink); font-size: 14px; font-weight: 500; }
+.dialog-empty p { margin: 6px 0 0; }
+
+/* Candidate addresses remain individually selectable and searchable. */
+.available-scope { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 15px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.available-scope > span { color: #34465c; }
+.available-card .filter-input { flex: none; width: 100%; margin: 0 0 12px; }
+.available-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; min-height: 0; max-height: 42vh; overflow: auto; margin: 0; padding: 2px; list-style: none; scrollbar-width: thin; }
+.available-list:empty { display: none; }
+.available-list button { justify-content: flex-start; width: 100%; height: 32px; padding: 0 10px; border-color: var(--line); border-radius: 5px; background: #f8fafd; color: #34465c; font-size: 12.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.available-note { margin: 14px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+.available-status { min-height: 18px; margin: 5px 0 0; color: var(--blue-deep); font-size: 11.5px; }
+
+/* Monospace is reserved for the Ping terminal. */
+.diagnostic-card { width: 560px; }
+#diagnosticDialog.is-terminal .diagnostic-card { width: 740px; }
+.tcp-form { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+.tcp-form label { color: var(--muted); font-size: 12px; }
+.tcp-form input { width: 130px; }
+.diagnostic-results { max-height: 260px; overflow: auto; margin-top: 12px; font-size: 12px; scrollbar-width: thin; }
+.diagnostic-results:empty { display: none; }
+.diagnostic-line { display: grid; grid-template-columns: 64px 1fr auto; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.diagnostic-line time { color: #63748a; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.diagnostic-line b { font-weight: 400; font-variant-numeric: tabular-nums; }
+.diagnostic-line span { min-width: 0; overflow-wrap: anywhere; }
+.diagnostic-line.success span { color: #087c53; }
+.diagnostic-line.failure span { color: var(--red-text); }
+.is-ping .diagnostic-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 18px 0; }
+.ping-metric { display: flex; flex-direction: column; gap: 5px; }
+.ping-metric > span { color: var(--muted); font-size: 11.5px; }
+.ping-metric b { font-size: 15px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.ping-terminal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 7px 7px 0 0; background: var(--tint); color: #52647b; font: 11px 'Cascadia Mono', Consolas, monospace; }
+#pingRunState { color: #63748a; font-size: 10px; letter-spacing: .04em; }
+#pingRunState.running { color: #087c53; }
+.is-terminal .diagnostic-results { display: block; height: 250px; max-height: 38vh; margin-top: 0; padding: 8px 14px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 7px 7px; background: #f8fafd; font-family: 'Cascadia Mono', Consolas, monospace; }
+.is-ping .diagnostic-results:empty::before { content: 'Waiting for reply…'; color: var(--muted); }
+.is-terminal .diagnostic-line { grid-template-columns: 70px 44px minmax(0, 1fr) 72px; gap: 10px; padding: 5px 0; border: 0; font-size: 12px; line-height: 1.55; }
+.is-terminal .diagnostic-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-terminal .diagnostic-line b { text-align: right; }
+.ping-sequence { color: #63748a; font-size: 11px; font-style: normal; }
+@media (max-width: 1000px) {
+  :root { --pad: 16px; }
+  .control-panel { grid-template-columns: minmax(260px, 1fr) 176px auto; gap: 10px; }
+  .result-summary > span { display: block; margin: 1px 0 0; font-size: 11px; }
+  .workbar { gap: 10px; }
+  .search-control { flex-basis: 180px; }
+  .workbar-tools button { padding: 0 8px; }
 }
-
-.modal-card header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
+@media (max-width: 760px) {
+  .control-panel { grid-template-columns: minmax(0, 1fr) auto; }
+  .interface-field { grid-column: 1 / -1; }
+  .target-field { min-width: 0; }
+  .workbar { flex-wrap: wrap; }
+  .result-summary { flex: 1; }
+  .workbar-tools { margin-left: auto; }
+  .search-control { flex: 1; }
+  .table-head, .solo-row, .group-row, .device-row { gap: 8px; }
+  .group-note { font-size: 11px; }
+  .modal { padding: 16px; }
+  .modal-card { padding: 18px; max-height: calc(100dvh - 32px); }
 }
-
-.modal-card header strong { font-size: 15px; }
-
-.modal-card header button {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 2px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 17px;
-  cursor: pointer;
+@media (max-width: 560px) {
+  .dhcp-server-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .dhcp-facts { gap: 16px 20px; }
+  .available-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .modal-grid { gap: 10px; }
+  .simple-book-list button { grid-template-columns: 120px 1fr; }
+  .simple-book-list button > span:last-child { display: none; }
 }
-
-.modal-card header button:hover { background: var(--hover); }
-
-.modal-hint {
-  margin: 0 0 14px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
 }
-
-.modal-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 12px;
-}
-
-.modal-grid label {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.modal-grid input {
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: #fff;
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.modal-grid input:focus {
-  border-color: var(--blue);
-  outline: none;
-}
-
-.modal-scope {
-  margin-top: 12px;
-  padding: 9px 11px;
-  border-radius: 0;
-  background: var(--tint);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  min-height: 18px;
-}
-
-.modal-card footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.modal-card footer .spacer { flex: 1; }
-
-.modal-card footer button {
-  padding: 8px 15px;
-  border-radius: 0;
-  border: 1px solid var(--line);
-  background: #fff;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.modal-card footer button:hover { background: var(--hover); }
-
-.modal-card footer button.primary {
-  border-color: transparent;
-  background: var(--blue);
-  color: #fff;
-  font-weight: 600;
-}
-
-.modal-card footer button.primary:hover { background: var(--blue-deep); }
-.modal-card footer button.ghost { color: var(--muted); }
-
-.book-tag {
-  margin-left: 5px;
-  color: var(--blue);
-  font-size: 10px;
-  font-style: normal;
-  opacity: 0.75;
-}
-
-.modal-scope { white-space: pre-line; }
-.modal-caution { margin:10px 0 0; padding:9px 11px; border-left:3px solid #d99b2f; background:#fff8e9; color:#8b611a; font-size:12px; line-height:1.55; }
-.modal-card footer button.danger { background:var(--red); border-color:var(--red); }
-.modal-card footer button.danger:hover { background:#d9394d; }
-
-/* .context-menu button carries display:block, so the hidden attribute does nothing.
-   Isolate / Release isolation must show only the one that matches the current state. */
-.context-menu button[hidden] { display: none !important; }
-
-/* ── Search · sort · compare ───────────────────────────────────────── */
-
-.workbar-tools {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.filter-input {
-  width: 230px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: #fff;
-  font-size: 12px;
-}
-
-.filter-input:focus { border-color: #7fa8ee; outline: none; }
-
-.ghost-btn {
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  background: #fff;
-  color: #4a5b70;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.ghost-btn:hover { background: #f2f7ff; border-color: #9fc0f2; color: #1769df; }
-
-.table-head .sortable { cursor: pointer; user-select: none; }
-.table-head .sortable:hover { color: #4a5b70; }
-.table-head .sortable[data-dir="asc"]::after  { content: " ▲"; font-size: 8px; }
-.table-head .sortable[data-dir="desc"]::after { content: " ▼"; font-size: 8px; }
-
-/* Stack name and reply time as a second line in the model column (without widening it) */
-.model-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.model-cell .sub {
-  overflow: hidden;
-  color: #9aa8ba;
-  font-size: 10px;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.modal-card--wide { width: min(680px, calc(100vw - 48px)); }
-
-.compare-body { max-height: 52vh; overflow-y: auto; margin-top: 4px; }
-.compare-group { margin-bottom: 14px; }
-.compare-group h4 { margin: 0 0 6px; font-size: 12px; color: #4a5b70; }
-.compare-group h4 b { color: #1769df; }
-.compare-none { margin: 0; color: #9aa8ba; font-size: 12px; }
-
-.compare-row {
-  display: grid;
-  grid-template-columns: 190px 150px 1fr;
-  gap: 10px;
-  align-items: center;
-  padding: 6px 9px;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  font-size: 12px;
-}
-
-.compare-row .ip { font-family: Consolas, monospace; }
-.compare-row.is-add  { background: #eefaf3; border-left-color: #2fa06d; }
-.compare-row.is-gone { background: #fdeef0; border-left-color: #d94a5a; }
-.compare-row.is-move { background: #fff6e6; border-left-color: #d99b2f; }
-
-.history-body { max-height:52vh; overflow-y:auto; margin-top:4px; border-top:1px solid var(--line); }
-.history-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:10px 2px; border-bottom:1px solid var(--line); }
-.history-row strong { display:block; color:#34465c; font-size:12px; }
-.history-row span { display:block; margin-top:3px; color:#8b98a9; font-size:11px; }
-
-/* Free IP list — consecutive addresses collapse into one block */
-.free-body { max-height:420px; overflow:auto; border:1px solid var(--line); background:#fff; }
-.free-ip { padding:5px 12px; color:#3d4a5c; font-family:Consolas,monospace; font-size:12.5px; border-bottom:1px solid #f2f4f7; }
-.free-ip:last-child { border-bottom:none; }
-.free-ip:hover { background:#f8fbff; }
-
-/* Switch port */
-.swport { display:inline-flex; width:max-content; padding:3px 7px; color:#1f6feb; background:#eef4ff; font-family:Consolas,monospace; font-size:11px; }
-
-/* More columns means each one is narrower. Overflow gets clipped — hover to read the rest. */
-.device-row > div { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.device-row .ports { overflow:visible; white-space:normal; }
-.device-row .dim { color:#c3ccd8; }
-.device-row .more { display:inline-block; margin-left:5px; font-style:normal; color:#a9b4c2; font-size:10.5px; }
-.mac .status { margin-left:7px; }
-.group-note { grid-column:2 / -1; color:inherit; white-space:nowrap; }
-
-/* Choosing which columns to show */
-.column-menu { min-width:168px; max-height:70vh; overflow:auto; }
-.column-menu button { display:flex; align-items:center; gap:8px; }
-.column-menu button[disabled] { color:#b4bfcc; cursor:default; }
-.column-menu button[disabled]:hover { background:none; }
-.column-menu .tick { font-style:normal; font-size:12px; color:#5b6b80; }
-.table-head span.sortable { cursor:pointer; user-select:none; }
-
-/* Top row — name on the left, language menu on the right */
-/* ── Merged row ──────────────────────────────────────────────────────
-   An IP with only one device on it. All eight columns that were folded away get filled in here.
-   ------------------------------------------------------------------- */
-.solo-row { display:grid; grid-template-columns:var(--grid-cols); align-items:center;
-            min-height:42px; padding:0 var(--pad); border-bottom:1px solid #eef2f7;
-            color:#65758a; cursor:context-menu; }
-.solo-row:hover { background:#f8fbff; }
-/* This PC gets a thin bar on the left, nothing more. Paint the whole row and the list goes blotchy. */
-.solo-row.own-ip { box-shadow:inset 3px 0 0 var(--green); }
-.solo-row .ip-cell { display:flex; align-items:baseline; gap:9px; min-width:0; }
-/* Bold the IP and every row goes bold. Something that appears on every row is not
-   emphasis — it just makes the whole left column heavy and crude. Bold stays for conflicts only. */
-.solo-row .ip { font-weight:400; color:#415063; letter-spacing:.1px; }
-.mac-sub { color:#96a3b4; font-family:Consolas,"JetBrains Mono",monospace;
-           font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-body.dense .solo-row { min-height:26px; }
-body.dense .mac-sub { font-size:10.5px; }
-
-/* ── Spend colour sparingly ──────────────────────────────────────────
-   Green port chips · blue switch ports · green power on every single row makes
-   five colours, and then nothing looks urgent. Lay the routine ones down in grey
-   and keep red for the real problems (conflicts · links slower than they used to be).
-   ------------------------------------------------------------------- */
-.port { color:#5b6b80; background:#f0f3f7; }
-.swport { color:#4a5b70; background:#f0f3f7; }
-.solo-row .kind-confidence, .device-row .kind-confidence { display:none; }
-
-/* Why we refuse to hand out a free IP. This list gets used for assignment as-is, so
-   when it cannot be trusted the reason has to be large on screen, not a blank panel. */
-.free-refuse { margin:0; padding:22px 20px; border-left:3px solid var(--red);
-               background:#fff2f1; color:#8c332c; font-size:12.5px; line-height:1.65; }
-
-/* ── Device book list ───────────────────────────────────────────────
-   Over 2,600 MAC prefixes, but only 150 entries. Lay the prefixes out one per
-   row and nobody can read it. Group by vendor and type; keep the prefixes folded.
-   ------------------------------------------------------------------- */
-.book-list-head { display:flex; align-items:center; gap:9px; margin:16px 0 7px; }
-.book-list-head strong { font-size:12px; color:#3d4a5c; }
-.book-list-head #bookCount { color:var(--muted); font-size:11.5px; }
-.book-list-head .filter-input { width:190px; height:28px; font-size:12px; }
-.book-list { max-height:240px; overflow-y:auto; border:1px solid var(--line);
-             border-radius:0; background:#fcfdfe; }
-.bk-item { border-bottom:1px solid #eef2f6; }
-.bk-item:last-child { border-bottom:0; }
-.bk-row { display:grid; grid-template-columns:1.1fr 1fr auto; gap:10px;
-          align-items:center; padding:7px 11px;
-          cursor:pointer; font-size:12px; color:#4a5b70; }
-.bk-row:hover { background:#f1f7ff; }
-.bk-row.on { background:#e8f1fe; }
-.bk-row b { font-weight:600; color:#243043; }
-.bk-row .bk-kind { color:#65758a; }
-.bk-row .bk-pre { justify-self:end; color:#93a1b3; font-size:10.5px;
-                  font-family:ui-monospace,Consolas,monospace; white-space:nowrap; }
-.bk-row .bk-note { grid-column:1 / -1; margin-top:-2px; color:#98a5b5; font-size:11px; }
-/* Several prefixes stay folded. Click to expand and you get all of them —
-   before this, only the first one made it into the cell and the rest were unreachable. */
-.bk-row.many .bk-pre em { display:inline-block; width:0; height:0; margin-right:7px;
-                          border:4px solid transparent; border-left-color:#a5b1c0;
-                          vertical-align:middle; transition:transform .12s ease; }
-.bk-row.many.open .bk-pre em { transform:rotate(90deg) translateX(-1px); }
-.bk-pres { display:flex; flex-wrap:wrap; gap:5px; padding:2px 11px 10px 11px;
-           background:#f7f9fc; }
-.bk-pres[hidden] { display:none; }
-.bk-chip { padding:3px 8px; border:1px solid #dde4ed; border-radius:0;
-           background:#fff; color:#5b6b80; font-size:10.5px; cursor:pointer;
-           font-family:ui-monospace,Consolas,monospace; }
-.bk-chip:hover { border-color:var(--blue); color:var(--blue); background:#f1f7ff; }
-.bk-chip.on { border-color:var(--blue); background:#e8f1fe; color:var(--blue);
-              font-weight:600; }
-.bk-more { align-self:center; margin-left:4px; color:#98a5b5; font-size:10.5px;
-           font-style:normal; }
-.bk-mine { display:inline-block; margin-left:6px; padding:0 5px; border-radius:0;
-           background:#e8f7ef; color:#0d7a52; font-size:10px; font-weight:600; }
-.bk-empty { padding:22px; color:#98a5b5; font-size:12px; text-align:center; }
-
-/* ── Menu bar ────────────────────────────────────────────────────────
-   Features kept piling up until the top button row overflowed. Move them into
-   menus and the row empties out and, more to the point, every item gets a shortcut.
-   Most of "feels like a professional tool" is not grey chrome — it is being able to predict where a function lives.
-
-   The ones used constantly stay as buttons on the work bar below — a menu is
-   where you go to find something, not somewhere you pass through every time.
-   ------------------------------------------------------------------- */
-.menubar { display:flex; align-items:center; gap:1px; height:30px; margin:0;
-           padding:0 var(--pad) 0 6px; background:#fff;
-           border-bottom:1px solid var(--line); }
-.menubar > button { height:24px; padding:0 11px; border:0; background:transparent;
-                    color:#3d4a5c; font-size:12.5px; border-radius:0; cursor:pointer; }
-.menubar > button:hover { background:#eef4ff; color:#1769df; }
-.menubar > button.on { background:#e6effd; color:#1769df; }
-.mb-gap { flex:1; }
-.mb-stat { display:flex; align-items:center; gap:7px; color:#93a1b3; font-size:11.5px;
-           font-family:ui-monospace,Consolas,monospace; white-space:nowrap;
-           overflow:hidden; text-overflow:ellipsis; max-width:46vw; }
-.mb-stat i { flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:#c3ccd8; }
-.mb-stat.live i { background:#22a06b; }
-.mb-stat.busy i { background:#f0a020; }
-.mb-pop { position:fixed; z-index:40; min-width:216px; padding:5px; background:#fff;
-          border:1px solid #dbe3ed; border-radius:4px; box-shadow:0 14px 36px #24334b26; }
-.mb-pop button { display:flex; align-items:center; gap:10px; width:100%; height:30px;
-                 padding:0 10px; border:0; background:none; color:#34465c;
-                 font-size:12.5px; text-align:left; cursor:pointer; }
-.mb-pop button:hover { background:#eef5ff; color:#1769df; }
-.mb-pop button[disabled] { color:#b3bdca; cursor:default; background:none; }
-.mb-pop button b { flex:1; font-weight:400; }
-.mb-pop button b::before { content:'\2713'; margin-right:8px; color:transparent; }
-.mb-pop button.tick b::before { color:#1769df; }
-.mb-pop button i { color:#a8b4c4; font-style:normal; font-size:11px;
-                   font-family:ui-monospace,Consolas,monospace; }
-.mb-pop hr { height:1px; margin:5px 4px; border:0; background:#edf1f5; }
-
-/* ── Compact rows ────────────────────────────────────────────────────
-   Sweeping 72 devices back at the office, more on one screen wins; standing at
-   the rack right-clicking, thick rows win. The boss does both, so it is a toggle.
-   ------------------------------------------------------------------- */
-body.dense .workbar { min-height:32px; }
-body.dense .table-head { min-height:26px; font-size:10.5px; }
-body.dense .group-row { min-height:25px; }
-body.dense .device-row { min-height:26px; padding-left:30px; }
-body.dense .model-cell .sub { display:none; }
-body.dense .ip, body.dense .mac { font-size:11.5px; }
-body.dense .status { padding:1px 6px; font-size:10.5px; }
-body.dense .port { padding:1px 4px; font-size:9.5px; }
-body.dense .conflict-badge { padding:1px 6px; font-size:10.5px; }
-body.dense .swcell { line-height:1.15; }
-body.dense .net-tabs { min-height:31px; padding:4px 8px 0; }
-body.dense .net-tab { height:26px; padding:0 10px; }
-
-.appbar { display:flex; align-items:center; justify-content:space-between; height:34px; margin-bottom:10px; border-bottom:1px solid var(--line); }
-.appbar-name { color:#6b7a8d; font-size:12.5px; font-weight:600; letter-spacing:.2px; }
-.appbar-btn { padding:4px 10px; color:#5b6b80; background:none; border:1px solid transparent; font-size:12px; cursor:pointer; }
-.appbar-btn:hover { color:#243043; background:#eef3fa; border-color:var(--line); }
-
-/* Work bar buttons sit hard right */
-.workbar-tools { display:flex; align-items:center; gap:6px; margin-left:auto; }
-
-/* The scan controls up top tie the input fields and the run button into one look. */
-.control-panel { border-radius:0; }
-.control-panel .field select,
-.control-panel .field input,
-.control-panel .interface-control button,
-.control-panel .toolbar-actions button { border-radius:0; }
-
-/* The selected interface's IP is our own machine, so set it apart in the list at a glance. */
-.group-row.own-ip:not(.conflict) {
-  padding-left:13px;
-  color:#087c53;
-  background:#effaf4;
-  border-left:3px solid var(--green);
-}
-.group-row.own-ip:not(.conflict):hover { background:#e6f7ee; }
-
-/* The IP digits copy; the rest of the group row expands/collapses — keep the two actions from overlapping. */
-.ip-copy { width:auto; height:auto; padding:0; border:0; color:inherit; background:transparent; cursor:copy; }
-.ip-copy:hover { color:var(--blue); text-decoration:underline; }
-.ip-copy:focus-visible { outline:2px solid #9fc0f2; outline-offset:2px; }
-
-.kind-cell { display:flex; align-items:center; gap:5px; min-width:0; }
-.kind-confidence { flex:0 0 auto; padding:2px 5px; border-radius:0; font-size:10px; font-style:normal; line-height:1.2; }
-.kind-confidence.confirmed { color:#087c53; background:#e8f7ef; }
-.kind-confidence.estimated { color:#9a6508; background:#fff3dc; }
-
-/* During a scan the blue button in that same spot becomes a red 'Stop' */
-.primary.danger { background:var(--red); border-color:var(--red); }
-.primary.danger:hover { background:#d9394d; }
-
-/* Link speed — sits next to the switch port name. Red when it is slow */
-/* Sites with several switches — which switch, which port number, on two lines. */
-/* Keep it to one line. Two lines pin the row height and compact mode stops working. */
-.swcell { display:flex; align-items:center; gap:6px; min-width:0; }
-.swname { flex:0 0 auto; color:#95a2b3; font-size:10.5px; line-height:1.2; overflow:hidden;
-          text-overflow:ellipsis; white-space:nowrap; }
-/* The port name is what shrinks first — the speed and power chips are short and always the same width. */
-.swcell > .swport { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.swcell > .swspeed, .swcell > .poe { flex:0 0 auto; }
-.swspeed { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#eef1f5; font-style:normal; font-size:10.5px; font-weight:600; }
-.swspeed.slow { color:#fff; background:var(--red); }
-
-/* Range tabs — they only appear when you swept with two or more adapters selected */
-/* flex:0 0 auto must not go missing. .table-shell is a column flex, so with no size
-   pinned this row gets squeezed as the table grows and the bottom of the text is cut off. */
-/* If the rule that turns display on comes after [hidden], hiding it still takes up space.
-   With only one range, that left an empty grey band above the table. */
-.net-tabs[hidden] { display:none; }
-.net-tabs { flex:0 0 auto; display:flex; align-items:flex-end; gap:2px;
-            min-height:37px; padding:6px var(--pad) 0; background:#f9fbfd;
-            border-bottom:1px solid var(--line); overflow-x:auto; overflow-y:hidden; }
-.net-tab { flex:0 0 auto; display:inline-flex; align-items:center; height:30px;
-           padding:0 12px; border:1px solid transparent; border-bottom:0;
-           background:transparent; color:#7c8b9c; font-size:12px; line-height:1;
-           white-space:nowrap; }
-.net-tab i { display:inline-block; margin-left:7px; padding:1px 6px; font-style:normal;
-             font-size:10.5px; color:#8b98a8; background:#eef2f6; border-radius:0; }
-.net-tab:hover { color:var(--ink); }
-.net-tab.on { color:var(--ink); background:#fff; border-color:var(--line);
-              border-radius:2px 2px 0 0; font-weight:600; margin-bottom:-1px; }
-.net-tab.on i { color:var(--blue); background:#e8f0fe; }
-
-/* Adapter picker — tick several and sweep them all in one pass */
-.iface-btn { flex:1; min-width:0; text-align:left; overflow:hidden; text-overflow:ellipsis;
-             white-space:nowrap; }
-.iface-btn::after { content:'▾'; float:right; margin-left:8px; color:#98a5b5; }
-.iface-menu { width:auto; max-width:min(560px, calc(100vw - 32px)); }
-.iface-menu button { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; }
-.iface-menu i { font-style:normal; }
-.iface-menu .if-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.iface-menu .if-net { color:var(--muted); font-family:ui-monospace,Consolas,monospace;
-                      font-size:11px; white-space:nowrap; }
-
-/* ── Switch faceplate ─────────────────────────────────────────────────
-   Odd numbers on top, even on the bottom, like the real unit. It has to match
-   what you see standing at the rack or you count ports by eye instead of pointing.
-
-   The background is white. Paint the faceplate black and it mimics the hardware,
-   but it drops a black slab in the middle of the screen and kills the green and red you came to look at. */
-.modal-card--face { width:min(1080px, calc(100vw - 48px)); max-width:none; }
-.face { margin-top:14px; }
-/* The plate sits on the app's grey rather than on white, so the ports read as parts
-   mounted on a face instead of chips floating in the dialog. */
-.face-plate { display:flex; gap:20px; align-items:flex-start; padding:16px 18px;
-              background:var(--bg); border:1px solid var(--line); border-radius:2px; overflow-x:auto; }
-.face-bank { display:flex; flex-direction:column; gap:5px; }
-.face-bank--uplink { padding-left:18px; border-left:1px dashed #dbe3ec; }
-.face-line { display:flex; gap:4px; }
-.face-tag { margin-top:6px; color:#9aa7b6; font-size:10.5px; letter-spacing:.04em; text-align:center; }
-/* These were 24x22 with 10px numbers — smaller on screen than the legend explaining them,
-   when they are the whole reason the window opens. At this size the bank reads as the
-   switch's own face, which is the object the tech already knows how to look at. */
-.pport { position:relative; display:grid; place-items:center; width:34px; height:30px; padding:0;
-         border:1px solid #dbe3ec; border-radius:2px; background:#fff; color:#8b98a8;
-         font-family:ui-monospace,Consolas,monospace; font-size:12px; line-height:1; cursor:pointer; }
-.pport:hover { border-color:#8ea6c2; color:#3c4b5e; }
-/* Unused ports get an outline only. Anything carrying colour has to be something worth looking at. */
-.pport.idle { }
-.pport.live { background:#e7f7f0; border-color:#93d9bd; color:#07734d; }
-/* 100M is red. This is the exact condition this tool exists to catch. */
-.pport.slow { background:#fdeaed; border-color:#f2a7b1; color:#c02a3e; }
-/* Measured below the port's rated speed, but nothing proves it is a fault. Amber sits
-   between "checked and fine" and "we have evidence", which is exactly where this is. */
-.pport.warn { background:#fdf3e0; border-color:#e8bd72; color:#9a6412; }
-/* A locked port shows an X instead of its number. Colour alone gets mistaken for 100M. */
-/* The switch said nothing about this port. Hatched, not coloured — it is the absence of
-   a reading, not a state, and it must never look like an empty port. */
-.pport.unknown { background:repeating-linear-gradient(135deg,#f4f6f9,#f4f6f9 3px,#e4e9f0 3px,#e4e9f0 6px);
-                 border-color:#c3ccd8; color:#8b98a8; }
-.pport.locked { background:#f4f6f9; border-color:#e7475b; color:#e7475b; font-size:12px; }
-/* One yellow band underneath when PoE is feeding power. Add another colour and the state stops reading. */
-.pport.has-poe { box-shadow:inset 0 -4px 0 #edc23c; }
-.pport.keep { cursor:not-allowed; border-style:dashed; }
-.pport.picked { outline:2px solid var(--blue); outline-offset:1px; }
-.pport--gap { visibility:hidden; }
-.face-legend { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:10px;
-               color:var(--muted); font-size:11.5px; }
-.face-key { display:flex; align-items:center; gap:7px; }
-.face-key .pport { width:18px; height:16px; cursor:default; font-size:10px; }
-
-/* One line at the top of the window — which switch, and what state it is in right now */
-.ports-top { display:flex; justify-content:space-between; align-items:baseline; gap:16px;
-             flex-wrap:wrap; margin-top:4px; color:var(--muted); font-size:12.5px; }
-.ports-top #portsWhere { font-family:ui-monospace,Consolas,monospace; }
-#portsTally { display:flex; gap:14px; }
-.tally { display:inline-flex; align-items:baseline; gap:5px; font-size:12px; }
-.tally b { font-size:18px; font-weight:700; font-variant-numeric:tabular-nums; }
-.tally.live b { color:var(--green); }
-.tally.slow b { color:var(--red); }
-.tally.warn b { color:var(--amber); }
-.tally.locked b { color:var(--red); }
-.tally.unknown b { color:var(--muted); }
-/* Name it pwr — .poe is already taken by the device-list chip and its background bleeds through. */
-.tally.pwr b { color:#a5820e; }
-
-/* The one selected port — a one-line summary and buttons, nothing else. Select nothing and it does not show at all. */
-.port-detail { margin-top:12px; padding:12px 14px; background:#fbfcfe;
-               border:1px solid var(--line); border-radius:0; }
-.pd-line { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:11px; }
-.pd-line > b { font-family:ui-monospace,Consolas,monospace; font-size:13px; color:var(--ink); }
-.pd-meta { color:var(--muted); font-size:12px; }
-.pd-alias { font-style:normal; font-size:12px; color:#7b8798; }
-.pd-keep { font-style:normal; font-size:11px; color:#8a6d1f; background:#fff6e2;
-           padding:2px 8px; border-radius:0; }
-.port-state { font-weight:600; font-size:11.5px; }
-.port-state.up { color:#1b7a52; }
-.port-state.down { color:#95a2b3; }
-.port-state.locked { color:var(--red); }
-.pd-ghost { margin:0 0 11px; padding:8px 11px; border-left:3px solid var(--amber);
-            background:#fff8e9; color:#8b611a; font-size:12px; line-height:1.55; }
-/* The record that this port used to be faster. Not a guess (slowLink) but a fact we
-   wrote down, so it gets its own block where you cannot miss it. 'This speed is normal'
-   sits beside it — a port with a deliberate 100M device left red forever gets red ignored everywhere. */
-.pd-was { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-          margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
-          background:#fff2f1; color:#8c332c; font-size:12px; line-height:1.55; }
-/* The headline takes its own line. Left to wrap, it shares a row with the explanation
-   and shoves the button down on its own, leaving a hole in the middle of the block. */
-.pd-was b { flex:1 0 100%; font-size:13px; color:#7a2b25; }
-.pd-was span { flex:1; min-width:200px; color:#96594f; }
-.pd-was button { flex:0 0 auto; height:28px; font-size:11.5px;
-                 background:#fff; border-color:#e8c4bf; color:#8c332c; }
-
-/* Half duplex. Same red as a speed drop, but its own block — the fix is different.
-   A speed drop means re-terminating the cable; half duplex means matching the settings at both ends.
-   Mix them into one block and the tech re-terminates a good cable twice and still has not fixed it. */
-.pd-half { margin:0 0 11px; padding:9px 12px; border-left:3px solid var(--red);
-           background:#fff2f1; color:#8c332c; font-size:12px; line-height:1.55; }
-.pd-half b { display:block; margin-bottom:3px; font-size:13px; color:#7a2b25; }
-.pd-half span { display:block; color:#96594f; }
-/* Late collisions are evidence, not a guess. Stand them up in bold. */
-.pd-half .pd-proof { margin-top:5px; font-weight:600; color:#8c332c; }
-
-/* The ½ on a faceplate port. It must not cover the number, so it goes small in the bottom-right corner. */
-.pport .pp-half { position:absolute; right:2px; bottom:1px; font-size:10.5px;
-                  font-style:normal; font-weight:700; line-height:1; opacity:.9; }
-.face-key .pport.half { font-size:10px; }
-/* The ½ that attaches to the speed column in the list */
-.swspeed b { margin-left:2px; font-weight:700; }
-
-/* Commissioning report dialog — wide fields take up both columns */
-.report-form .wide { grid-column:1 / -1; }
-.report-form textarea { padding:8px 10px; border:1px solid var(--line);
-                        border-radius:0; background:#fff; color:var(--ink);
-                        font-family:inherit; font-size:12.5px; line-height:1.5;
-                        resize:vertical; }
-.report-form textarea:focus { border-color:var(--blue); outline:none; }
-
-/* In-dialog run log. The activity log below is hidden behind the dialog —
-   the reason you were refused, and the waiting, have to show right there. */
-.modal-log { max-height:132px; margin:12px 0 0; padding:8px 10px; overflow-y:auto;
-             background:#f7f9fc; border:1px solid var(--line); border-radius:0;
-             font-size:12px; line-height:1.5; }
-.ml-line { display:flex; gap:9px; padding:2px 0; color:#5b6b80; }
-.ml-line i { flex:0 0 auto; font-style:normal; color:#a3b0c0;
-             font-family:ui-monospace,Consolas,monospace; font-size:10.5px; padding-top:1px; }
-.ml-line span { flex:1; min-width:0; }
-.ml-line.ok span { color:#127a52; }
-.ml-line.warn span { color:#96650c; }
-.ml-line.bad span { color:var(--red); font-weight:600; }
-
-.pd-acts { display:flex; gap:7px; flex-wrap:wrap; }
-.pd-acts button { height:30px; font-size:12px; }
-.danger-btn { color:var(--red); border-color:#f0c8c4; }
-.danger-btn:hover:not(:disabled) { background:#fdeceb; }
-.danger-btn:disabled { color:#c3cbd5; border-color:#e6ebf1; background:#f7f9fb; cursor:not-allowed; }
-
-/* ── Simple scanner edition ────────────────────────────────────────── */
-.simple-book-list { max-height:32vh; overflow:auto; margin-top:10px; border-top:1px solid var(--line); }
-.simple-book-list button { display:grid; grid-template-columns:160px 1fr 1fr; gap:10px; width:100%; min-height:32px; height:auto; padding:7px; text-align:left; border:0; border-bottom:1px solid var(--line); }
-.simple-book-list button:hover { background:var(--hover); }
-.simple-book-list b { font-size:11px; font-weight:400; }
-.simple-book-list span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#bookDialog .modal-card { max-height:90vh; overflow:auto; }
-#bookMessage { margin-top:10px; }
-#bookSearch { margin-top:14px; width:100%; }
-.control-panel .interface-control button,
-.control-panel .toolbar-actions button,
-.ghost-btn,
-.context-menu,
-.context-menu button,
-.modal-card footer button { border-radius:6px; }
-.context-menu { width:180px; }
-.table-head,.group-row,.device-row,.solo-row { grid-template-columns:var(--grid-cols); }
-.group-row.conflict { grid-template-columns:var(--grid-cols); }
-.group-row .group-note { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-/* The write community is only needed when you actually write, so it lives on the bottom action row. */
-.ports-foot { align-items:center; gap:10px; }
-.ports-comm { display:flex; align-items:center; gap:8px; margin:0; }
-.ports-comm > span { color:var(--muted); font-size:11.5px; white-space:nowrap; }
-.ports-comm > input { width:170px; height:30px; font-size:12px; }
-
-/* A port drawing power over PoE. Green means "there is current flowing here". */
-.poe { display:inline-block; margin-left:0; padding:1px 5px; color:#5b6b80; background:#f0f3f7; font-style:normal; font-size:10.5px; font-weight:600; }
-
-
-/* ── DHCP server check ─────────────────────────────────────────────── */
-.dhcp-list { max-height:46vh; overflow:auto; margin-top:10px; }
-.dhcp-list:empty { display:none; }
-.dhcp-row { padding:10px 2px; border-top:1px solid var(--line); }
-.dhcp-row:last-child { border-bottom:1px solid var(--line); }
-.dhcp-who { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; }
-.dhcp-who b { font-size:14px; }
-.dhcp-who span { color:var(--muted); font-size:12px; }
-.dhcp-facts { display:flex; flex-wrap:wrap; gap:4px 18px; margin-top:6px; font-size:12px; }
-.dhcp-facts i { margin-right:6px; color:var(--muted); font-style:normal; }

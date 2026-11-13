@@ -46,6 +46,8 @@ build.log
 /rust-*.log
 /rust-*.json
 /_smoke/
+/.impeccable/review/
+/research/**/target/
 
 # ── Editors / OS ──────────────────────────────────────────────────────
 .vscode/

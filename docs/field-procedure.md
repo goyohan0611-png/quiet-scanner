@@ -1,203 +1,36 @@
-# Field procedure — clearing duplicate IPs
+# 현장에서 IP 충돌 처리하기
 
-> How to sort out a rack of devices that all shipped with the same factory IP,
-> **without unplugging anything**, one device at a time from the screen.
+이 문서는 Windows용 Quiet Scanner 4.0 기준입니다.
 
----
+## 준비
 
-## Why a normal IP scanner cannot see the problem
+1. Windows 10/11 x64에서 Quiet Scanner와 [Npcap](https://npcap.com)을 설치합니다. Npcap은 별도 설치 항목입니다.
+2. 점검할 장비와 같은 스위치·브로드캐스트 구간에 PC를 연결합니다.
+3. 관리자 권한으로 실행한 뒤 네트워크 인터페이스와 IPv4·서브넷 마스크를 확인합니다.
 
-Four devices are all using `192.168.0.13`. The PC broadcasts "who has
-192.168.0.13?" and **all four answer**. But the Windows ARP table stores one MAC
-per IP — the last reply overwrites the ones before it.
+소스에서 빌드할 때는 Rust MSVC·Microsoft C++ Build Tools·Node.js가 필요합니다. 현재 설치 파일에는 Python이나 Electron 실행 환경이 필요하지 않습니다.
 
-So a ping-based tool such as Advanced IP Scanner shows **exactly one** of them.
-The other three are alive and simply not on screen.
+## 스캔
 
-Two things get you out of it:
+인터페이스와 스캔 대역을 확인하고 **대역 스캔**을 누릅니다. 제어판에서 PC의 IP를 변경했다면 먼저 **새로고침**을 누릅니다. 목록은 첫 응답부터 표시하며, 진행률은 추가 응답을 재확인하는 시간도 포함합니다.
 
-1. **Read every ARP reply off the wire**, bypassing the OS table — now you see,
-   MAC by MAC, how many devices are sitting on that IP.
-2. **Pin one MAC with a static ARP entry (isolation)** — traffic to that IP now
-   reaches that one device. The rest go quiet, and you can open each device in
-   turn and change its IP.
+같은 IP에 서로 다른 MAC이 응답하면 빨간 충돌 항목으로 표시합니다. IP 행을 펼치면 개별 장비를 볼 수 있습니다. MAC 제조사는 네트워크 인터페이스의 등록 제조사이므로 제품 브랜드·모델과 다를 수 있습니다.
 
----
+## 한 대씩 분리해 설정
 
-## Before you start (once per laptop)
+1. 처리할 장비를 우클릭하고 **이 장비만 분리**를 선택합니다.
+2. 로그와 분리 상태를 확인합니다.
+3. 브라우저 등 해당 장비의 설정 도구에서 IP를 변경합니다.
+4. **분리 해제** 후 다시 스캔해 충돌이 사라졌는지 확인합니다.
 
-| | |
-|---|---|
-| **Npcap** | https://npcap.com — tick **"WinPcap API-compatible mode"** during install |
-| **Administrator** | isolation writes a static ARP entry, which needs it. The app asks for elevation itself |
-| **Building from source** | Python 3.12, Node.js LTS, `pip install pyinstaller scapy`, then `build.bat` |
+분리는 **이 PC의 IP→MAC 연결을 임시 고정**합니다. 다른 PC의 통신을 제어하거나 장비의 IP를 직접 바꾸지 않습니다. 다른 장비가 네트워크에서 사라지는 것도 아닙니다. 해제 확인이 실패하면 앱이 복구 기록을 유지하므로, 로그를 확인하고 해제를 다시 시도하십시오.
 
----
+## 추가 확인
 
-## On site
+- **연속 Ping**: 우클릭으로 실행하고 응답 시간과 손실을 확인합니다. 무응답은 ICMP 차단일 수도 있습니다.
+- **TCP 포트 확인**: 우클릭 후 포트 하나를 입력합니다. 연결 성공은 로그인이나 장비 설정 완료를 뜻하지 않습니다.
+- **DHCP 서버 확인**: 응답한 서버의 제안 주소·서브넷·게이트웨이·DNS를 확인합니다. 이 PC의 주소 설정은 변경하지 않습니다.
+- **사용 가능한 IP**: 완료한 스캔에서 응답하지 않은 후보를 보여 줍니다. 실제 사용 전 DHCP 범위·예약 주소를 확인합니다. 미사용을 보장하는 목록은 아닙니다.
+- **MAC 장비 사전**: 확인된 장비의 MAC 앞자리 또는 전체 MAC에 제조사·종류·메모를 등록합니다.
 
-### 1 — Scan the range (F5)
-
-Pick an interface and the range fills in **from that adapter's own address**. A
-laptop on `192.168.0.50` gets `192.168.0.1-254`. Change the interface and the
-range follows.
-
-What the range box accepts:
-
-| Input | Meaning |
-|---|---|
-| `192.168.0.1-254` | the whole range |
-| `192.168.0.10-40` | part of it — faster when you know where the gear sits |
-| `192.168.0.13` | one address — just how many devices are on this IP |
-| `192.168.0.0/24` | CIDR works too |
-| `192.168.0.1-20,192.168.0.64` | several, comma-separated |
-
-Every device sharing an IP is found, and **conflicting IPs sort to the top**.
-The range is sent in chunks, so progress is live and devices appear as they are
-found. **Stop** cuts a long scan short and keeps what was found.
-
-**Conflicting IPs come expanded; single IPs come collapsed.** Addresses that did
-not answer are not listed — they show up under **Candidate IPs**.
-
-```
-▼ 192.168.0.13   [4 in conflict]
-    BC-AD-28-11-22-33   Hikvision   IP camera / NVR   DS-2CD2143G0-I   80/HTTP  554/RTSP  8000/HTTP
-    BC-AD-28-44-55-66   Hikvision   IP camera / NVR   DS-2CD2043G2-I   80/HTTP  554/RTSP  8000/HTTP
-    90-02-A9-AA-BB-CC   Dahua       DVR / NVR         IPC-HDW2431T     80/HTTP  554/RTSP  37777/Dahua
-    E4-30-22-DE-AD-01   Hanwha      IP camera         XNV-6081         80/HTTP  554/RTSP
-```
-
-### 2 — Identify the devices
-
-Right-click → **Identify device**. Each device is isolated briefly while open
-ports, the web page title, the auth realm and ONVIF data are collected, which
-fills in vendor, device type and model. It takes a few seconds per device;
-stopping part-way keeps whatever was learned.
-
-### 3 — Work through them one at a time
-
-Select a device → **Isolate this device only** → open it in a browser. That IP
-now points at that one device. Change its IP, save, then **Release isolation**
-and move on.
-
-**Use a private browsing window.** You will be hitting the same IP for several
-different devices, and the previous device's session gets in the way otherwise.
-
-### 4 — Leave a record
-
-**Export** writes the results out (CSV / JSON / XML), and **Report** produces a
-commissioning workbook: findings, device list, switch port layout, PoE power and
-free IPs. **History** keeps the last 30 completed scans so you can compare a
-later visit against this one — what appeared, what went missing, what moved.
-
----
-
-## Switch port lookup (SNMP)
-
-A managed switch remembers which MAC came in on which port. **Switch port**
-reads that table over SNMP v2c and attaches a port number to every device in the
-list — read-only; nothing on the switch is changed.
-
-It also flags ports that are **linked slower than the rest of the switch** and
-ports running **half duplex**. Both look fine in a speed column and are slow in
-practice. Gigabit uses all eight wires; one loose wire drops the link to 100M
-silently, with no other symptom.
-
----
-
-## How far isolation reaches
-
-Isolation applies to **one IP address only**. Isolating `192.168.0.13` has no
-effect on the internet, the office network, or any other device. Only traffic
-the PC sends to `192.168.0.13` is pinned to the device you chose; the others
-sharing that IP go quiet.
-
-**The one thing to watch** — if you leave isolation on and that IP is later
-taken by a different device, you will not reach it, because the PC still
-remembers the old MAC. So isolation is released automatically when:
-
-1. you release it,
-2. you isolate a different device (the previous one is released), or
-3. you close the window.
-
-The static ARP entry lives in memory only, so even if the program is killed
-before it can clean up, **a reboot clears it**. To remove one by hand, from an
-administrator PowerShell:
-
-```powershell
-Remove-NetNeighbor -IPAddress 192.168.0.13 -Confirm:$false
-```
-
-Leftover entries from a crash are also cleaned up the next time the app starts.
-
----
-
-## Try this first — the vendor tools (30 seconds)
-
-If the site is all one brand, this may be the whole job. These tools find gear
-by L2 broadcast and ignore the IP, so overlapping addresses do not hide anything,
-and most of them can **change IPs in bulk**.
-
-| Vendor | Tool | Bulk change |
-|---|---|---|
-| Hikvision | **SADP** | yes |
-| Dahua | **ConfigTool** | yes |
-| Hanwha Vision | **Device Manager** | yes |
-| IDIS | IDIS Discovery | yes |
-| Axis | AXIS IP Utility | yes |
-| Uniview | EZTools | yes |
-| **Mixed brands** | **ONVIF Device Manager** | one at a time |
-
-Use Quiet Scanner when the brands are mixed, or when AV and network gear are on
-the same switch.
-
----
-
-## Side scripts
-
-For when Npcap cannot be installed, or the command line is simply faster.
-
-| File | Purpose | Needs |
-|---|---|---|
-| **tools/ArpDupScan.py** | command-line scanner; `--sweep` finds conflicts across a range | Npcap + scapy |
-| **tools/IPFix.ps1** | stock PowerShell, no Npcap. MAC collection is probabilistic, so not exhaustive | administrator only |
-| **tools/build_oui.py** | rebuilds `src/oui.dat.gz` from the IEEE registry | internet |
-
-```cmd
-python tools\ArpDupScan.py 192.168.0.0/24 --sweep
-python tools\ArpDupScan.py --list-ifaces
-```
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-.\tools\IPFix.ps1 -Ip 192.168.0.13 -ScanOnly -Rounds 100
-.\tools\IPFix.ps1 -Ip 192.168.0.13
-```
-
----
-
-## When something goes wrong
-
-| Symptom | Cause / what to do |
-|---|---|
-| Interface list is empty | Npcap not installed. Reinstall with "WinPcap API-compatible mode" ticked |
-| "scapy missing" | `pip install scapy` |
-| Isolate does nothing | Not running as administrator. Close and restart elevated |
-| Nothing answered | Cable, PoE power, wrong range, or the wrong interface selected |
-| Device type stays "Unidentified" | Identify has not been run, or the device has no web/ONVIF service |
-| Isolated, but several devices still answer | The switch may be doing storm control. Try connecting directly to the switch |
-| The new IP will not verify | The device is rebooting, or has closed every port. Check it in a browser |
-| Browser login gets confused | Use a private window |
-| Snapshot preview fails | Check the credentials. ONVIF or snapshots may be disabled, or it is not a camera |
-| Switch port lookup finds nothing | SNMP v2c read is not enabled, or the community string is wrong |
-
----
-
-## Not having the problem next time
-
-| Approach | What it means |
-|---|---|
-| **DHCP first** | Leave the router's DHCP on while gear is connected. A surprising amount of factory-reset equipment comes up on DHCP |
-| **Managed PoE switch** | Bring up one port at a time and work through them in order. Fully scriptable over SSH |
-| **Set up on intake** | Assign and label IPs in the warehouse before the gear ships. This saves the most site time of anything here |
-| **Keep the records** | File the commissioning report per site; tracing a device a year later becomes trivial |
+ARP 스캔과 분리는 같은 L2 네트워크에서 동작합니다. 다른 대역에 Ping이 된다는 사실만으로 그 대역의 ARP 충돌을 확인하거나 분리할 수 있는 것은 아닙니다.

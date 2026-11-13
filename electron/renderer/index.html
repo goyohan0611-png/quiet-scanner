@@ -11,26 +11,29 @@
     <main>
       <section class="control-panel">
         <div class="field interface-field">
-          <label>네트워크 인터페이스</label>
+          <label for="ifaceBtn">네트워크 인터페이스</label>
           <div class="interface-control">
-            <button id="ifaceBtn" class="iface-btn" disabled>네트워크 인터페이스 불러오는 중…</button>
-            <button id="refreshInterfaces" class="ghost-btn" title="인터페이스 새로고침">↻ 새로고침</button>
+            <button id="ifaceBtn" class="iface-btn" aria-haspopup="true" aria-expanded="false" disabled>네트워크 인터페이스 불러오는 중…</button>
+            <button id="refreshInterfaces" class="ghost-btn" data-icon="refresh" title="인터페이스 새로고침">새로고침</button>
           </div>
         </div>
         <div class="field target-field"><label for="target">스캔할 대역</label><input id="target" placeholder="192.168.0.1-254" /></div>
         <div class="toolbar-actions"><button id="scanBtn" class="primary" disabled>대역 스캔</button></div>
       </section>
       <section class="workbar">
-        <div><strong id="titleCount">대기 중</strong><span id="subTitle">인터페이스를 선택하고 스캔을 시작하십시오.</span></div>
-        <input id="filterInput" class="filter-input" placeholder="검색 — IP · MAC · 제조사" />
-        <button id="dhcpBtn" class="ghost-btn" title="이 네트워크에서 응답하는 DHCP 서버를 모두 찾습니다" disabled>DHCP 서버 확인</button>
-        <button id="bookBtn" class="ghost-btn">장비 사전</button>
+        <div class="result-summary"><strong id="titleCount">대기 중</strong><span id="subTitle">인터페이스와 대역을 확인하십시오.</span></div>
+        <div class="search-control" data-icon="search"><label class="sr-only" for="filterInput">장비 검색</label><input id="filterInput" class="filter-input" placeholder="IP · MAC · 제조사 검색" /></div>
+        <div class="workbar-tools">
+          <button id="dhcpBtn" class="ghost-btn" data-icon="dhcp" title="이 네트워크에서 응답하는 DHCP 서버를 모두 찾습니다" disabled>DHCP 서버 확인</button>
+          <button id="availableBtn" class="ghost-btn" data-icon="available" title="대역 스캔을 완료한 뒤 사용 후보 IP를 확인합니다" disabled>사용 가능한 IP</button>
+          <button id="bookBtn" class="ghost-btn" data-icon="book">장비 사전</button>
+        </div>
       </section>
       <section class="table-shell">
         <div class="table-head" id="tableHead"></div>
         <div id="deviceList" class="device-list"><div class="empty">아직 발견된 장비가 없습니다.</div></div>
       </section>
-      <div id="logResizeHandle" class="log-resize-handle" title="드래그하여 로그 창 크기 조절"></div>
+      <div id="logResizeHandle" class="log-resize-handle" role="separator" aria-label="로그 창 크기 조절" aria-orientation="horizontal" aria-controls="logEntries" aria-valuemin="110" aria-valuenow="134" tabindex="0" title="드래그 또는 위·아래 방향키로 로그 창 크기 조절"></div>
       <section class="activity-panel">
         <div id="scanProgress" class="log-progress" hidden><span id="scanProgressText">0%</span><i><b id="scanProgressBar"></b></i></div>
         <div class="log-head"><strong>작업 로그</strong><span id="notice">준비됨</span></div>
@@ -40,33 +43,68 @@
 
     <div id="ifaceMenu" class="context-menu iface-menu" hidden></div>
     <div id="contextMenu" class="context-menu" hidden>
-      <button data-menu="isolate">이 장비만 분리</button>
-      <button data-menu="release">분리 해제</button>
+      <button data-menu="isolate" data-icon="isolate">이 장비만 분리</button>
+      <button data-menu="release" data-icon="release">분리 해제</button>
       <span></span>
-      <button data-menu="copyMac">MAC 주소 복사</button>
-      <button data-menu="book">MAC 앞자리 등록…</button>
+      <button data-menu="copyMac" data-icon="copy">MAC 주소 복사</button>
+      <button data-menu="ping" data-icon="ping">연속 Ping…</button>
+      <button data-menu="tcp" data-icon="tcp">TCP 포트 확인…</button>
+      <button data-menu="book" data-icon="book">MAC 앞자리 등록…</button>
     </div>
     <div id="isolateDialog" class="modal" hidden>
-      <div class="modal-card">
-        <header><strong>장비 분리 확인</strong><button id="isolateClose" title="닫기">×</button></header>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="isolateTitle">
+        <header><strong id="isolateTitle">장비 분리 확인</strong><button id="isolateClose" data-icon="x" aria-label="장비 분리 확인 닫기" title="닫기"></button></header>
         <p class="modal-hint" id="isolateTarget"></p>
         <p class="modal-caution">이 컴퓨터에서는 이 IP를 선택한 MAC 주소에만 연결합니다. 충돌 장비를 확인한 뒤 반드시 분리 해제를 누르십시오.</p>
         <footer><span class="spacer"></span><button id="isolateCancel" class="ghost">취소</button><button id="isolateConfirm" class="primary danger">이 장비만 분리</button></footer>
       </div>
     </div>
     <div id="dhcpDialog" class="modal" hidden>
-      <div class="modal-card modal-card--wide">
-        <header><strong>DHCP 서버 확인</strong><button id="dhcpClose" title="닫기">×</button></header>
-        <p class="modal-hint" id="dhcpSummary"></p>
+      <div class="modal-card modal-card--wide dhcp-card" role="dialog" aria-modal="true" aria-labelledby="dhcpTitle">
+        <header><strong id="dhcpTitle">DHCP 서버 확인</strong><button id="dhcpClose" data-icon="x" aria-label="DHCP 서버 확인 닫기" title="닫기"></button></header>
+        <p id="dhcpInterface" class="dialog-interface"></p>
+        <p id="dhcpSummary" class="dialog-summary" role="status"></p>
         <p class="modal-caution" id="dhcpCaution" hidden></p>
         <div id="dhcpList" class="dhcp-list"></div>
-        <p class="modal-hint">서버의 주소 제안만 확인하며 이 PC의 IP 설정은 변경하지 않습니다. 서버에는 일시적인 제안 기록이 남을 수 있습니다. 중계가 표시되면 MAC과 제조사는 중계 장비 정보일 수 있습니다.</p>
+        <div class="dhcp-help">
+          <p>주소 제안만 확인하며 이 PC의 IP 설정은 변경하지 않습니다.</p>
+          <details><summary>확인 시 참고사항</summary><p>서버에 임시 주소 제안 기록이 남을 수 있습니다. 중계가 있으면 MAC과 제조사는 중계 장비의 정보일 수 있습니다.</p></details>
+        </div>
         <footer><span class="spacer"></span><button id="dhcpAgain" class="ghost">다시 확인</button><button id="dhcpOk" class="primary">닫기</button></footer>
       </div>
     </div>
+    <div id="availableDialog" class="modal" hidden>
+      <div class="modal-card modal-card--wide available-card" role="dialog" aria-modal="true" aria-labelledby="availableTitle">
+        <header><strong id="availableTitle">사용 가능한 IP</strong><button id="availableClose" data-icon="x" aria-label="사용 가능한 IP 닫기" title="닫기"></button></header>
+        <p id="availableSummary" class="dialog-summary" role="status"></p>
+        <div class="available-scope"><span id="availableTarget"></span><time id="availableTime"></time></div>
+        <input id="availableSearch" class="filter-input" placeholder="IP 검색" aria-label="사용 후보 IP 검색" autocomplete="off" spellcheck="false" />
+        <ul id="availableList" class="available-list" aria-label="사용 후보 IP 목록"></ul>
+        <p id="availableEmpty" class="dialog-empty" hidden></p>
+        <p class="available-note">스캔에서 응답하지 않은 주소입니다. 할당 전 DHCP 범위와 예약 IP를 확인하십시오.</p>
+        <p id="availableStatus" class="available-status" role="status">IP를 클릭하면 복사합니다.</p>
+        <footer><button id="availableCopy" class="ghost" data-icon="copy">목록 복사</button><span class="spacer"></span><button id="availableOk" class="primary">닫기</button></footer>
+      </div>
+    </div>
+    <div id="diagnosticDialog" class="modal" hidden>
+      <div class="modal-card diagnostic-card" role="dialog" aria-modal="true" aria-labelledby="diagnosticTitle">
+        <header><strong id="diagnosticTitle">연결 확인</strong><button id="diagnosticClose" data-icon="x" aria-label="연결 확인 닫기" title="닫기"></button></header>
+        <p class="modal-hint" id="diagnosticTarget"></p>
+        <p class="modal-caution" id="diagnosticConflict" hidden>IP 충돌 중에는 다른 장비가 응답할 수 있습니다. 특정 장비만 검사하려면 먼저 분리하십시오.</p>
+        <form id="tcpForm" class="tcp-form" hidden>
+          <label for="tcpPort">TCP 포트</label><input id="tcpPort" type="number" inputmode="numeric" min="1" max="65535" step="1" value="80" required />
+          <button id="tcpRun" type="submit" class="primary">검사</button>
+        </form>
+        <p id="pingSummary" class="diagnostic-summary" hidden></p>
+        <div id="pingTerminalHead" class="ping-terminal-head" hidden><span id="pingCommand"></span><span id="pingRunState" role="status"></span></div>
+        <div id="diagnosticResult" class="diagnostic-results" role="log" aria-label="연결 검사 결과"></div>
+        <p id="pingHint" class="modal-hint" hidden>약 1초마다 응답을 확인합니다. Ping 응답이 없더라도 장비나 방화벽에서 ICMP만 차단한 경우일 수 있습니다.</p>
+        <footer><button id="pingToggle" class="ghost" hidden>중지</button><span class="spacer"></span><button id="diagnosticOk" class="primary">닫기</button></footer>
+      </div>
+    </div>
     <div id="bookDialog" class="modal" hidden>
-      <div class="modal-card modal-card--wide">
-        <header><strong>장비 사전</strong><button id="bookClose" title="닫기">×</button></header>
+      <div class="modal-card modal-card--wide" role="dialog" aria-modal="true" aria-labelledby="bookTitle">
+        <header><strong id="bookTitle">장비 사전</strong><button id="bookClose" data-icon="x" aria-label="장비 사전 닫기" title="닫기"></button></header>
         <p class="modal-hint">MAC 앞자리로 제조사와 장비 종류를 등록합니다. 70-B3-D5-21처럼 4바이트도 등록할 수 있고, 전체 MAC은 한 장비에만 적용됩니다.</p>
         <form id="bookForm">
           <div class="modal-grid">

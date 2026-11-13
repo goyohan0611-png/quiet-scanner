@@ -4,8 +4,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 (async () => {
-  const targets = await fetch('http://127.0.0.1:9227/json/list').then(r => r.json());
-  const page = targets.find(target => target.type === 'page' && target.title === 'Quiet Scanner');
+  let page;
+  const deadline = Date.now() + 15000;
+  while (!page && Date.now() < deadline) {
+    try {
+      const targets = await fetch('http://127.0.0.1:9227/json/list').then(r => r.json());
+      page = targets.find(target => target.type === 'page' && target.url === 'http://tauri.localhost/');
+    } catch (_) {}
+    if (!page) await new Promise(resolve => setTimeout(resolve, 100));
+  }
   assert.ok(page, 'test WebView exists');
   const socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -36,14 +43,14 @@ const fs = require('node:fs');
         const end = Date.now() + 20000;
         while (!predicate()) { if (Date.now() > end) throw new Error('UI wait timed out'); await new Promise(resolve => setTimeout(resolve, 25)); }
       };
-      await wait(() => !query('#scanBtn').disabled);
+      await wait(() => query('#scanBtn') && !query('#scanBtn').disabled && query('#scanBtn').textContent === '대역 스캔' && query('#scanProgress').hidden);
       check(query('#scanProgress').hidden, 'initial progress must be hidden');
-      check(query('#ifaceBtn').textContent.includes('192.168.'), 'interface IP must be visible');
       const cards = await window.ipfix.request('interfaces');
       const current = cards.find(card => query('#ifaceBtn').textContent.includes(card.desc));
       check(current && current.ips.length, 'selected native interface exists');
+      check(query('#ifaceBtn').textContent.includes(current.ips[0]), 'interface IP must be visible');
       const local = current.ips[0];
-      const gateway = local.split('.').slice(0,3).join('.') + '.1';
+      const gateway = ${process.argv.includes('--self-only') ? 'local' : "local.split('.').slice(0,3).join('.') + '.1'"};
       query('#target').value = gateway + ',' + local;
       let eventCount = 0, firstFoundBeforeFinish = false;
       const progress = [];
@@ -72,7 +79,7 @@ const fs = require('node:fs');
       check(query('#bookList').querySelectorAll('button').length > 10, 'device book rendered');
       query('#bookClose').click();
       query('#dhcpBtn').click();
-      await wait(() => !query('#dhcpDialog').hidden);
+      await wait(() => !operationRunning && !query('#dhcpDialog').hidden && !query('#dhcpList').hasAttribute('aria-busy'));
       check(query('#dhcpSummary').textContent.includes('DHCP'), 'DHCP result rendered');
       const dhcp = query('#dhcpSummary').textContent;
       query('#dhcpOk').click();

@@ -1,0 +1,29 @@
+{
+  "retrieved_at": "2026-11-13T01:39:49.816314+00:00",
+  "sources": [
+    {
+      "url": "https://standards-oui.ieee.org/oui/oui.csv",
+      "entries": 39944,
+      "sha256": "06ebd7cd38f4ef74dd59ba535f23921e31a79bf0f8bed9d619b080e4aa92d4fe"
+    },
+    {
+      "url": "https://standards-oui.ieee.org/oui28/mam.csv",
+      "entries": 6609,
+      "sha256": "47b6690eab38653c066d55b29a579dcb5f1b90b78921387249eed2e20685d7c1"
+    },
+    {
+      "url": "https://standards-oui.ieee.org/oui36/oui36.csv",
+      "entries": 7245,
+      "sha256": "1c60e59b3b754c5c0a7eb28e71d2f51d4715aa4c101a048349cd62d8ad3dc063"
+    }
+  ],
+  "vendor_prefixes": 59134,
+  "device_book_prefixes": 3667,
+  "added_vendor_prefixes": 663,
+  "updated_vendor_names": 19812,
+  "added_book_prefixes": 1047,
+  "oui_sha256": "9c0e844241ac64f54017eae0228ff974bf0b1447d1ae306e368c35217c95ac07",
+  "discarded_incomplete_book_prefixes": [
+    "02-04-"
+  ]
+}
