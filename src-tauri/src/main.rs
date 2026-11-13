@@ -8,6 +8,7 @@ mod packet;
 #[cfg(unix)]
 mod privilege;
 mod probe;
+mod protection;
 
 use engine::Engine;
 use serde_json::{json, Value};
@@ -138,6 +139,39 @@ fn smoke(args: &[String]) -> Result<Value, String> {
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--protection") {
+        let command = match args.get(1).map(String::as_str) {
+            Some("status") => protection::Command::Status {},
+            Some("prepare") => protection::Command::Prepare {},
+            Some("on") => protection::Command::Enable {},
+            Some("off") => protection::Command::Disable {},
+            Some("allow") if args.len() == 3 => protection::Command::Allow {
+                ip: args[2].clone(),
+            },
+            Some("remove-allow") if args.len() == 3 => protection::Command::RemoveAllow {
+                ip: args[2].clone(),
+            },
+            _ => {
+                eprintln!("--protection status|prepare|on|off|allow IP|remove-allow IP");
+                std::process::exit(2);
+            }
+        };
+        #[cfg(target_os = "linux")]
+        let result = protection::linux::execute(command);
+        #[cfg(not(target_os = "linux"))]
+        let result: Result<Value, String> = {
+            let _ = command;
+            Err("보호 모드는 Ubuntu/Linux에서 지원합니다.".into())
+        };
+        match result {
+            Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap()),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     #[cfg(unix)]
     if args.first().is_some_and(|a| a == "--privileged-worker") {
         if let Err(error) = privilege::worker(&args[1..]) {

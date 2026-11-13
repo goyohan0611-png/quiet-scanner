@@ -18,6 +18,7 @@ const ICONS = {
   check: 'M5 12l4 4L19 6',
   chevron: 'M9 5l7 7-7 7',
   down: 'M6 9l6 6 6-6'
+  ,shield: 'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6'
 };
 function icon(name) {
   return `<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${ICONS[name] || ''}"/></svg>`;

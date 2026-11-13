@@ -48,6 +48,7 @@ build.log
 /_smoke/
 /.impeccable/review/
 /research/**/target/
+/scripts/protection-harness/target/
 
 # ── Editors / OS ──────────────────────────────────────────────────────
 .vscode/

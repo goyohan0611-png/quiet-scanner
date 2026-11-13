@@ -1,0 +1,47 @@
+name: Host protection integration
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/host-protection]
+    paths:
+      - 'src-tauri/src/protection.rs'
+      - 'src-tauri/src/protection/**'
+      - 'scripts/protection-harness/**'
+      - 'scripts/test_protection*'
+      - 'electron/renderer/protection.js'
+      - '.github/workflows/host-protection.yml'
+permissions:
+  contents: read
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile actual protection backend without GTK
+        run: |
+          cargo test --manifest-path scripts/protection-harness/Cargo.toml --locked
+          cargo clippy --manifest-path scripts/protection-harness/Cargo.toml --all-targets -- -D warnings
+          cargo build --manifest-path scripts/protection-harness/Cargo.toml --locked
+      - name: Install real engine and official firewall bouncer in disposable VM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y curl gnupg nftables
+          curl --fail --silent --show-error --location https://packagecloud.io/crowdsec/crowdsec/gpgkey -o "$RUNNER_TEMP/crowdsec-key.asc"
+          gpg --batch --dearmor --output "$RUNNER_TEMP/crowdsec-key.gpg" "$RUNNER_TEMP/crowdsec-key.asc"
+          sudo install -m 644 "$RUNNER_TEMP/crowdsec-key.gpg" /etc/apt/keyrings/quiet-protection-test.gpg
+          echo 'deb [signed-by=/etc/apt/keyrings/quiet-protection-test.gpg] https://packagecloud.io/crowdsec/crowdsec/any any main' | sudo tee /etc/apt/sources.list.d/quiet-protection-test.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y crowdsec crowdsec-firewall-bouncer-nftables
+          sudo systemctl disable --now crowdsec-firewall-bouncer.service
+          sudo systemctl start crowdsec.service
+      - name: Test real block, exception, OFF cleanup and failure status
+        env:
+          QUIET_PROTECTION_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_PROTECTION_DISPOSABLE_VM bash scripts/test_protection_linux.sh scripts/protection-harness/target/debug/quiet-protection-check
+      - name: UI state and scanner bridge tests
+        run: |
+          mkdir -p _smoke
+          npm install --prefix "$RUNNER_TEMP/protection-ui" playwright-core@1.65.0
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/protection-ui/node_modules/playwright-core" EDGE_PATH=/usr/bin/google-chrome node scripts/test_protection_ui.cjs
+          node scripts/test_tauri_bridge.cjs
