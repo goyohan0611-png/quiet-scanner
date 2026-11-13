@@ -55,9 +55,15 @@ def notary(command, *args):
     require(re.fullmatch(r"[A-Z0-9]{10}", team), "Invalid Apple Team ID")
     identity, password = os.environ["APPLE_ID"], os.environ["APPLE_PASSWORD"]
     require(identity and password, "Missing Apple notarization credentials")
+    credentials = ["--apple-id", identity, "--team-id", team, "--password", password]
+    if command == "log":
+        # The log subcommand writes its JSON to a positional output file.
+        with tempfile.TemporaryDirectory(prefix="quiet-notary-log-") as temporary:
+            destination = Path(temporary) / "log.json"
+            run_native(["xcrun", "notarytool", command, *map(str, args), str(destination), *credentials])
+            return json.loads(destination.read_text(encoding="utf-8"))
     output, _ = run_native([
-        "xcrun", "notarytool", command, *map(str, args),
-        "--apple-id", identity, "--team-id", team, "--password", password,
+        "xcrun", "notarytool", command, *map(str, args), *credentials,
         "--output-format", "json",
     ])
     return json.loads(output)
