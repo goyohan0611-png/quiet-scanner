@@ -22,7 +22,7 @@ cleanup_default() {
 failed() {
   local code=$?
   trap - ERR
-  printf '{"stage":"failed","step":"%s"}\n' "$CURRENT" > "$DIR/setup-stage.json"
+  printf '{"stage":"failed","step":"%s","line":%s}\n' "$CURRENT" "${BASH_LINENO[0]}" > "$DIR/setup-stage.json"
   cleanup_default || true
   echo "Quiet Scanner setup failed at $CURRENT (exit $code). Existing packages/configurations are retained."
   exit "$code"

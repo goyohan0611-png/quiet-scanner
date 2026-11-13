@@ -102,7 +102,9 @@ pub fn cancel() -> Result<(), String> {
 }
 pub fn clear_failure() -> Result<(), String> {
     if Path::new(SETUP_UNIT_PATH).exists() {
-        run(SYSTEMCTL, &["reset-failed", SETUP_UNIT])?;
+        if unit_property("ActiveState").is_ok_and(|s| s == "failed") {
+            run(SYSTEMCTL, &["reset-failed", SETUP_UNIT])?;
+        }
         linux::write_private_json(STAGE, &json!({"stage":"cancelled"}))?;
     }
     Ok(())
@@ -199,7 +201,9 @@ pub fn start() -> Result<(), String> {
         return Err("관리자 설치 로그 파일의 권한을 확인하십시오.".into());
     }
     run(SYSTEMCTL, &["daemon-reload"])?;
-    run(SYSTEMCTL, &["reset-failed", SETUP_UNIT])?;
+    if unit_property("ActiveState").is_ok_and(|s| s == "failed") {
+        run(SYSTEMCTL, &["reset-failed", SETUP_UNIT])?;
+    }
     run(SYSTEMCTL, &["--no-block", "start", SETUP_UNIT])?;
     Ok(())
 }

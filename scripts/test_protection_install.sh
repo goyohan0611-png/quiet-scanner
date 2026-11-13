@@ -4,6 +4,12 @@ set -euo pipefail
 test "$(id -u)" = 0
 test "${QUIET_PROTECTION_DISPOSABLE_VM:-}" = YES
 GUARD=$(realpath "${1:?test binary}")
+diagnostics() {
+  systemctl show quiet-scanner-protection-setup.service --property=ActiveState,Result,ExecMainStatus || true
+  # Only this throwaway VM's fixed installer diagnostics, never config/key files.
+  tail -n 16 /var/log/quiet-scanner-protection-setup.log 2>/dev/null | sed -E 's/(api_key:|password:|token:).*/\1 [redacted]/Ig' || true
+}
+trap diagnostics ERR
 test ! -x /usr/bin/cscli
 "$GUARD" '{"operation":"auto_enable"}' >/tmp/quiet-setup-initial.json
 for _ in $(seq 1 240); do
