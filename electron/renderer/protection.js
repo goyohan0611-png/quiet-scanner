@@ -26,7 +26,8 @@
     badge.classList.toggle('is-error', ['degraded','error','install_failed'].includes(phase));
     const toggle = el('protectionToggle');
     const shouldStop = ['on','degraded','installing'].includes(phase);
-    toggle.setAttribute('aria-checked', String(status.protecting === true));
+    toggle.setAttribute('aria-checked', String(status.protecting === true || (installing && !status.installation?.cancelled)));
+    toggle.setAttribute('aria-busy', String(installing || working));
     toggle.disabled = busy || (working && !installing) || phase === 'error' || status.supported !== true || (installing ? status.installation?.cancelled : !(status.autoInstallSupported || (authorized && status.prepared && status.dependencies)));
     toggle.setAttribute('aria-label', installing ? '설치 후 보호 시작 취소' : shouldStop ? '보호 모드 끄기' : '보호 모드 켜기');
     // A degraded/stopped service with residual rules must still offer OFF.
@@ -106,7 +107,8 @@
   el('protectionPrepare').addEventListener('click', async () => {await request('protection_prepare');schedule();});
   el('protectionToggle').addEventListener('click', async () => {
     const stop = el('protectionToggle').dataset.stop === 'true';
-    pending = {target:stop?'off':'on',deadline:Date.now()+(status.autoInstallSupported?31*60*1000:45000)};
+    const needsInstall = status.phase === 'installing' || (status.autoInstallSupported && (!status.prepared || ['unchecked','install_failed'].includes(status.phase)));
+    pending = {target:stop?'off':'on',deadline:Date.now()+(needsInstall?31*60*1000:45000)};
     const result=await request(stop?'protection_disable':'protection_enable');
     if (!result) pending=null;
     render();schedule();

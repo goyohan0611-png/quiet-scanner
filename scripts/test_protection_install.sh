@@ -12,10 +12,12 @@ diagnostics() {
 trap diagnostics ERR
 test ! -x /usr/bin/cscli
 "$GUARD" '{"operation":"auto_enable"}' >/tmp/quiet-setup-initial.json
+# Cancel immediately while apt is running: finish configuration safely, stay OFF.
+"$GUARD" '{"operation":"disable"}' >/tmp/quiet-setup-cancel.json
 for _ in $(seq 1 240); do
   "$GUARD" '{"operation":"status"}' >/tmp/quiet-setup-status.json
   phase=$(python3 -c 'import json;print(json.load(open("/tmp/quiet-setup-status.json"))["phase"])')
-  if [[ "$phase" == on ]]; then break; fi
+  if [[ "$phase" == off ]]; then break; fi
   if [[ "$phase" == install_failed ]]; then
     # Private diagnostics stay inside this disposable test VM, not public logs.
     python3 -c 'import json;print(json.load(open("/etc/quiet-scanner/protection/setup-stage.json")))'
@@ -23,7 +25,17 @@ for _ in $(seq 1 240); do
   fi
   sleep 3
 done
-test "$phase" = on
+test "$phase" = off
+! systemctl is-active --quiet quiet-scanner-protection.service
+! systemctl is-active --quiet crowdsec.service
+echo 'PASS: cancellation completed package setup without activating protection'
+"$GUARD" '{"operation":"auto_enable"}' >/dev/null
+for _ in $(seq 1 35); do
+  "$GUARD" '{"operation":"status"}' >/tmp/quiet-setup-status.json
+  if python3 -c 'import json;assert json.load(open("/tmp/quiet-setup-status.json"))["protecting"]'; then break; fi
+  sleep 2
+done
+python3 -c 'import json;assert json.load(open("/tmp/quiet-setup-status.json"))["protecting"]'
 test "$(stat -c %a /etc/quiet-scanner/protection/firewall.yaml)" = 600
 test "$(stat -c %a /var/log/quiet-scanner-protection-setup.log)" = 600
 ! systemctl is-active --quiet crowdsec-firewall-bouncer.service

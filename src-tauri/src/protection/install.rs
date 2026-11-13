@@ -72,6 +72,14 @@ pub fn managed_engine() -> bool {
     read_json(REPORT).is_some_and(|v| v["managedEngine"] == true)
 }
 pub fn others_use_engine() -> bool {
+    if run(
+        SYSTEMCTL,
+        &["is-active", "crowdsec-firewall-bouncer.service"],
+    )
+    .is_ok_and(|s| s.trim() == "active")
+    {
+        return true;
+    }
     let own = read_json(REPORT).unwrap_or_default();
     let ignore = own["packageBouncers"]
         .as_array()
@@ -87,6 +95,9 @@ pub fn others_use_engine() -> bool {
 }
 pub fn cancelled() -> bool {
     Path::new(CANCEL).exists()
+}
+pub fn activating() -> bool {
+    read_json(STAGE).is_some_and(|v| matches!(v["stage"].as_str(), Some("activate" | "done")))
 }
 pub fn cancel() -> Result<(), String> {
     if !cancelled() {

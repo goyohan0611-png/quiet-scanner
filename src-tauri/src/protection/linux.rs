@@ -469,6 +469,13 @@ pub fn execute(command: GuardCommand) -> Result<Value, String> {
                 if check_owned().is_ok() {
                     run(SYSTEMCTL, &["disable", UNIT])?;
                     run(SYSTEMCTL, &["--no-block", "stop", UNIT])?;
+                    if super::install::activating()
+                        && super::install::managed_engine()
+                        && !super::install::others_use_engine()
+                    {
+                        run(SYSTEMCTL, &["disable", "crowdsec.service"])?;
+                        run(SYSTEMCTL, &["--no-block", "stop", "crowdsec.service"])?;
+                    }
                 }
                 return status();
             }
