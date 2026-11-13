@@ -215,6 +215,9 @@ impl Client {
         loop {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    // Darwin inherits the listener's O_NONBLOCK on accept;
+                    // the framed protocol needs a blocking connected stream.
+                    stream.set_nonblocking(false).map_err(|e| e.to_string())?;
                     if peer_uid(&stream)? != 0 {
                         continue;
                     }

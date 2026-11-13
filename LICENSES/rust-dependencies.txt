@@ -1,5 +1,5 @@
-Quiet Scanner: locked Windows Rust dependency notices
-Includes Windows build dependencies.
+Quiet Scanner: locked x86_64-pc-windows-msvc Rust dependency notices
+Includes build dependencies for this target.
 Source: https://github.com/goyohan0611-png/quiet-scanner
 
 
