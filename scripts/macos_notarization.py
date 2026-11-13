@@ -19,8 +19,11 @@ TARGETS = {"aarch64-apple-darwin": ("AppleSilicon", "arm64"),
 
 
 def digest(path):
+    result = hashlib.sha256()
     with open(path, "rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            result.update(chunk)
+    return result.hexdigest()
 
 
 def require(condition, message):
@@ -177,7 +180,8 @@ def verify_mounted_app(dmg, data):
         try:
             run_native(["hdiutil", "detach", str(mount)])
         finally:
-            mount.rmdir()
+            if mount.exists():
+                mount.rmdir()
             temporary.rmdir()
 
 
@@ -268,3 +272,4 @@ if __name__ == "__main__":
                 message = message.replace(os.environ[key], "***")
         print(f"Notarization step failed: {message}", file=sys.stderr)
         sys.exit(1)
+
