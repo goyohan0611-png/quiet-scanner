@@ -49,6 +49,6 @@ GitHub Actions에서 `Build and submit macOS notarization`을 선택하고 `main
 
 예전의 대기 방식에서 시간 초과로 종료된 빌드는 원본 서명 파일을 보관하지 않았습니다. 상태 조회는 가능하지만 파일 보관은 위 새 절차로 실행한 빌드부터 적용됩니다.
 
-현재 공개된 4.1.0-beta.1은 서명·공증 전 버전입니다. 이 자동화 설정이 추가됐다는 사실만으로 기존 파일이 공증되는 것은 아닙니다.
+이전에 공개한 4.1.0-beta.1은 서명·공증 전 버전입니다. 새 자동화 설정이 추가됐다는 사실만으로 기존 릴리즈 파일이 공증되는 것은 아닙니다. 4.2.0 이후에는 해당 버전의 제출 ID와 검증 기록을 기준으로 확인합니다.
 
 공식 문서: [Apple Developer ID](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/), [Tauri macOS 서명·공증](https://v2.tauri.app/distribute/sign/macos/).

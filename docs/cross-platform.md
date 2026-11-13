@@ -1,14 +1,16 @@
-# macOS·Linux 미리보기
+# macOS·Linux 설치 안내
 
-4.1은 macOS와 Linux를 추가하는 미리보기 버전입니다. Windows 안정 버전 4.0.1의 배포는 유지합니다.
+4.2.0은 Windows·macOS·Linux 설치 파일의 버전을 통일한 배포입니다. macOS 파일은 Developer ID 서명과 Apple 공증을 거쳤으며, 설치 파일에 공증 티켓을 첨부했습니다.
 
 ## 대상
 
 | 운영체제 | 대상 | 파일 |
 |---|---|---|
-| macOS 13 이상 | Apple Silicon | [arm64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.macOS.AppleSilicon.dmg) |
-| macOS 13 이상 | Intel | [x64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.macOS.Intel.dmg) |
-| Ubuntu 24.04 이상 | x64 | [DEB](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.1.0-beta.1/Quiet.Scanner.4.1.0-beta.1.Ubuntu24.04.x64.deb) |
+| macOS 13 이상 | Apple Silicon | [arm64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.0/Quiet.Scanner.4.2.0.macOS.AppleSilicon.dmg) |
+| macOS 13 이상 | Intel | [x64 DMG](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.0/Quiet.Scanner.4.2.0.macOS.Intel.dmg) |
+| Ubuntu 24.04 이상 | x64 | [DEB](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.0/Quiet.Scanner.4.2.0.Ubuntu24.04.x64.deb) |
+
+맥의 **이 Mac에 관하여**에서 칩 항목이 M 시리즈이면 Apple Silicon용을, 프로세서가 Intel이면 Intel용을 선택합니다. DMG를 열고 Quiet Scanner를 응용 프로그램 폴더로 옮겨 실행합니다. Ubuntu에서는 DEB를 패키지 관리자로 설치하면 필요한 시스템 라이브러리도 함께 설치합니다.
 
 다른 Linux 배포판은 소스 빌드를 이용할 수 있지만, 이번 설치 파일의 지원·검증 대상으로 포함하지 않습니다.
 
@@ -46,10 +48,10 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 GitHub의 해당 운영체제 환경에서 컴파일·테스트·설치 파일 생성을 실행합니다. 인증 연결 테스트는 CI의 비대화형 sudo 권한으로 별도 작업 프로세스를 실행하고 실제 인터페이스와 libpcap 캡처 열기를 확인합니다. 이 테스트는 ARP 패킷이나 DHCP 요청을 보내지 않습니다.
 
-CI의 관리자 연결 확인은 실제 데스크톱에서 뜨는 macOS·Linux 인증 대화상자를 대신 검증하지 않습니다. 실제 현장의 중복 IP·드라이버·무선랜 조합에서 분리·해제와 화면 동작을 확인한 뒤 안정 버전 지원으로 전환해야 합니다.
+CI의 관리자 연결 확인은 실제 데스크톱에서 뜨는 macOS·Linux 인증 대화상자를 대신 검증하지 않습니다. Windows에서는 현장 테스트를 진행했으며, macOS·Linux의 실제 현장 중복 IP·무선랜 조합과 인증 대화상자 동작은 별도로 확인해야 합니다.
 
-4.1.0-beta.1은 [운영체제별 빌드 검사](https://github.com/goyohan0611-png/quiet-scanner/actions/runs/43357788785)를 통과했습니다. macOS는 각 38개, Linux는 37개의 Rust 테스트를 통과했으며, 관리자 작업 프로세스 인증과 실제 libpcap 캡처 열기를 확인했습니다. Windows에서는 33개 Rust 테스트와 코드 검사를 통과했습니다.
+4.2.0의 운영체제별 검사와 서명·공증 검증 기록은 [릴리즈 안내](release-v4.2.0.md)에 정리했습니다. 서명된 맥 파일도 프로그램을 실행해 네트워크를 검사하려면 운영체제의 관리자 승인이 필요합니다.
 
-macOS 미리보기는 Apple Developer ID 서명·공증이 없는 테스트 빌드입니다. 일반 사용자용 정식 배포에는 Apple 서명·공증 절차가 추가로 필요합니다.
+이전 4.1.0-beta.1은 서명·공증 전 테스트 배포로 보관합니다. 새로 설치할 때는 4.2.0 파일을 사용하십시오.
 
 유료 개발자 계정으로 맥 없이 준비하는 절차는 [macOS 서명 안내](macos-signing.md)에 정리했습니다.
