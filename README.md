@@ -14,6 +14,8 @@ Quiet Scanner는 CCTV·AV·네트워크 설치 현장에서 반복되는 IP 충�
 
 ![Quiet Scanner 장비 목록 — 설명용 예시 데이터](docs/images/quiet-scanner.jpg)
 
+[29초 동작 영상 보기](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.0/Quiet.Scanner.4.2.0.Demo.mp4) — 예시 데이터로 충돌 발견, MAC별 확인, 선택 장비로 내 PC 연결 고정과 해제 흐름을 보여 줍니다. 실제 장비에서 측정한 속도 영상은 아닙니다.
+
 ## 핵심 기능
 
 - 선택한 네트워크 인터페이스의 대역을 ARP 방식으로 스캔
@@ -156,4 +158,3 @@ Rust 테스트는 주소 범위 계산, ARP·DHCP 패킷 해석, 잘못된 DHCP 
 ## 라이선스
 
 GPLv2. 자세한 내용은 [LICENSE.md](LICENSE.md)를 참고하십시오.
-
