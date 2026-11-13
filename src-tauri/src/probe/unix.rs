@@ -49,6 +49,7 @@ pub fn ping(source: Ipv4Addr, target: Ipv4Addr) -> Result<ResultRow, String> {
         String::from_utf8_lossy(&output.stderr)
     );
     let ms = response_ms(&text);
+    let no_reply_code = if cfg!(target_os = "macos") { 2 } else { 1 };
     let ok = !timed_out && output.status.success() && ms.is_some();
     let (status, message) = if ok {
         ("reply", "응답 받음")
@@ -59,7 +60,7 @@ pub fn ping(source: Ipv4Addr, target: Ipv4Addr) -> Result<ResultRow, String> {
         )
     } else if text.contains("Operation not permitted") || text.contains("Permission denied") {
         ("blocked", "이 PC에서 Ping 요청이 차단됐습니다")
-    } else if timed_out || output.status.code() == Some(1) || output.status.code() == Some(2) {
+    } else if timed_out || output.status.code() == Some(no_reply_code) {
         ("timeout", "응답 시간 초과")
     } else {
         ("error", "Ping 도구의 응답을 확인하지 못했습니다")
