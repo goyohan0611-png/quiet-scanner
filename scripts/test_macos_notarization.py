@@ -43,7 +43,7 @@ class NotarizationTests(unittest.TestCase):
 
     def test_matching_artifact(self):
         data, path = notary.load_manifest(self.folder)
-        self.assertEqual(path, self.dmg)
+        self.assertEqual(path, self.dmg.resolve())
         self.assertEqual(data["source_run_id"], "123")
 
     def test_modified_dmg_is_rejected(self):
@@ -106,3 +106,4 @@ class NotarizationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
