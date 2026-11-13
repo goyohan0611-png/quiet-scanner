@@ -1,0 +1,50 @@
+name: Apple notarization status
+on:
+  workflow_dispatch:
+    inputs:
+      team_id:
+        description: Apple Team ID (10 uppercase letters or digits)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  status:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    environment: macos-signing
+    timeout-minutes: 10
+    steps:
+      - name: Query existing Quiet Scanner submissions without uploading again
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ inputs.team_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$NOTARY_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo 'Invalid Team ID' >&2; exit 1; }
+          [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" ]] || { echo 'Missing Apple credentials' >&2; exit 1; }
+          xcrun notarytool history --apple-id "$APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$APPLE_PASSWORD" --output-format json > "$RUNNER_TEMP/notary-history.json"
+          python3 - "$RUNNER_TEMP/notary-history.json" <<'PY'
+          import json, os, sys
+          with open(sys.argv[1], encoding='utf-8') as source:
+              history = json.load(source)['history']
+          rows = [
+              {key: row.get(key) for key in ('id', 'name', 'status', 'createdDate')}
+              for row in history
+              if str(row.get('name', '')).casefold().startswith('quiet scanner')
+          ]
+          rows.sort(key=lambda row: str(row.get('createdDate', '')), reverse=True)
+          rows = rows[:10]
+          print(json.dumps({'quiet_scanner_submissions': rows}))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('## Quiet Scanner Apple notarization status\n\n')
+              summary.write('Read-only lookup. No new notarization submission was created.\n\n')
+              for row in rows:
+                  summary.write(f"- {row['createdDate']} | {row['name']} | **{row['status']}** | `{row['id']}`\n")
+              if not rows:
+                  summary.write('No matching Quiet Scanner submissions were found.\n')
+          PY
+
