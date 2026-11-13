@@ -1,6 +1,6 @@
 [package]
 name = "quiet-scanner"
-version = "4.0.0"
+version = "4.0.1"
 description = "Local network scanner and IP conflict tool"
 authors = ["Goyohan"]
 edition = "2021"
