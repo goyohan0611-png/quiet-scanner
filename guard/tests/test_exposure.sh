@@ -25,10 +25,10 @@ ip netns add qg-exposure-client
 ip link add qg-exp-host type veth peer name qg-exp-peer
 ip link set qg-exp-peer netns qg-exposure-client
 ip addr add 10.205.0.1/24 dev qg-exp-host
-ip -6 addr add fd205::1/64 dev qg-exp-host nodad
+ip -6 addr add fd20:5::1/64 dev qg-exp-host nodad
 ip link set qg-exp-host up
 ip -n qg-exposure-client addr add 10.205.0.2/24 dev qg-exp-peer
-ip -n qg-exposure-client -6 addr add fd205::2/64 dev qg-exp-peer nodad
+ip -n qg-exposure-client -6 addr add fd20:5::2/64 dev qg-exp-peer nodad
 ip -n qg-exposure-client link set lo up
 ip -n qg-exposure-client link set qg-exp-peer up
 python3 - "$temporary/fixture.ready" <<'PY' &
@@ -95,13 +95,13 @@ assert not any(x['port']==18083 for x in r['findings'])
 assert any('operator-supplied' in x for x in r['limitations'])
 PY
 echo 'PASS: real external-peer connection, refusal and firewall timeout distinguished; local probes and replay rejected; failed connections never mean safe'
-quiet-guard exposure prepare --target fd205::1 --ports 18082,6543 > "$temporary/request6.json"
+quiet-guard exposure prepare --target fd20:5::1 --ports 18082,6543 > "$temporary/request6.json"
 ip netns exec qg-exposure-client "$binary" exposure probe "$temporary/request6.json" > "$temporary/result6.json"
 quiet-guard exposure import "$temporary/result6.json"
 python3 - "$temporary/result6.json" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]));a={x['port']:x['outcome'] for x in r['attempts']}
-assert r['source']=='fd205::2' and a[18082]=='connected' and a[6543]=='refused',r
+assert r['source']=='fd20:5::2' and a[18082]=='connected' and a[6543]=='refused',r
 PY
 echo 'PASS: actual IPv6 TCP probe and IPv6 loopback-only binding tested separately from IPv4'
 # A different host/socket snapshot must invalidate otherwise matching evidence.
