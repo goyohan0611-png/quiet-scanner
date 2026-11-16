@@ -116,6 +116,7 @@ echo 'PASS: normal login/API/multipart pass; URI, query and JSON-body attacks bl
 # Oversized bodies stay available by default but are never counted as fully inspected.
 python3 -c 'print("x"*1100000,end="")' > "$temporary/large-body"
 test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: text/plain')" = 200
+test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Transfer-Encoding: chunked' -H 'Content-Type: text/plain')" = 200
 wait_phase degraded
 systemctl stop quiet-guard-waf-engine
 test "$(request http://guard.test:18080/)" = 200
@@ -142,5 +143,15 @@ quiet-guard waf remove
 cmp /etc/nginx/conf.d/quiet-guard-fixture.conf "$temporary/original.conf"
 test ! -e /etc/quiet-guard/waf
 test ! -e /usr/local/lib/quiet-guard/waf
+quiet-guard waf enable --direct --probe-peer 10.204.0.2 --site http://guard.test:18080 --site http://api.guard.test:18080 --allow-insecure-probe --failure-action deny --body-action deny
+wait_phase awaiting_external_check
+ip netns exec qg-waf-client python3 "$root/scripts/waf_probe.py" /etc/quiet-guard/waf/probe-client.json --once
+wait_phase verified
+test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: text/plain')" = 413
+systemctl stop quiet-guard-waf-engine
+test "$(request http://guard.test:18080/)" = 503
+wait_phase unknown
+quiet-guard waf remove
 python3 "$root/scripts/deploy.py" uninstall
 echo 'PASS: edited Nginx configuration preserved; OFF restores exact original bytes; reenable and removal succeed'
+echo 'PASS: explicit strict body policy returns 413; explicit strict engine-failure policy returns 503'

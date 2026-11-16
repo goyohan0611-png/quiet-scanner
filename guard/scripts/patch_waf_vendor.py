@@ -14,6 +14,7 @@ lua = lua.replace('local body, body_len, unreadable_body, close_body = get_body(
 # sanitized events instead of logging per-request transport errors or responses.
 lua = lua.replace('ngx.log(ngx.ERR, "Fallback because of err: " .. err .. " (body: " .. body_len .. " bytes)")', '-- Transport failures are recorded by the Quiet Guard hook without raw request context.')
 lua = lua.replace('ngx.log(ngx.DEBUG, "Appsec body response: " .. res.body)', '-- Do not log response details derived from requests.')
+lua = lua.replace('body = nil\n    headers["content-length"] = nil', 'body = nil\n    headers["content-length"] = (skip_body or METHODS_WITH_BODY[ngx.var.request_method]) and "0" or nil\n    headers["transfer-encoding"] = nil')
 assets['lua/crowdsec.lua'] = lua
 for start_marker,end_marker in [('local function get_body()', 'function csmod.GetCaptchaBackendKey'),('function csmod.AppSecCheck(', 'function csmod.Allow(')]:
     start=lua.index(start_marker);end=lua.index(end_marker,start)
@@ -23,7 +24,7 @@ for start_marker,end_marker in [('local function get_body()', 'function csmod.Ge
 assets['lua/crowdsec.lua'] = lua
 setup = assets['data/crs-setup.conf'].replace('log,auditlog,pass', 'nolog,noauditlog,pass')
 assets['data/crs-setup.conf'] = setup
-for name, reason in [('lua/crowdsec.lua', 'Unexpected/authentication responses and body read failures remain unverified; optionally inspect headers only for unsupported bodies; suppress per-request context logging.'), ('data/crs-setup.conf', 'Disable default request audit logging; Quiet Guard emits metadata-only events.')]:
+for name, reason in [('lua/crowdsec.lua', 'Unexpected/authentication responses and body read failures remain unverified; optionally inspect headers only for unsupported bodies with a coherent empty transport body; suppress per-request context logging.'), ('data/crs-setup.conf', 'Disable default request audit logging; Quiet Guard emits metadata-only events.')]:
     meta['files'][name]['patched_sha256'] = hashlib.sha256(assets[name].encode()).hexdigest()
     meta['files'][name]['patch'] = reason
 (root / 'assets.json').write_text(json.dumps(assets, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

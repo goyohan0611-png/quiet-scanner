@@ -22,18 +22,37 @@ local body_method=ngx.req.get_method()=='POST' or ngx.req.get_method()=='PUT' or
 local incomplete=body_method and ngx.req.http_version()>=2 and ngx.var.http_content_length==nil
 local length=tonumber(ngx.var.http_content_length or '0')
 if length and length>q.cfg.max_inspect_bytes then incomplete=true end
+-- Chunked HTTP/1 bodies have no announced length. Nginx buffers them within
+-- the site's existing limits; measure that buffer before choosing inspection.
+if not incomplete and ngx.var.http_transfer_encoding then
+  ngx.req.read_body()
+  local data=ngx.req.get_body_data()
+  if data then
+    if #data>q.cfg.max_inspect_bytes then incomplete=true end
+  else
+    local filename=ngx.req.get_body_file()
+    if filename then
+      local file=io.open(filename,'rb')
+      local size=file and file:seek('end')
+      if file then file:close() end
+      if not size or size>q.cfg.max_inspect_bytes then incomplete=true end
+    end
+  end
+end
 if ngx.var.http_content_encoding and ngx.var.http_content_encoding~='' and ngx.var.http_content_encoding~='identity' then incomplete=true end
 local _,header_error=ngx.req.get_headers(128)
 if header_error then incomplete=true end
 if diag then ngx.req.set_header('X-Quiet-Guard-Diagnostic',q.cfg.probe_token) end
 local outcome='inspected'
+local inspection_failed=false
 local ok, allowed, remediation, status, response, err
 if incomplete and q.cfg.body_action=='deny' then
   allowed=false;status=413;outcome='policy_blocked'
 else
   ok,allowed,remediation,status,response,err=pcall(q.cs.AppSecCheck,ngx.var.remote_addr,incomplete)
   if not ok or err then
-    outcome='failed_open'
+    inspection_failed=true
+    outcome=q.cfg.failure_action=='deny' and 'failed_closed' or 'failed_open'
     allowed=q.cfg.failure_action~='deny';status=503
   elseif not allowed then outcome='blocked'
   elseif incomplete then outcome='body_uninspected' end
@@ -51,9 +70,9 @@ if diag then
 end
 q.dict:incr(allowed and 'allowed' or 'blocked',1,0)
 if incomplete then q.dict:incr('incomplete',1,0);q.dict:set('last_incomplete',now) end
-if outcome=='failed_open' then q.dict:incr('failures',1,0);q.dict:set('last_failure',now) end
+if inspection_failed then q.dict:incr('failures',1,0);q.dict:set('last_failure',now) end
 if outcome~='inspected' then
   local seq=q.dict:incr('event_seq',1,0)
   q.dict:set('event:'..tostring(seq%256),q.cjson.encode({seq=seq,epoch=q.epoch,boot_seconds=now,scope=scope,peer=ngx.var.remote_addr,outcome=outcome}))
 end
-if not allowed then return ngx.exit(status==413 and 413 or (outcome=='failed_open' and 503 or 403)) end
+if not allowed then return ngx.exit(status==413 and 413 or (inspection_failed and 503 or 403)) end
