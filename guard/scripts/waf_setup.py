@@ -163,7 +163,12 @@ def fresh(args):
     for unit in [ENGINE,MONITOR]:
         if system('show','--property=FragmentPath','--value',unit).stdout.strip(): raise ValueError('Unowned WAF unit exists')
     for port in [17425,17426,17427]:
-        with socket.socket() as test: test.bind(('127.0.0.1',port))
+        with socket.socket() as test:
+            # Closed connections may remain in TIME_WAIT after a clean OFF.
+            # SO_REUSEADDR ignores those without accepting a live listener collision.
+            test.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            try:test.bind(('127.0.0.1',port))
+            except OSError as error:raise ValueError('Required local inspection port is unavailable: '+str(port)) from error
     failure_action=args.failure_action or 'passthrough';body_action=args.body_action or 'passthrough'
     max_inspect_bytes=args.max_inspect_bytes if args.max_inspect_bytes is not None else 1048576
     config = {'schema':1,'generation':secrets.token_hex(16),'probe_peer':str(peer),'probe_token':secrets.token_hex(32),
