@@ -211,6 +211,8 @@ def fresh(args):
         record={'marker':MARKER,'enabled':False,'files':created,'backups':backups,'include':base64.b64encode(include).decode(),'include_hash':sha(include),'baseline_digest':inventory['digest'],'active_digest':None,'packages':package_revision()}
         save(RECORD,record);public(False,config);system('daemon-reload')
     except Exception:
+        for extra in [RECORD,STATE/'public.json']:
+            if extra.exists(): read(extra);extra.unlink()
         for path,digest in reversed(list(created.items())):
             try:
                 if sha(read(path))==digest: pathlib.Path(path).unlink()
@@ -226,7 +228,10 @@ def fresh(args):
 
 
 def start(record):
-    if record['enabled']: verify_active(record);return
+    if record['enabled']:
+        verify_active(record)
+        system('enable','--now',ENGINE);system('enable','--now',MONITOR)
+        return
     if nginx_inventory()['digest']!=record['baseline_digest'] or os.path.lexists(INCLUDE):
         raise ValueError('Nginx changed since the backup; preserving it. Remove and configure a new WAF installation.')
     config=json.loads(read(ROOT/'settings.json'))
@@ -259,9 +264,11 @@ def start(record):
         for name in changed:
             item=record['backups'][name]
             if sha(read(name))==item['patched_hash']: atomic(pathlib.Path(name),base64.b64decode(item['raw']),item['mode'],item['gid'])
-        command('/usr/sbin/nginx','-t');system('reload','nginx.service')
-        system('disable','--now',MONITOR,check=False);system('disable','--now',ENGINE,check=False)
-        record['enabled']=False;save(RECORD,record);public(False,config)
+        try:
+            command('/usr/sbin/nginx','-t');system('reload','nginx.service')
+        finally:
+            system('disable','--now',MONITOR,check=False);system('disable','--now',ENGINE,check=False)
+            record['enabled']=False;save(RECORD,record);public(False,config)
         raise
 
 
@@ -314,10 +321,13 @@ def main():
     # Checks are read-only with one bounded private epoch synchronization. Avoid
     # holding the deployment lock during monitor checks or service shutdown.
     if args.action=='check': print(json.dumps(check()));return
-    directory(pathlib.Path('/run/lock'),0o755)
     fd=os.open('/run/lock/quiet-guard-deploy.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as lock:
+        meta=os.fstat(lock.fileno())
+        if not stat.S_ISREG(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o077:
+            raise ValueError('Untrusted deployment lock')
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        directory(STATE.parent,0o755)
         if args.action=='enable' and not ROOT.exists(): fresh(args)
         record=owned()
         if args.action=='enable': start(record);print('WAF connected. External GET/POST/body-block proofs are still required; use the private probe-client.json on the configured external peer.')
@@ -330,6 +340,14 @@ def main():
                 for name,digest in reversed(list(record['files'].items())):
                     if sha(read(name))!=digest: raise ValueError('Changed WAF file preserved')
                     pathlib.Path(name).unlink()
+                trace=STATE/'data/trace'
+                if trace.exists():
+                    meta=trace.lstat()
+                    if not stat.S_ISDIR(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o022: raise ValueError('Untrusted WAF trace preserved')
+                    trace.rename(archive/'trace')
+                for path in [STATE/'data',STATE]:
+                    try:path.rmdir()
+                    except OSError:pass
                 RECORD.unlink()
                 for root in [ROOT,CODE]:
                     for path in sorted(root.rglob('*'),key=lambda p:len(p.parts),reverse=True):

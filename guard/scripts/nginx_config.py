@@ -94,6 +94,10 @@ def nginx_read(path, limit=4 * 1024 * 1024):
     allowed = [pathlib.Path('/etc/nginx'), pathlib.Path('/usr/share/nginx/modules-available')]
     if not any(path.is_relative_to(root) for root in allowed):
         raise ValueError('Unsupported Nginx include outside package configuration directories: ' + str(path))
+    for parent in path.parents:
+        meta = parent.stat()
+        if meta.st_uid != 0 or meta.st_mode & 0o022:
+            raise ValueError('Writable or unowned Nginx configuration parent: ' + str(parent))
     with open(path, 'rb') as stream:
         meta = os.fstat(stream.fileno())
         if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022 or meta.st_size > limit:
