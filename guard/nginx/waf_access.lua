@@ -11,8 +11,13 @@ local diag=token==q.cfg.probe_token and ngx.var.remote_addr==q.cfg.probe_peer an
   and type(nonce)=='string' and #nonce==32 and nonce:match('^[a-f0-9]+$')
   and (kind=='get' or kind=='post' or kind=='block')
 ngx.req.clear_header('X-Quiet-Guard-Probe-Auth')
+ngx.req.clear_header('X-Quiet-Guard-Probe-Nonce')
+ngx.req.clear_header('X-Quiet-Guard-Probe-Kind')
 ngx.req.clear_header('X-Quiet-Guard-Diagnostic')
 ngx.req.clear_header('X-Quiet-Guard-Action')
+for _,name in ipairs({'Ip','Host','Verb','Uri','User-Agent','Api-Key','Transfer-Encoding'}) do
+  ngx.req.clear_header('X-Crowdsec-Appsec-'..name)
+end
 local body_method=ngx.req.get_method()=='POST' or ngx.req.get_method()=='PUT' or ngx.req.get_method()=='PATCH' or ngx.req.get_method()=='DELETE'
 local incomplete=body_method and ngx.req.http_version()>=2 and ngx.var.http_content_length==nil
 local length=tonumber(ngx.var.http_content_length or '0')
@@ -38,9 +43,9 @@ ngx.req.clear_header('X-Quiet-Guard-Action')
 local now=q.now()
 if diag then
   if (kind=='get' and ngx.req.get_method()~='GET') or (kind~='get' and ngx.req.get_method()~='POST') then outcome='unverified' end
-  q.dict:set('pending:'..nonce,q.cjson.encode({target=target.id,scope=scope,kind=kind,peer=ngx.var.remote_addr,
+  ngx.ctx.quiet_guard_proof={target=target.id,scope=scope,kind=kind,peer=ngx.var.remote_addr,
     host=ngx.var.host:lower(),port=tonumber(ngx.var.server_port),generation=q.cfg.generation,nginx_epoch=q.epoch,
-    engine_epoch=q.dict:get('engine_epoch') or '',boot_seconds=now,outcome=outcome}),15)
+    engine_epoch=q.dict:get('engine_epoch') or '',boot_seconds=now,outcome=outcome}
   ngx.header['X-Quiet-Guard-Probe-Result']=outcome
   return ngx.exit(outcome=='blocked' and 403 or 204)
 end

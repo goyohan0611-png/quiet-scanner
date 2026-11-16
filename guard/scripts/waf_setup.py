@@ -67,7 +67,18 @@ def command(*args, check=True):
     result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             timeout=40, env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LC_ALL':'C','HOME':'/root'})
     if len(result.stdout)+len(result.stderr)>4*1024*1024: raise ValueError('Command output exceeded limit')
-    if check and result.returncode: raise RuntimeError('Command failed: '+str(args[0])+' '+str(args[1] if len(args)>1 else ''))
+    if check and result.returncode:
+        diagnostic=result.stderr.decode(errors='replace')[-3000:]
+        try: diagnostic=diagnostic.replace(json.loads(read(ROOT/'settings.json'))['probe_token'],'[redacted]')
+        except (OSError,ValueError,KeyError):pass
+        for path in [ROOT/'bouncer.conf',ROOT/'local_api_credentials.yaml']:
+            try:
+                for line in read(path).decode().splitlines():
+                    if line.startswith(('API_KEY=','password:','login:')):
+                        secret=re.split('[:=]',line,maxsplit=1)[1].strip().strip('\"\'')
+                        if secret:diagnostic=diagnostic.replace(secret,'[redacted]')
+            except (OSError,ValueError):pass
+        raise RuntimeError('Command failed: '+str(args[0])+': '+diagnostic)
     return result
 
 

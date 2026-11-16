@@ -98,7 +98,7 @@ test "$(request http://guard.test:18080/api/update -H 'Content-Type: application
 test "$(request 'http://guard.test:18080/.env')" = 403
 test "$(request --get http://guard.test:18080/api/search --data-urlencode 'q=<script>alert(1)</script>')" = 403
 test "$(request --get http://guard.test:18080/api/search --data-urlencode "q=1' OR 1=1--")" = 403
-test "$(request http://guard.test:18080/api/update -H 'Content-Type: application/json' --data '{"q":"<script>alert(1)</script>"}')" = 403
+test "$(request http://guard.test:18080/api/update -H 'Content-Type: application/json' --data '{"password":"QuietGuardSecretMarker","q":"<script>alert(1)</script>"}')" = 403
 # Client-supplied IP identity cannot replace the connection peer.
 test "$(request http://guard.test:18080/.env -H 'X-Forwarded-For: 127.0.0.1' -H 'X-Crowdsec-Appsec-Ip: 127.0.0.1')" = 403
 sleep 11
@@ -108,6 +108,8 @@ events=[json.loads(s) for s in pathlib.Path('/var/lib/quiet-guard/waf/events.jso
 assert events and all(e['peer']=='10.204.0.2' for e in events),events
 assert all(set(e)=={'seq','epoch','boot_seconds','scope','peer','outcome'} for e in events)
 assert all('QuietGuardSecretMarker' not in p.read_text(errors='replace') for p in pathlib.Path('/var/lib/quiet-guard/waf').glob('*.json*'))
+import subprocess
+assert 'QuietGuardSecretMarker' not in subprocess.run(['journalctl','-u','quiet-guard-waf-engine','--no-pager'],stdout=subprocess.PIPE).stdout.decode(errors='replace')
 PY
 cscli -c /etc/quiet-guard/waf/config.yaml alerts list -o json | python3 -c 'import json,sys;assert not json.load(sys.stdin)'
 echo 'PASS: normal login/API/multipart pass; URI, query and JSON-body attacks blocked; metadata-only events and no diagnostic alerts'

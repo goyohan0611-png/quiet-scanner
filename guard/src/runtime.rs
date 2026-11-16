@@ -41,7 +41,7 @@ pub fn state() -> State {
         agent: "running".into(),
         protection: "not_configured".into(),
         risk: "not_assessed".into(),
-        message: "No protection is configured. WAF and exposure checks are not connected yet."
+        message: "No protection is configured. Enable components explicitly; exposure risk is not assessed."
             .into(),
         ssh: None,
         waf: None,
@@ -77,7 +77,7 @@ fn apply_ssh(state: &mut State, observation: serde_json::Value) {
     match observation["state"].as_str() {
         Some("verified") => {
             state.protection = "partially_protected".into();
-            state.message = "SSH engine and SSH-only firewall recently verified. WAF/exposure checks are not connected; overall risk is not assessed.".into();
+            state.message = "SSH engine and SSH-only firewall recently verified. Check optional WAF separately; overall risk is not assessed.".into();
         }
         Some("unknown") => {
             state.protection = "unknown".into();
@@ -86,7 +86,7 @@ fn apply_ssh(state: &mut State, observation: serde_json::Value) {
         Some("off") => {
             state.protection = "off".into();
             state.message =
-                "SSH protection is explicitly off. WAF/exposure checks are not connected.".into();
+                "SSH protection is explicitly off. Review the separate WAF state.".into();
         }
         _ => {}
     }
