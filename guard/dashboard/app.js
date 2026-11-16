@@ -90,7 +90,7 @@
     return jobs.map(j => {
       const tone = j.status === 'succeeded' ? 'good' : j.status === 'failed' ? 'bad' : 'neutral';
       if (!full) return `<div class="job-row"><span class="job-marker ${tone}">${icon(j.status === 'succeeded' ? 'check' : 'history')}</span><div class="job-info"><strong>${esc(names[j.action] || '관리 작업')}</strong><p>${esc(jobNames[j.status] || '확인 필요')}</p></div><span class="job-time">${formatTime(j.finished || j.started)}</span></div>`;
-      return `<div class="history-row"><div class="history-head"><strong>${esc(names[j.action] || '관리 작업')}</strong><span class="state-badge ${tone}">${esc(jobNames[j.status] || '확인 필요')}</span><span class="job-time">${formatTime(j.started)}${j.finished ? ` → ${formatTime(j.finished)}` : ''}</span></div>${j.status === 'interrupted' ? '<p>관리 연결이 중단된 작업이에요. 현재 보호 상태를 먼저 확인해 주세요.</p>' : ''}${j.output ? `<details><summary>진단 내용 보기</summary><pre>${esc(j.output)}</pre></details>` : ''}</div>`;
+      return `<div class="history-row" data-job-id="${esc(j.id)}"><div class="history-head"><strong>${esc(names[j.action] || '관리 작업')}</strong><span class="state-badge ${tone}">${esc(jobNames[j.status] || '확인 필요')}</span><span class="job-time">${formatTime(j.started)}${j.finished ? ` → ${formatTime(j.finished)}` : ''}</span></div>${j.status === 'interrupted' ? '<p>관리 연결이 중단된 작업이에요. 현재 보호 상태를 먼저 확인해 주세요.</p>' : ''}${j.output ? `<details><summary>진단 내용 보기</summary><pre>${esc(j.output)}</pre></details>` : ''}</div>`;
     }).join('');
   }
   function renderTable() {
@@ -111,6 +111,9 @@
     document.querySelectorAll('[data-service], #prepare-dependencies, #exposure-run, #ssh-form button[type=submit], #waf-form button[type=submit]').forEach(el => el.disabled = !online || busy());
   }
   function render() {
+    const focused = document.activeElement?.closest('[data-service]');
+    const focusKey = focused ? [focused.dataset.service,focused.dataset.operation] : null;
+    const expanded = [...document.querySelectorAll('#history-jobs details[open]')].map(el => el.closest('[data-job-id]').dataset.jobId);
     $('hostname').textContent = data.server?.hostname || '서버'; $('platform').textContent = data.server?.platform || 'Linux'; $('version').textContent = data.version || '개발판';
     $('preview-banner').hidden = !data.preview; $('updated').textContent = `${formatTime(data.updated)} 확인`;
     const connected = online && data.agent?.agent === 'running';
@@ -128,6 +131,8 @@
     const prerequisites = [['crowdsec','공격 검사 엔진'],['nginx','Nginx 웹 서버'],['lua','웹 검사 연결 모듈'],['nftables','SSH 차단 도구']];
     $('prerequisite-list').innerHTML = prerequisites.map(([key,label]) => `<div class="prerequisite-item ${data.prerequisites?.[key] ? '' : 'missing'}">${icon(data.prerequisites?.[key] ? 'check' : 'info')}<span>${label}</span><small>${data.prerequisites?.[key] ? '설치됨' : '준비 필요'}</small></div>`).join('');
     renderFindings(); $('recent-jobs').innerHTML = jobRows((data.jobs || []).slice(0,3),false); $('history-jobs').innerHTML = jobRows(data.jobs,true); renderTable();
+    for (const row of document.querySelectorAll('#history-jobs [data-job-id]')) if (expanded.includes(row.dataset.jobId)) row.querySelector('details')?.setAttribute('open','');
+    if (focusKey) document.querySelector(`#${view === 'protection' ? 'setting' : 'overview'}-services [data-service="${focusKey[0]}"][data-operation="${focusKey[1]}"]`)?.focus({preventScroll:true});
     const job = active(); $('active-job').hidden = !job; if (job) { $('active-job-label').textContent = `${names[job.action] || '관리 작업'} 진행 중`; $('active-job-elapsed').textContent = `${Math.max(0,Math.floor(Date.now()/1000 - job.started))}초 경과`; }
     controls();
   }

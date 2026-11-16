@@ -397,6 +397,7 @@ async fn handle(
                     );
                     jobs.truncate(20);
                     atomic_jobs(&jobs)?;
+                    drop(_deployment);
                     tokio::spawn(run_job(controller.clone(), action, id.clone()));
                     serde_json::json!({"id":id,"status":"running"})
                 }

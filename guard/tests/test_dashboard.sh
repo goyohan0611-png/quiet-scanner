@@ -18,7 +18,7 @@ quiet-guard dashboard enable
 python3 "$root/tests/test_dashboard_api.py"
 # The UI must not survive foundational removal, and removal must not silently
 # bypass its separate ownership record.
-if python3 "$root/scripts/deploy.py" remove; then echo 'Removed an active dashboard foundation'; exit 1; fi
+if python3 "$root/scripts/deploy.py" uninstall; then echo 'Removed an active dashboard foundation'; exit 1; fi
 quiet-guard dashboard disable
 systemctl is-active --quiet quiet-guard-exposure.timer
 quiet-guard dashboard enable
@@ -35,5 +35,5 @@ quiet-guard dashboard remove
 systemctl is-active --quiet quiet-guard.service
 test ! -e /etc/quiet-guard/dashboard/access-token
 test ! -e /etc/systemd/system/quiet-guard-dashboard.service
-python3 "$root/scripts/deploy.py" remove
+python3 "$root/scripts/deploy.py" uninstall
 echo 'PASS: authenticated loopback UI, restricted broker, real jobs, token rotation and owned teardown'
