@@ -35,6 +35,16 @@ systemctl is-active --quiet quiet-guard.service
 bash "$root/scripts/package.sh" "$binary" "$temporary/release2" 2 0.1.0 "$temporary/private.pem"
 python3 "$root/scripts/deploy.py" install --bundle "$temporary/release2" --trusted-key "$temporary/public.pem"
 quiet-guard status >/dev/null
+# Failed signed update must bring the previous verified installation back.
+bash "$root/scripts/package.sh" "$binary" "$temporary/bad-update" 3 0.1.0 "$temporary/private.pem"
+sed -i 's|ExecStart=.*|ExecStart=/usr/bin/false|' "$temporary/bad-update/quiet-guard.service"
+rm "$temporary/bad-update/manifest.json" "$temporary/bad-update/signature.bin"
+"$binary" bundle manifest "$temporary/bad-update" release 3 0.1.0
+openssl pkeyutl -sign -inkey "$temporary/private.pem" -rawin -in "$temporary/bad-update/manifest.json" -out "$temporary/bad-update/signature.bin"
+if python3 "$root/scripts/deploy.py" install --bundle "$temporary/bad-update" --trusted-key "$temporary/public.pem"; then exit 1; fi
+quiet-guard status >/dev/null
+python3 -c 'import json;assert json.load(open("/etc/quiet-guard/install.json"))["sequence"]==2'
+echo 'PASS: a failing signed update restores the previous running version'
 cp /etc/systemd/system/quiet-guard.service "$temporary/installed-unit"
 printf '\n# user change\n' >> /etc/systemd/system/quiet-guard.service
 if python3 "$root/scripts/deploy.py" uninstall; then exit 1; fi

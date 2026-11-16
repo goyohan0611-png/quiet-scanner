@@ -193,7 +193,9 @@ def install(directory, key_path):
             except OSError: pass
         command('/usr/bin/systemctl', 'daemon-reload', check=False)
         if was_enabled: command('/usr/bin/systemctl', 'enable', 'quiet-guard.service', check=False)
-        if was_active: command('/usr/bin/systemctl', 'start', 'quiet-guard.service', check=False)
+        if was_active:
+            command('/usr/bin/systemctl', 'start', 'quiet-guard.service')
+            wait_ready()
         raise
     print(json.dumps({'installed': manifest['version'], 'sequence': manifest['sequence'],
                       'protection': 'not_configured', 'message': 'Foundation installed; protection engines are not connected yet.'}))
@@ -215,8 +217,9 @@ def uninstall():
 def main():
     if sys.platform != 'linux' or os.geteuid() != 0:
         raise ValueError('Linux root privileges required')
-    if os.uname().machine != 'x86_64' or 'ID=ubuntu' not in pathlib.Path('/etc/os-release').read_text():
-        raise ValueError('This foundation installer targets Ubuntu x86_64')
+    platform = dict(line.split('=', 1) for line in pathlib.Path('/etc/os-release').read_text().splitlines() if '=' in line)
+    if os.uname().machine != 'x86_64' or platform.get('ID', '').strip('"') != 'ubuntu' or platform.get('VERSION_ID', '').strip('"') != '24.04':
+        raise ValueError('This foundation installer currently supports Ubuntu 24.04 x86_64 only')
     os.umask(0o077)
     parser = argparse.ArgumentParser()
     parser.add_argument('operation', choices=['install', 'uninstall'])

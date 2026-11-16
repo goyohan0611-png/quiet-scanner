@@ -241,7 +241,11 @@ pub fn verify(root: &Path, key_path: &Path) -> Result<Manifest> {
         .map(|e| e.path.clone())
         .collect::<BTreeSet<_>>();
     if actual != expected {
-        return Err("missing or unlisted payload file".into());
+        return Err(format!(
+            "missing or unlisted payload file; extra={:?}; missing={:?}",
+            actual.difference(&expected).take(8).collect::<Vec<_>>(),
+            expected.difference(&actual).take(8).collect::<Vec<_>>()
+        ));
     }
     for entry in &manifest.files {
         let (size, hash) = digest_file(&root.join(&entry.path))?;
