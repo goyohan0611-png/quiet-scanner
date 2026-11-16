@@ -450,4 +450,50 @@ mod tests {
         h.phase = "unknown".into();
         assert!(!h.current(101, "boot1", "a"));
     }
+    #[test]
+    fn firewall_readback_must_prove_hook_scope_membership_and_finite_leases() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/nft-ssh.json")).unwrap();
+        let wanted = BTreeMap::from([
+            ("192.0.2.2".parse().unwrap(), 45),
+            ("2001:db8::2".parse().unwrap(), 45),
+        ]);
+        let check = |value: &serde_json::Value| {
+            verify_table(&serde_json::to_vec(value).unwrap(), &config(), &wanted)
+        };
+        assert!(check(&fixture).is_ok());
+        let changes = [
+            ("/nftables/1/table/comment", serde_json::json!("foreign")),
+            ("/nftables/4/chain/hook", serde_json::json!("forward")),
+            ("/nftables/5/rule/expr/1/match/right", serde_json::json!(80)),
+            ("/nftables/5/rule/expr/0/match/op", serde_json::json!("!=")),
+            ("/nftables/2/set/elem", serde_json::json!([])),
+            ("/nftables/2/set/elem/0/elem/timeout", serde_json::json!(0)),
+            (
+                "/nftables/2/set/elem/0/elem/timeout",
+                serde_json::json!(46000),
+            ),
+            (
+                "/nftables/3/set/elem/0/elem/val",
+                serde_json::json!("2001:db8::3"),
+            ),
+        ];
+        for (pointer, value) in changes {
+            let mut bad = fixture.clone();
+            *bad.pointer_mut(pointer).unwrap() = value;
+            assert!(check(&bad).is_err(), "accepted {pointer}");
+        }
+        let mut extra = fixture.clone();
+        extra["nftables"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"chain":{"name":"unexpected"}}));
+        assert!(check(&extra).is_err());
+        assert!(verify_table(
+            &serde_json::to_vec(&fixture).unwrap(),
+            &config(),
+            &BTreeMap::new()
+        )
+        .is_err());
+    }
 }

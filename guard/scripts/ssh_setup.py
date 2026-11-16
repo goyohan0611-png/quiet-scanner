@@ -263,6 +263,9 @@ def create_fresh(args):
     ports = sorted(set(args.port or [22]))
     ssh_config = command('/usr/sbin/sshd', '-T').stdout.decode()
     ssh_ports = {int(line.split()[1]) for line in ssh_config.splitlines() if line.startswith('port ')}
+    loglevel = next((line.split()[1].upper() for line in ssh_config.splitlines() if line.startswith('loglevel ')), '')
+    if loglevel in {'QUIET', 'FATAL', 'ERROR', ''}:
+        raise ValueError('sshd must log authentication failures (LogLevel INFO or more detailed); its configuration was not changed')
     if not set(ports).issubset(ssh_ports):
         raise ValueError('Selected ports must be actual ports reported by sshd -T')
     management = sorted({str(ipaddress.ip_address(ip)) for ip in args.management_ip})
@@ -296,8 +299,8 @@ def create_fresh(args):
             atomic(ROOT / 'rules' / name, text.encode())
     save(ROOT / 'policy.json', value)
     revision()  # Rust validates canonical addresses, policy limits and direct-path consent.
-    save(ROOT / 'acquis.yaml', {'source': 'journalctl', 'journalctl_filter': ['SYSLOG_IDENTIFIER=sshd', 'SYSLOG_IDENTIFIER=sshd-session', '--output=cat'],
-                               'labels': {'type': 'sshd'}})
+    save(ROOT / 'acquis.yaml', {'source': 'journalctl', 'journalctl_filter': ['SYSLOG_IDENTIFIER=sshd', 'SYSLOG_IDENTIFIER=sshd-session', '--output=short'],
+                               'labels': {'type': 'syslog'}})
     save(ROOT / 'profiles.yaml', {'name': 'quiet_guard_ssh',
         'filters': ["Alert.Remediation == true && Alert.GetScope() == 'Ip' && Alert.GetScenario() startsWith 'crowdsecurity/ssh-'"],
         'decisions': [{'type': 'ban', 'duration': '10m'}], 'on_success': 'break'})

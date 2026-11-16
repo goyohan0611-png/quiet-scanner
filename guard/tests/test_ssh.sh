@@ -14,7 +14,7 @@ cleanup() {
   rm -rf -- "$temporary"
 }
 trap cleanup EXIT
-trap 'echo "SSH integration failure at line $LINENO"; find /etc/quiet-guard/ssh /var/lib/quiet-guard/ssh -maxdepth 3 -printf "%m %p\n" 2>/dev/null || true; journalctl -u quiet-guard-ssh-engine -u quiet-guard-ssh-enforcer --no-pager -n 60 || true; cat /run/quiet-guard-ssh/health.json 2>/dev/null || true; nft -j list table inet quiet_guard_ssh || true' ERR
+trap 'echo "SSH integration failure at line $LINENO"; journalctl -t sshd -t sshd-session --no-pager -n 20 || true; sshd -T | grep -E "^(loglevel|port|syslogfacility) " || true; journalctl -u quiet-guard-ssh-engine -u quiet-guard-ssh-enforcer --no-pager -n 60 || true; cat /run/quiet-guard-ssh/health.json 2>/dev/null || true; nft -j list table inet quiet_guard_ssh || true' ERR
 umask 077
 apt-get update -qq
 apt-get install -y --no-install-recommends nftables openssh-server openssh-client iproute2
@@ -79,7 +79,7 @@ systemctl is-enabled --quiet quiet-guard-ssh-engine quiet-guard-ssh-enforcer
 quiet-guard ssh status
 sleep 2  # Let the journald follower start before emitting real SSH failures.
 for attempt in $(seq 1 10); do
-  ip netns exec qg-ssh-client ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=1 -o PreferredAuthentications=none quietguard_invalid@10.203.0.1 true 2>/dev/null || true
+  ip netns exec qg-ssh-client ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=1 -o PreferredAuthentications=none quietguard_invalid@10.203.0.1 true || true
 done
 wait_for has_ban 10.203.0.2
 if connect 10.203.0.2 22; then echo 'Banned SSH connection succeeded' >&2; exit 1; fi
