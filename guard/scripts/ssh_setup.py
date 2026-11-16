@@ -368,7 +368,8 @@ def main():
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         ensure_foundation()
         directory(STATE.parent, 0o755)
-        prerequisites()
+        if args.operation in {'enable', 'allow', 'remove-allow', 'unblock'}:
+            prerequisites()
         if args.operation == 'enable' and not RECORD.exists():
             fresh(args)
         owned()  # Verify every owned immutable file before any service mutation.

@@ -319,13 +319,14 @@ pub struct Health {
     pub boot_seconds: u64,
     pub policy_revision: String,
     pub phase: String,
-    pub blocked_ips: usize,
+    pub blocked_ips: Option<usize>,
     pub message: String,
 }
 impl Health {
     pub fn current(&self, now: u64, boot_id: &str, revision: &str) -> bool {
         self.schema == 1
             && self.phase == "verified"
+            && self.blocked_ips.is_some()
             && self.boot_id == boot_id
             && now >= self.boot_seconds
             && now - self.boot_seconds <= HEALTH_TTL
@@ -440,7 +441,7 @@ mod tests {
             boot_seconds: 100,
             policy_revision: "a".into(),
             phase: "verified".into(),
-            blocked_ips: 0,
+            blocked_ips: Some(0),
             message: String::new(),
         };
         assert!(h.current(130, "boot1", "a"));

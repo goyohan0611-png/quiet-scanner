@@ -243,7 +243,11 @@ fn write_health(config: &Config, phase: &str, count: usize, message: &str) -> Re
         boot_seconds: crate::runtime::boot_seconds(),
         policy_revision: config.revision(),
         phase: phase.into(),
-        blocked_ips: count,
+        blocked_ips: if matches!(phase, "verified" | "off") {
+            Some(count)
+        } else {
+            None
+        },
         message: message.into(),
     };
     let path = Path::new(HEALTH);
@@ -253,6 +257,12 @@ fn write_health(config: &Config, phase: &str, count: usize, message: &str) -> Re
         return Err("untrusted health directory".into());
     }
     let temp = directory.join(format!("health-{}.tmp", std::process::id()));
+    let previous: Option<Health> = root_file(path, 65536)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    if previous.as_ref().is_none_or(|value| value.phase != phase) {
+        eprintln!("SSH protection state changed to {phase}: {message}");
+    }
     let result = (|| {
         let mut file = fs::OpenOptions::new()
             .create_new(true)
@@ -424,8 +434,14 @@ pub fn observation() -> serde_json::Value {
             .as_str()
             .ok_or("missing policy revision")?;
         let verified = h.current(crate::runtime::boot_seconds(), &boot_id()?, revision);
+        let message = if !verified && h.phase == "verified" {
+            "SSH observation expired or policy/boot identity changed; protection cannot be verified"
+                .to_string()
+        } else {
+            h.message
+        };
         Ok(
-            serde_json::json!({"state":if verified{"verified"}else{"unknown"},"blocked_ips":if verified{h.blocked_ips}else{0},"message":h.message,"verified_boot_seconds":h.boot_seconds}),
+            serde_json::json!({"state":if verified{"verified"}else{"unknown"},"blocked_ips":if verified{h.blocked_ips}else{None},"message":message,"verified_boot_seconds":h.boot_seconds}),
         )
     })();
     match result {

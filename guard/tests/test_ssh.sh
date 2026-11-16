@@ -77,6 +77,7 @@ echo 'PASS: failed first SSH setup rolls back only its own files and can be retr
 quiet-guard ssh enable --direct --management-ip 10.203.0.3
 systemctl is-enabled --quiet quiet-guard-ssh-engine quiet-guard-ssh-enforcer
 quiet-guard ssh status
+cs decisions list -o json | python3 -c 'import json,sys;assert not json.load(sys.stdin)'  # Benign probes are not attack decisions.
 sleep 2  # Let the journald follower start before emitting real SSH failures.
 for attempt in $(seq 1 10); do
   ip netns exec qg-ssh-client ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=1 -o PreferredAuthentications=none quietguard_invalid@10.203.0.1 true || true
@@ -103,6 +104,15 @@ quiet-guard ssh unblock 10.203.0.2
 ! has_ban 10.203.0.2
 connect 10.203.0.2 22
 echo 'PASS: management IP remains reachable, SSH exceptions and manual unblock take effect'
+engine_pid=$(systemctl show --property=MainPID --value quiet-guard-ssh-engine)
+follower_pid=$(pgrep -P "$engine_pid" -x journalctl)
+kill -STOP "$follower_pid"
+wait_for unknown
+systemctl is-active --quiet quiet-guard-ssh-engine
+cs lapi status >/dev/null  # API remains up; only log collection is stuck.
+kill -CONT "$follower_pid"
+wait_for python3 -c 'import json;assert json.load(open("/run/quiet-guard-ssh/health.json"))["phase"]=="verified"'
+echo 'PASS: a stuck journal reader removes verified state even while its local API is alive; benign diagnostics create no attack decisions'
 cs decisions add -i 10.203.0.2 -d 10m >/dev/null
 wait_for has_ban 10.203.0.2
 systemctl restart quiet-guard-ssh-engine quiet-guard-ssh-enforcer
