@@ -205,7 +205,15 @@ def fresh(args):
         token=cscli('bouncers','add','quiet-guard-waf','-o','raw').stdout.decode().strip()
         if not re.fullmatch(r'[a-zA-Z0-9_+=/-]{16,256}',token): raise ValueError('Invalid local API credential format')
         put(ROOT/'bouncer.conf',('API_URL=\nAPI_KEY='+token+'\nAPPSEC_URL=http://127.0.0.1:17426\nAPPSEC_FAILURE_ACTION=passthrough\nAPPSEC_PROCESS_TIMEOUT=1000\nAPPSEC_CONNECT_TIMEOUT=100\nAPPSEC_SEND_TIMEOUT=100\n').encode())
-        command('/usr/bin/crowdsec','-t','-c',str(ROOT/'config.yaml'))
+        validation=command('/usr/bin/crowdsec','-t','-c',str(ROOT/'config.yaml'),check=False)
+        if validation.returncode:
+            diagnostic=(validation.stdout+validation.stderr).decode(errors='replace')[-4000:]
+            for secret in [token,config['probe_token']]: diagnostic=diagnostic.replace(secret,'[redacted]')
+            for line in read(ROOT/'local_api_credentials.yaml').decode().splitlines():
+                if line.startswith(('password:','login:')):
+                    secret=line.split(':',1)[1].strip().strip('\"\'')
+                    if secret:diagnostic=diagnostic.replace(secret,'[redacted]')
+            raise RuntimeError('Inspection engine validation failed: '+diagnostic)
         patched=nginx_patched(inventory,plan)
         backups={path:{'raw':base64.b64encode(inventory['texts'][path].encode()).decode(),'mode':stat.S_IMODE(inventory['metas'][path].st_mode),'gid':inventory['metas'][path].st_gid,'patched_hash':sha(raw)} for path,raw in patched.items()}
         include=('lua_package_path "'+str(CODE)+'/lua/?.lua;;";\nlua_shared_dict crowdsec_cache 10m;\nlua_shared_dict quiet_guard_waf 16m;\ninit_by_lua_file '+str(CODE)+'/nginx/init.lua;\naccess_by_lua_file '+str(CODE)+'/nginx/access.lua;\nlog_by_lua_file '+str(CODE)+'/nginx/log.lua;\nserver { listen unix:'+SOCKET+'; server_name localhost; access_log off; set $quiet_guard_scope_id ""; location / { content_by_lua_file '+str(CODE)+'/nginx/status.lua; } }\n').encode()

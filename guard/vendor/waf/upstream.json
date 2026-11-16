@@ -2,7 +2,8 @@
   "refs": {
     "lua-cs-bouncer": "ec94d512927cf70be865686e4eb928d128189633",
     "lua-resty-http": "03995ff9a08194d48d446ed2fa099cd6de38fbef",
-    "hub": "6068c4464f630cc650909e0a2b7f3fe2d950bfb2"
+    "hub": "6068c4464f630cc650909e0a2b7f3fe2d950bfb2",
+    "lua-resty-string": "7be2e1d907744f965af115819cca9e6580f2e760"
   },
   "files": {
     "licenses/lua-cs-bouncer.txt": {
@@ -296,6 +297,14 @@
     "data/windows-powershell-commands.data": {
       "source": "https://hub-data.crowdsec.net/appsec/crs/windows-powershell-commands.data",
       "sha256": "5055ffeb4ce22869dee0f611045991e64365e980bba68649f4468aea86476d93"
+    },
+    "lua/resty/string.lua": {
+      "source": "https://raw.githubusercontent.com/openresty/lua-resty-string/7be2e1d907744f965af115819cca9e6580f2e760/lib/resty/string.lua",
+      "sha256": "dc0d4133b6917a7074742e9cedc9140e5409e766bb8f35d4617ab55d5e0215cd"
+    },
+    "licenses/lua-resty-string.txt": {
+      "source": "https://raw.githubusercontent.com/openresty/lua-resty-string/7be2e1d907744f965af115819cca9e6580f2e760/README.markdown",
+      "sha256": "c4469e4f41f4b7adc33c4ecf451b0aa2c09d2d04fb72dfbdd26f7a0400d37720"
     }
   }
 }

@@ -18,8 +18,10 @@ umask 077
 # Hosted runners preconfigure web document directories for the runner account.
 # This disposable fixture uses root-owned package configuration parents, as R0
 # requires; the product refuses writable/unowned parents rather than changing them.
-chown root:root /usr/share/nginx
-chmod go-w /usr/share/nginx
+for directory in /usr/share/nginx/modules-available /usr/share/nginx /usr/share /usr /etc/nginx /etc /; do
+  chown root:root "$directory"
+  chmod go-w "$directory"
+done
 openssl genpkey -algorithm ED25519 -out "$temporary/private.pem"
 openssl pkey -in "$temporary/private.pem" -pubout -out "$temporary/public.pem"
 bash "$root/scripts/package.sh" "$binary" "$temporary/release" 1 0.1.0 "$temporary/private.pem"
