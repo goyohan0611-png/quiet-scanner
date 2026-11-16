@@ -15,6 +15,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "WAF failure at line $LINENO"; python3 "$root/tests/waf_diagnostics.py"' ERR
 umask 077
+# Hosted runners preconfigure web document directories for the runner account.
+# This disposable fixture uses root-owned package configuration parents, as R0
+# requires; the product refuses writable/unowned parents rather than changing them.
+chown root:root /usr/share/nginx
+chmod go-w /usr/share/nginx
 openssl genpkey -algorithm ED25519 -out "$temporary/private.pem"
 openssl pkey -in "$temporary/private.pem" -pubout -out "$temporary/public.pem"
 bash "$root/scripts/package.sh" "$binary" "$temporary/release" 1 0.1.0 "$temporary/private.pem"
