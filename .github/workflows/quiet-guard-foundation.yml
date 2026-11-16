@@ -2,17 +2,17 @@ name: Quiet Guard foundation
 on:
   workflow_dispatch:
   push:
-    branches: [codex/quiet-guard-foundation]
+    branches: ['codex/quiet-guard-foundation']
     paths: ['guard/**', '.github/workflows/quiet-guard-foundation.yml']
 permissions:
   contents: read
 jobs:
   foundation:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: guard
-    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Standalone Rust tests and checks
@@ -21,6 +21,7 @@ jobs:
           cargo test --manifest-path Cargo.toml --locked
           cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
           cargo build --manifest-path Cargo.toml --locked
+          python3 tests/test_nginx_config.py
           python3 tests/test_signatures.py target/debug/quiet-guard
       - name: Real signed install, update, rollback and removal
         env:
@@ -34,3 +35,25 @@ jobs:
         env:
           QUIET_GUARD_DISPOSABLE_VM: YES
         run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_ssh.sh target/debug/quiet-guard
+  waf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build the standalone WAF controller
+        run: |
+          cargo build --locked
+          python3 tests/test_nginx_config.py
+      - name: Prepare disposable Ubuntu dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-server iproute2
+          sudo bash scripts/install_ssh_dependencies.sh
+          sudo bash scripts/install_waf_dependencies.sh
+      - name: Actual request inspection, external proofs, fail-open and configuration recovery
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_waf.sh target/debug/quiet-guard

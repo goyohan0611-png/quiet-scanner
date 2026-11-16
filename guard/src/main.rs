@@ -1,7 +1,7 @@
 use quiet_guard::{
     bundle::{self, Kind},
     policy::IngressPolicy,
-    runtime, ssh,
+    runtime, ssh, waf,
 };
 use std::{env, fs, io::Write, path::Path};
 
@@ -15,6 +15,17 @@ fn run(args: &[String]) -> Result<(), String> {
     {
         [] | ["--help"] | ["help"] => println!("{USAGE}"),
         ["--version"] => println!("quiet-guard {}", env!("CARGO_PKG_VERSION")),
+        ["waf", rest @ ..] => {
+            waf::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
+        }
+        ["waf-monitor"] => waf::monitor()?,
+        ["waf-policy", input] => {
+            let config: waf::Config =
+                serde_json::from_slice(&fs::read(input).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            config.validate()?;
+            println!("{{\"valid\":true,\"applied\":false}}");
+        }
         ["ssh", rest @ ..] => {
             ssh::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
         }

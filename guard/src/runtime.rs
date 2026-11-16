@@ -15,6 +15,8 @@ pub struct State {
     pub message: String,
     #[serde(default)]
     pub ssh: Option<serde_json::Value>,
+    #[serde(default)]
+    pub waf: Option<serde_json::Value>,
 }
 
 pub fn boot_seconds() -> u64 {
@@ -42,14 +44,33 @@ pub fn state() -> State {
         message: "No protection is configured. WAF and exposure checks are not connected yet."
             .into(),
         ssh: None,
+        waf: None,
     };
     #[cfg(target_os = "linux")]
     let state = {
         let mut state = state;
         apply_ssh(&mut state, crate::ssh::observation());
+        apply_waf(&mut state, crate::waf::observation());
         state
     };
     state
+}
+#[cfg(any(target_os = "linux", test))]
+fn apply_waf(state: &mut State, observation: serde_json::Value) {
+    let ssh_verified = state.ssh.as_ref().and_then(|s| s["state"].as_str()) == Some("verified");
+    let waf_phase = observation["state"].as_str().unwrap_or("unknown");
+    if waf_phase == "verified" || ssh_verified {
+        state.protection = "partially_protected".into();
+        state.message="Some protection components are verified. Review SSH/WAF component states separately; exposure risk is not assessed.".into();
+    } else if !["off", "not_configured"].contains(&waf_phase) {
+        state.protection = "unknown".into();
+        state.message =
+            "Web inspection is not verified. External checks or service repair are required."
+                .into();
+    } else if waf_phase == "off" && state.protection == "not_configured" {
+        state.protection = "off".into();
+    }
+    state.waf = Some(observation);
 }
 #[cfg(any(target_os = "linux", test))]
 fn apply_ssh(state: &mut State, observation: serde_json::Value) {
@@ -151,5 +172,14 @@ mod tests {
         assert_eq!(state.protection, "unknown");
         super::apply_ssh(&mut state, serde_json::json!({"state":"off"}));
         assert_eq!(state.protection, "off");
+    }
+    #[test]
+    fn component_failure_does_not_hide_other_verified_protection_or_clear_risk() {
+        let mut state = super::state();
+        super::apply_ssh(&mut state, serde_json::json!({"state":"verified"}));
+        super::apply_waf(&mut state, serde_json::json!({"state":"degraded"}));
+        assert_eq!(state.protection, "partially_protected");
+        assert_eq!(state.waf.unwrap()["state"], "degraded");
+        assert_eq!(state.risk, "not_assessed");
     }
 }

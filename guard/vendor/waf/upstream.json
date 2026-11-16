@@ -1,0 +1,301 @@
+{
+  "refs": {
+    "lua-cs-bouncer": "ec94d512927cf70be865686e4eb928d128189633",
+    "lua-resty-http": "03995ff9a08194d48d446ed2fa099cd6de38fbef",
+    "hub": "6068c4464f630cc650909e0a2b7f3fe2d950bfb2"
+  },
+  "files": {
+    "licenses/lua-cs-bouncer.txt": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/LICENSE",
+      "sha256": "ca599d3d90435400bf0c1791f573ceb7bc5ec50adcfecd7b9881f0eebb450283"
+    },
+    "lua/crowdsec.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/crowdsec.lua",
+      "sha256": "f6d5591a1e0493a44564519c5a94907f3ea129fdf8f3e30e98f384f76274e197",
+      "patched_sha256": "d2e913ce291167f06b1ab1545f4b5e0696299a4e26a01ddbaa3926ce86ecac6b",
+      "patch": "Unexpected/authentication responses and body read failures remain unverified; optionally inspect headers only for unsupported bodies; suppress per-request context logging."
+    },
+    "lua/plugins/crowdsec/ban.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/ban.lua",
+      "sha256": "46635660fbab6a53854a3d08f8384b5dbeaae08cffefadbcb48f10473b552e5e"
+    },
+    "lua/plugins/crowdsec/bitop.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/bitop.lua",
+      "sha256": "148fdfe54a5011f1f6c96fbe1dd9a715c4f67264d8d4089222cd87dc981b584d"
+    },
+    "lua/plugins/crowdsec/captcha.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/captcha.lua",
+      "sha256": "c9ed3881c7f58d75306840b86c6b24687faf341cdfce48293cbf7d39e713c370"
+    },
+    "lua/plugins/crowdsec/challenge.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/challenge.lua",
+      "sha256": "b2ea5a2a8709734d01a119e071fe1da9a447e193c734c5b871bcaa062fd1da78"
+    },
+    "lua/plugins/crowdsec/config.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/config.lua",
+      "sha256": "6f52efea7d5725957a9381e750114f9833229ba7b523c224111e4cb6aa29b680"
+    },
+    "lua/plugins/crowdsec/flag.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/flag.lua",
+      "sha256": "24024522fd69df9eb732385bb8ae7126ada13d41595293f40679c9f28ceeaea4"
+    },
+    "lua/plugins/crowdsec/iputils.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/iputils.lua",
+      "sha256": "6918f0de4495abf8d7c5d4f8edd18fc58e90364c3b556da55dd4cfdc11d029b5"
+    },
+    "lua/plugins/crowdsec/live.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/live.lua",
+      "sha256": "6b49033bb73c72e7e456a37ad7531197dee5c229669d78fc15d398ae81bcc522"
+    },
+    "lua/plugins/crowdsec/metrics.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/metrics.lua",
+      "sha256": "d9e9e8ecb7d212f99e37e30e599f69c8b2a004ebd777db531924d65c29295cca"
+    },
+    "lua/plugins/crowdsec/osinfo.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/osinfo.lua",
+      "sha256": "9b26f2a2c9a68784aa98c7ed5f87150bcc50e5902c8d83d2b9f4b7815d50356d"
+    },
+    "lua/plugins/crowdsec/stream.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/stream.lua",
+      "sha256": "47e5458ff9f671212be107217045ee8ba09cb90a093bde7dd34e4db6a4d138e3"
+    },
+    "lua/plugins/crowdsec/template.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/template.lua",
+      "sha256": "7af361a6d26a176eb0a6a68a4cbb30b34fe54d52cb9e289f1917f8d4727cc25b"
+    },
+    "lua/plugins/crowdsec/url.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/url.lua",
+      "sha256": "90d4d9de00a6a301f2a0da0fcc604265975bbee2bb8c960ed80d4401f2d10619"
+    },
+    "lua/plugins/crowdsec/utils.lua": {
+      "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/plugins/crowdsec/utils.lua",
+      "sha256": "92de6be569daa005e5b0631d3bc2dec8bc92b4174befe05a699f4037da8754be"
+    },
+    "licenses/lua-resty-http.txt": {
+      "source": "ledgetech/lua-resty-http@03995ff9a08194d48d446ed2fa099cd6de38fbef/LICENSE",
+      "sha256": "407e4b1412d8afa317dc703a1d318866c3de87d78899402125cbd90548c6057d"
+    },
+    "lua/resty/http.lua": {
+      "source": "ledgetech/lua-resty-http@03995ff9a08194d48d446ed2fa099cd6de38fbef/lib/resty/http.lua",
+      "sha256": "3b280bf6649352da99e8fbe711583abc31c953ec26a21716ba11727395a8d825"
+    },
+    "lua/resty/http_connect.lua": {
+      "source": "ledgetech/lua-resty-http@03995ff9a08194d48d446ed2fa099cd6de38fbef/lib/resty/http_connect.lua",
+      "sha256": "4b9ce67ce71c90322b41d00a8237785a9598c70fac4d894d824216532650c51f"
+    },
+    "lua/resty/http_headers.lua": {
+      "source": "ledgetech/lua-resty-http@03995ff9a08194d48d446ed2fa099cd6de38fbef/lib/resty/http_headers.lua",
+      "sha256": "5aae8d428e348e6b8e822c9cf824fb0207c2de0ddf445e767ca7c08b3a905b0a"
+    },
+    "rules/appsec-rules/crs.yaml": {
+      "source": "crowdsecurity/hub@6068c4464f630cc650909e0a2b7f3fe2d950bfb2/appsec-rules/crowdsecurity/crs.yaml",
+      "sha256": "3113c9bed6998ad60c22fcf1a983a2444744b024770f9e9972b9fadf6744e270"
+    },
+    "rules/appsec-rules/base-config.yaml": {
+      "source": "crowdsecurity/hub@6068c4464f630cc650909e0a2b7f3fe2d950bfb2/appsec-rules/crowdsecurity/base-config.yaml",
+      "sha256": "5ef93f4b19a028f2415afaf570df4d20a5f6038fa94cc990a387662303c2ef20"
+    },
+    "rules/appsec-rules/vpatch-env-access.yaml": {
+      "source": "crowdsecurity/hub@6068c4464f630cc650909e0a2b7f3fe2d950bfb2/appsec-rules/crowdsecurity/vpatch-env-access.yaml",
+      "sha256": "4611b1c5f45aa9d3371183be2bbcbeba7de25c2c3ed41c450dd2160d252cb3ce"
+    },
+    "data/crs-setup.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/crs-setup.conf",
+      "sha256": "7a80c9d46a00cd25b1071dfef7617f7aefc9ca2ce95603a0287a64b2ee072f48",
+      "patched_sha256": "cef82c2a855133837fa18bac2bb511d9eb9f9725d0ab5d8eeb629aef834b11fc",
+      "patch": "Disable default request audit logging; Quiet Guard emits metadata-only events."
+    },
+    "data/REQUEST-901-INITIALIZATION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-901-INITIALIZATION.conf",
+      "sha256": "4a27b595f5c6760fbbbaaa83fbac5453c440ebbca4a4a80e655aa625b93f40b8"
+    },
+    "data/REQUEST-905-COMMON-EXCEPTIONS.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-905-COMMON-EXCEPTIONS.conf",
+      "sha256": "1847b6cd6cd1e37e5c2650fdda76aeab177d56239a8c30cfb921b8c28ec24820"
+    },
+    "data/REQUEST-911-METHOD-ENFORCEMENT.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-911-METHOD-ENFORCEMENT.conf",
+      "sha256": "74c13eedd4c169114e60677e4bebfdca1c466a91a1a3567eec767a7ae443ee4f"
+    },
+    "data/REQUEST-913-SCANNER-DETECTION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-913-SCANNER-DETECTION.conf",
+      "sha256": "90b39c3998eda93c227664a7860ea8ef508c22603a6116434f0e1d3e4d4b5269"
+    },
+    "data/REQUEST-920-PROTOCOL-ENFORCEMENT.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-920-PROTOCOL-ENFORCEMENT.conf",
+      "sha256": "7b72577dc38a445411faf23ba1c8ab1462fb49bf953b8345711a2867eeb6994b"
+    },
+    "data/REQUEST-921-PROTOCOL-ATTACK.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-921-PROTOCOL-ATTACK.conf",
+      "sha256": "8aaef9c4f96bf3640aea503eb9343668b7c5dd94759dcfb4b11fd8ec62b7a3a4"
+    },
+    "data/REQUEST-922-MULTIPART-ATTACK.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-922-MULTIPART-ATTACK.conf",
+      "sha256": "d1d8352e29915de0b93adca91646830cf33039e56bc1835c745e4989a640cd51"
+    },
+    "data/REQUEST-930-APPLICATION-ATTACK-LFI.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-930-APPLICATION-ATTACK-LFI.conf",
+      "sha256": "8a7a67b577ecf3cc1c9af97884c9746e71d01d0e4338d9fc064ee0d610aba0a7"
+    },
+    "data/REQUEST-931-APPLICATION-ATTACK-RFI.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-931-APPLICATION-ATTACK-RFI.conf",
+      "sha256": "9a8655e7cef8b1de86190cd91eb65f9c42cd6e0f8f7b425f89bf47baa0a36537"
+    },
+    "data/REQUEST-932-APPLICATION-ATTACK-RCE.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-932-APPLICATION-ATTACK-RCE.conf",
+      "sha256": "ef13d9fa5dbd344bc0fd88cf76fec86eac23a36125ae2165077307a2b11259dd"
+    },
+    "data/REQUEST-933-APPLICATION-ATTACK-PHP.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-933-APPLICATION-ATTACK-PHP.conf",
+      "sha256": "b8b8a65d322cc542967f1418f2c20b2227d41e59da3fc9549e571abc608d8cdb"
+    },
+    "data/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf",
+      "sha256": "7ef626b1b5d7be1b1dfecf0ff7ec31bc2a29a145ff3eb0e6597af003238182dc"
+    },
+    "data/REQUEST-941-APPLICATION-ATTACK-XSS.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+      "sha256": "0ad1befbb8c2d96b71534f0cf6e8c72f17f307d0017825ee9b0af509b34656c0"
+    },
+    "data/REQUEST-942-APPLICATION-ATTACK-SQLI.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-942-APPLICATION-ATTACK-SQLI.conf",
+      "sha256": "8c999e1033b10e73d4b473bd6d4f179fe2c197fd100db772bbff5f8683e216c9"
+    },
+    "data/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf",
+      "sha256": "984a46a3c1b90e8b18da1700f4271e999542ff7f3abba725fc7518f7cd9f4712"
+    },
+    "data/REQUEST-944-APPLICATION-ATTACK-JAVA.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-944-APPLICATION-ATTACK-JAVA.conf",
+      "sha256": "f47419c138364aace0f9f2a3329edc7279f30457d98c9dc77e3166102398dfbd"
+    },
+    "data/REQUEST-949-BLOCKING-EVALUATION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/REQUEST-949-BLOCKING-EVALUATION.conf",
+      "sha256": "6cb9d3ee4daf17b5357cf608400003fd38e9da648711169a9c41b3c33c435ed8"
+    },
+    "data/RESPONSE-950-DATA-LEAKAGES.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-950-DATA-LEAKAGES.conf",
+      "sha256": "3eb0b420f828fd6d4d6572baf91e8ad022a49c7ee9887594fd5b8cd63bc8873c"
+    },
+    "data/RESPONSE-951-DATA-LEAKAGES-SQL.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-951-DATA-LEAKAGES-SQL.conf",
+      "sha256": "e6813800aa2fa15e3a0bcb11857c411a4961854dc21878ec8bbffada26968375"
+    },
+    "data/RESPONSE-952-DATA-LEAKAGES-JAVA.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-952-DATA-LEAKAGES-JAVA.conf",
+      "sha256": "bffc74dbeb3fce8ff498152a79c52fa25f7c6c469346ce3d2cf1ab9d689cdf9e"
+    },
+    "data/RESPONSE-953-DATA-LEAKAGES-PHP.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-953-DATA-LEAKAGES-PHP.conf",
+      "sha256": "996852797b9c75b98be2b9e7b02bca877378942242b3fd8ac1872c815e0fcacd"
+    },
+    "data/RESPONSE-954-DATA-LEAKAGES-IIS.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-954-DATA-LEAKAGES-IIS.conf",
+      "sha256": "40ef63ab68931dd3d52e3cfed6caee004b68d9928f55f10e0b127f16322642ed"
+    },
+    "data/RESPONSE-955-WEB-SHELLS.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-955-WEB-SHELLS.conf",
+      "sha256": "1a67805308811180daf88f4409561445b890a8dd9c172bc05749c83eb8956460"
+    },
+    "data/RESPONSE-959-BLOCKING-EVALUATION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-959-BLOCKING-EVALUATION.conf",
+      "sha256": "d6058f8a9a3f9623b83380c098e253a0ecc3144a339e182efa24b583ccfa3902"
+    },
+    "data/RESPONSE-980-CORRELATION.conf": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/RESPONSE-980-CORRELATION.conf",
+      "sha256": "7a3f827bcc561bd8c13bd7ff19dd1e1382844286d5ca13f7eda22461da8a3bc5"
+    },
+    "data/crawlers-user-agents.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/crawlers-user-agents.data",
+      "sha256": "198114cc75838f5cce81a937fd6eb1b44305e0da3e731e31e545e24db04bb9c8"
+    },
+    "data/iis-errors.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/iis-errors.data",
+      "sha256": "b14193bd4f3306da296dfde284d3d536f3bd7de38c5635ad2379289ee18b48b2"
+    },
+    "data/java-classes.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/java-classes.data",
+      "sha256": "58364828a32bf7caafae184996b10e52fdcef7f570b41f8c16b0683db2d42167"
+    },
+    "data/java-code-leakages.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/java-code-leakages.data",
+      "sha256": "cef3ac262bd5aff61eff1ed783ced149041bd44667cfd68a224d765b91a4660a"
+    },
+    "data/java-errors.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/java-errors.data",
+      "sha256": "ddc0c0f6f7f9ed4be844b725f73bda72c6a12712a0a7e1e15f5343f429611160"
+    },
+    "data/lfi-os-files.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/lfi-os-files.data",
+      "sha256": "6dceddeb870a0e70166b29e59551a51264a400bea7b33fa4ac921e100d6e16ae"
+    },
+    "data/php-config-directives.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-config-directives.data",
+      "sha256": "c4de571a22b121ca33acb6e9b10f4dab5c6954c5306f7f93eb6334a86e54eff6"
+    },
+    "data/php-errors.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-errors.data",
+      "sha256": "013a86a507e4ef6903cc585f4cb0c062436ac8c9099eeb85a9ce84418de48bca"
+    },
+    "data/php-errors-pl2.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-errors-pl2.data",
+      "sha256": "4f9f36e3efba569b7d5de11e7f76152027c32c2ce89262b5ba0594960690d3a0"
+    },
+    "data/php-function-names-933150.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-function-names-933150.data",
+      "sha256": "2d5b5c300839de027daca356b7755039c1c3f6b0b85a7edad94bf22217b6f544"
+    },
+    "data/php-function-names-933151.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-function-names-933151.data",
+      "sha256": "f8083cafa74b8746f8238411801655cae792de0b2895bffb340bac521b3875eb"
+    },
+    "data/php-variables.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/php-variables.data",
+      "sha256": "07ffd3c28d5d79e18e3844352fc3dd122af7e0037dbfebe6ed4dad403e9a95de"
+    },
+    "data/restricted-files.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/restricted-files.data",
+      "sha256": "1c3123b2cbbe09e48da4d901e4f4ac6ed76c7d7a896017f74333847db0be965c"
+    },
+    "data/restricted-upload.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/restricted-upload.data",
+      "sha256": "9d6565e2b95f2f382a102bdf5c24056354b507ea9923954480a2c14f84dec93e"
+    },
+    "data/scanners-headers.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/scanners-headers.data",
+      "sha256": "c32b2bdd5db260ddd4a94e9ad6cbb0afe2f7fe3f83ae1d3e7265b3f3794ab970"
+    },
+    "data/scanners-urls.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/scanners-urls.data",
+      "sha256": "28c12103022af25a6a27139c81ed772adee41db13e776976d7527e650ba01b4c"
+    },
+    "data/scanners-user-agents.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/scanners-user-agents.data",
+      "sha256": "e89148b6511e4b3ed75acdd97c55027de19306e293dd6c3c15710cb0098fe9f4"
+    },
+    "data/scripting-user-agents.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/scripting-user-agents.data",
+      "sha256": "d7051e95013de1c626a5871426b9bb8c01309a48cf7fda67c97662b58f02fbe8"
+    },
+    "data/sql-errors.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/sql-errors.data",
+      "sha256": "9aefb4ccc771b16ba3fda1fa0e1ee2be8858b4145412904d1fdfac42bf4d6c3f"
+    },
+    "data/ssrf.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/ssrf.data",
+      "sha256": "bacb633d5ed724fd3552a11af66a6fe8e73e16309dd2ea59f059161e4a31dce3"
+    },
+    "data/unix-shell.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/unix-shell.data",
+      "sha256": "8cd30bf37db66725ea5401cdf08c1f9a8e7e0eec48706b1117b1de90187e94af"
+    },
+    "data/web-shells-php.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/web-shells-php.data",
+      "sha256": "a6066bb0e0f37abd4c32e0fc75b116e120860fb9531839e70960880b5c93381f"
+    },
+    "data/windows-powershell-commands.data": {
+      "source": "https://hub-data.crowdsec.net/appsec/crs/windows-powershell-commands.data",
+      "sha256": "5055ffeb4ce22869dee0f611045991e64365e980bba68649f4468aea86476d93"
+    }
+  }
+}
