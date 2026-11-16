@@ -7,6 +7,25 @@ on:
 permissions:
   contents: read
 jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build authenticated management service
+        run: |
+          cargo build --locked
+          node --check dashboard/app.js
+      - name: Auth boundaries, real privileged jobs, isolation and lifecycle
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-server iproute2
+          sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_dashboard.sh target/debug/quiet-guard
   exposure:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

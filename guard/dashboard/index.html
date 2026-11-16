@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quiet Guard</title><link rel="icon" href="data:,">
+  <link rel="preload" href="/fonts/suit.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login-screen">
+    <div class="login-panel"><div class="wordmark"><span class="brand-symbol" data-icon="shield"></span><strong>Quiet Guard</strong></div>
+      <h1>서버 관리 화면에 연결</h1><p>서버에서 확인한 접속 키를 입력해 주세요.</p>
+      <form id="login-form"><label for="access-key">접속 키</label><input id="access-key" type="password" autocomplete="off" spellcheck="false" required><button class="button primary" type="submit">관리 화면 열기</button></form>
+      <p id="login-error" role="alert"></p><details><summary>접속 키 확인 방법</summary><p>서버에서 다음 명령으로 나만의 접속 주소를 확인할 수 있어요.</p><code>sudo quiet-guard dashboard login</code></details>
+    </div>
+  </div>
+  <div id="app" class="app-shell" hidden>
+    <aside class="rail"><a href="#overview" class="wordmark"><span class="brand-symbol" data-icon="shield"></span><strong>Quiet Guard</strong></a><p class="rail-caption">서비스 운영을 조용하고 안전하게</p>
+      <nav aria-label="주 메뉴"><button data-view="overview" aria-current="page"><span data-icon="overview"></span>개요</button><button data-view="protection"><span data-icon="shield"></span>보호 설정</button><button data-view="exposure"><span data-icon="network"></span>노출 점검<span id="nav-count" class="nav-count" hidden></span></button><button data-view="history"><span data-icon="history"></span>작업 기록</button></nav>
+      <div class="rail-bottom"><span class="development">개발판</span><span id="version">0.1.0</span><button id="logout" class="text-button"><span data-icon="logout"></span>연결 종료</button></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><div class="server-identity"><span class="server-icon" data-icon="server"></span><div><strong id="hostname">서버 연결 중</strong><span id="platform">상태를 불러오고 있어요</span></div></div>
+        <div class="topbar-actions"><span id="connection" class="connection"><i class="status-dot neutral"></i>연결 중</span><button id="refresh" class="button quiet"><span data-icon="refresh"></span><span>새로고침</span></button></div>
+      </header>
+      <div id="preview-banner" class="preview-banner" hidden><span data-icon="eye"></span>화면 미리보기 · 표시된 서버와 기록은 예시 데이터입니다.</div>
+      <div id="offline-banner" class="offline-banner" role="alert" hidden>서버에 연결하지 못했어요. 연결을 확인하고 다시 불러와 주세요. 이전 정보는 현재 상태를 보장하지 않아요.</div>
+      <main>
+        <div class="page-heading"><div><h1 id="page-title">서버 개요</h1><p id="page-description">보호 상태와 확인할 항목을 함께 살펴보세요.</p></div><span id="updated" class="updated">상태 확인 중</span></div>
+        <section id="active-job" class="active-job" aria-live="polite" hidden><span class="working-indicator"></span><div><strong id="active-job-label">작업 처리 중</strong><p>완료되면 보호 상태를 다시 확인해요. 이 화면에서 다른 작업은 잠시 기다려 주세요.</p></div><span id="active-job-elapsed"></span></section>
+        <div id="view-overview" class="view">
+          <section class="condition-strip" aria-label="서버 상태 요약"><div><span class="small-label">보호 동작</span><strong id="protection-summary">확인 중</strong><span id="protection-detail">실제 동작을 확인한 기능을 표시해요.</span></div><div><span class="small-label">확인할 위험</span><strong id="risk-summary">확인 중</strong><span id="risk-detail">보호 동작과 별도로 점검해요.</span></div></section>
+          <section id="onboarding" class="onboarding panel" hidden><div class="section-heading"><div><h2>보호 설정을 시작해 볼까요?</h2><p>필수 프로그램을 준비하고 필요한 보호 기능을 켜 주세요.</p></div><button class="button primary" data-go="protection">설정 시작<span data-icon="arrow"></span></button></div><ol class="setup-steps"><li id="step-ready"><span class="step-mark">1</span><div><strong>서버 준비</strong><span>필수 프로그램 확인</span></div></li><li id="step-configure"><span class="step-mark">2</span><div><strong>보호 설정</strong><span>접속 경로와 관리 IP 설정</span></div></li><li id="step-verify"><span class="step-mark">3</span><div><strong>동작 확인</strong><span>실제 검사와 차단 확인</span></div></li></ol></section>
+          <section class="panel protection-panel"><div class="section-heading"><div><h2>보호 기능</h2><p>켜짐 여부와 실제 동작 확인을 구분해서 표시해요.</p></div><button class="text-button" data-go="protection">설정 관리<span data-icon="arrow"></span></button></div><div id="overview-services" class="service-list"></div></section>
+          <div class="overview-bottom"><section class="panel"><div class="section-heading"><div><h2>먼저 확인해 주세요</h2><p>서비스의 의도한 공개 범위와 비교해 보세요.</p></div><button class="text-button" data-go="exposure">모두 보기<span data-icon="arrow"></span></button></div><div id="priority-findings"></div></section><section class="panel"><div class="section-heading"><div><h2>최근 작업</h2><p>설정 변경과 점검 결과를 확인하세요.</p></div></div><div id="recent-jobs"></div></section></div>
+          <p class="scope-note"><span data-icon="info"></span>현재 확인한 보호와 남은 위험을 보여줘요. 앱의 인증·권한 문제나 서버 전체의 안전을 보장하는 판정은 아니에요.</p>
+        </div>
+        <div id="view-protection" class="view" hidden>
+          <section class="panel prerequisites"><div class="section-heading"><div><h2>서버 준비</h2><p>필수 프로그램 설치 여부를 확인해요. 지원하는 설정인지는 보호를 켤 때 다시 검사해요.</p></div><button id="prepare-dependencies" class="button secondary"><span data-icon="download"></span>필수 프로그램 준비</button></div><div id="prerequisite-list" class="prerequisite-list"></div></section>
+          <section class="panel protection-panel"><div class="section-heading"><div><h2>기능별 보호 설정</h2><p>기존 서비스 설정을 확인한 뒤 보호 기능을 연결해요.</p></div></div><div id="setting-services" class="service-list"></div>
+            <section id="ssh-setup" class="inline-setup" hidden><h3>SSH 접속 보호 설정</h3><p>접속을 유지할 관리자 PC의 실제 출발지 IP를 등록해 주세요. 이 주소는 SSH 차단 대상에서 제외해요.</p><form id="ssh-form"><div class="form-grid"><div><label for="management-ips">관리자 IP</label><input id="management-ips" placeholder="예: 203.0.113.10" autocomplete="off" required><small>여러 주소는 쉼표나 줄바꿈으로 구분해요.</small></div><div><label for="ssh-ports">SSH 포트</label><input id="ssh-ports" value="22" inputmode="numeric" required></div></div><label class="check-label"><input type="checkbox" id="ssh-direct" required><span>공유 프록시·점프호스트 없이 직접 SSH로 접속하며, 관리자 IP를 확인했습니다.</span></label><div class="form-actions"><button type="submit" class="button primary">SSH 보호 켜기</button><button type="button" class="button quiet" data-close="ssh-setup">취소</button></div></form></section>
+            <section id="waf-setup" class="inline-setup" hidden><h3>웹 요청 검사 설정</h3><p>Ubuntu 기본 Nginx의 직접 접속 구성을 지원해요. 실제 외부 경로 확인이 끝나야 동작 확인 상태가 돼요.</p><form id="waf-form"><div class="form-grid"><div><label for="web-sites">보호할 HTTPS 사이트</label><textarea id="web-sites" rows="2" placeholder="https://example.com" required></textarea><small>사이트 주소를 한 줄에 하나씩 입력해 주세요.</small></div><div><label for="probe-peer">외부 확인 PC의 출발지 IP</label><input id="probe-peer" placeholder="예: 203.0.113.20" autocomplete="off" required></div></div><label class="check-label"><input type="checkbox" id="waf-direct" required><span>CDN·로드밸런서 없이 Nginx에 직접 접속하는 구성을 확인했습니다.</span></label><div class="form-actions"><button type="submit" class="button primary">웹 요청 검사 연결</button><button type="button" class="button quiet" data-close="waf-setup">취소</button></div></form></section>
+          </section>
+          <section class="panel guidance"><h2>동작 확인이 기다리는 상태라면</h2><p>웹 검사는 별도 PC에서 정상 요청과 본문 차단 시험을 보내야 해요. 서버 내부의 확인만으로 외부 경로까지 보호된다고 표시하지 않아요.</p><details><summary>외부 확인 방법 보기</summary><ol><li>서버의 <code>/etc/quiet-guard/waf/probe-client.json</code>을 확인 PC로 안전하게 옮겨 주세요.</li><li>확인 PC에서 제공된 <code>waf_probe.py</code>와 함께 실행해 주세요.</li><li>각 경로의 정상 요청·본문 차단 시험을 통과하면 상태가 갱신돼요.</li></ol><p>현재 개발판은 외부 확인 장치 배치를 자동으로 처리하지 않아요.</p></details></section>
+        </div>
+        <div id="view-exposure" class="view" hidden>
+          <section class="panel"><div class="section-heading"><div><h2>포트와 실행 프로그램</h2><p id="exposure-description">로컬 바인딩과 외부 접속 확인은 다른 증거예요.</p></div><button id="exposure-run" class="button secondary"><span data-icon="refresh"></span>노출 점검 실행</button></div><div class="table-toolbar"><label class="search-box"><span data-icon="search"></span><input id="filter" type="search" placeholder="주소, 포트, 실행 프로그램 검색" aria-label="포트 목록 검색"></label><span id="listener-count" class="small-label"></span></div><div class="table-scroll"><table><thead><tr><th scope="col">주소 · 포트</th><th scope="col">프로토콜</th><th scope="col">실행 프로그램</th><th scope="col">접속 범위</th><th scope="col">확인 사항</th></tr></thead><tbody id="listener-rows"></tbody></table></div><p id="table-message" class="table-message" aria-live="polite"></p></section>
+          <section class="panel guidance"><h2>외부 접속 여부도 확인하려면</h2><p>서버 소유의 IP와 확인할 포트를 정해 별도 PC에서 접속 시험을 할 수 있어요. 접속 거절·시간 초과만으로 서버 전체가 안전하다고 판정하지 않아요.</p><details><summary>외부 시험과 현재 점검 범위</summary><p>서버에서 <code>quiet-guard exposure prepare --target IP</code>로 요청을 만들고, 외부 PC의 <code>exposure probe</code> 결과를 서버의 <code>exposure import</code>로 가져올 수 있어요.</p><p>외부 결과는 운영자가 제공한 한 출발지의 TCP 확인이에요. 컨테이너 내부, DNAT·클라우드 접근 정책, 외부 UDP와 앱 권한은 별도 점검이 필요해요.</p></details></section>
+        </div>
+        <div id="view-history" class="view" hidden><section class="panel"><div class="section-heading"><div><h2>작업 기록</h2><p>최근 20개 작업을 보관해요. 중단된 작업은 현재 보호 상태부터 확인해 주세요.</p></div></div><div id="history-jobs"></div></section></div>
+      </main>
+      <footer><span>Quiet Guard</span><span>보호 동작 확인과 남은 위험을 따로 살펴보세요.</span></footer>
+    </div>
+  </div>
+  <dialog id="confirm"><form method="dialog"><span class="confirm-symbol" data-icon="info"></span><h2 id="confirm-title"></h2><p id="confirm-description"></p><div class="form-actions"><button class="button quiet" value="cancel">취소</button><button id="confirm-action" class="button primary" value="confirm">계속</button></div></form></dialog>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

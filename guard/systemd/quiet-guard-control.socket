@@ -1,0 +1,10 @@
+# Managed by Quiet Guard dashboard v1
+[Unit]
+Description=Quiet Guard authenticated local control channel
+[Socket]
+ListenStream=/run/quiet-guard-control/control.sock
+SocketMode=0666
+DirectoryMode=0755
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target

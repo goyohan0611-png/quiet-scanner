@@ -1,0 +1,28 @@
+# Managed by Quiet Guard dashboard v1
+[Unit]
+Description=Quiet Guard unprivileged loopback management interface
+Requires=quiet-guard-control.socket
+After=quiet-guard-control.socket
+[Service]
+ExecStart=/usr/local/lib/quiet-guard/quiet-guard dashboard serve
+DynamicUser=yes
+User=quiet-guard-web
+LoadCredential=access:/etc/quiet-guard/dashboard/access-token
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

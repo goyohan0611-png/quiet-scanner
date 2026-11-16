@@ -1,12 +1,12 @@
 use quiet_guard::{
     bundle::{self, Kind},
-    exposure,
+    dashboard, exposure,
     policy::IngressPolicy,
     runtime, ssh, waf,
 };
 use std::{env, fs, io::Write, path::Path};
 
-const USAGE: &str = "Quiet Guard 0.1 development\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  ssh enable --direct --management-ip IP [--port 22]\n  ssh enable|status|disable|remove\n  ssh allow|remove-allow|unblock IP\n  ssh-policy <policy.json>\n  waf enable --direct --probe-peer IP --site https://example.com\n  waf enable|status|disable|remove\n  exposure enable|check|status|disable|remove\n  exposure prepare --target IP [--ports LIST]\n  exposure probe REQUEST.json\n  exposure import RESULT.json\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nSSH and Nginx WAF are opt-in on Ubuntu 24.04. External WAF proofs are required. Read-only exposure checks are opt-in. The dashboard is not connected yet.";
+const USAGE: &str = "Quiet Guard 0.1 development\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  ssh enable --direct --management-ip IP [--port 22]\n  ssh enable|status|disable|remove\n  ssh allow|remove-allow|unblock IP\n  ssh-policy <policy.json>\n  waf enable --direct --probe-peer IP --site https://example.com\n  waf enable|status|disable|remove\n  exposure enable|check|status|disable|remove\n  exposure prepare --target IP [--ports LIST]\n  exposure probe REQUEST.json\n  exposure import RESULT.json\n  dashboard enable|disable|remove|login|rotate-token|status\n  dashboard preview\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nSSH and Nginx WAF are opt-in on Ubuntu 24.04. External WAF proofs are required. Read-only exposure checks are opt-in. The authenticated dashboard binds only to server loopback.";
 fn run(args: &[String]) -> Result<(), String> {
     match args
         .iter()
@@ -16,6 +16,13 @@ fn run(args: &[String]) -> Result<(), String> {
     {
         [] | ["--help"] | ["help"] => println!("{USAGE}"),
         ["--version"] => println!("quiet-guard {}", env!("CARGO_PKG_VERSION")),
+        ["dashboard", "preview"] => dashboard::serve(true)?,
+        ["dashboard", "serve"] => dashboard::serve(false)?,
+        ["dashboard", "broker"] => dashboard::broker()?,
+        ["dashboard", "prepare-dependencies"] => dashboard::prepare_dependencies()?,
+        ["dashboard", rest @ ..] => {
+            dashboard::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
+        }
         ["exposure", "probe", path] => {
             if !fs::symlink_metadata(path)
                 .map_err(|e| e.to_string())?

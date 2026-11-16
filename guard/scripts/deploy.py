@@ -119,8 +119,8 @@ def verify_release(directory, public_key):
         return manifest, payload
 
 def owned_install():
-    if any(os.path.lexists(CONFIG / name) for name in ['ssh','waf','exposure']):
-        raise ValueError('Remove SSH/WAF/exposure integrations with quiet-guard ssh remove, quiet-guard waf remove and quiet-guard exposure remove before updating/removing the foundation; preserving integrations')
+    if any(os.path.lexists(CONFIG / name) for name in ['ssh','waf','exposure','dashboard']):
+        raise ValueError('Remove dashboard/SSH/WAF/exposure integrations before updating/removing the foundation; preserving integrations')
     if not RECORD.exists():
         for path in [PROGRAM, UNIT, LINK, KEY]:
             if os.path.lexists(path):
