@@ -29,12 +29,34 @@ const MAX_MESSAGE: usize = 512 * 1024;
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
     Ready,
-    Open { iface: String, filter: String },
-    Send { id: u64, data: Vec<u8> },
-    Next { id: u64 },
-    Close { id: u64 },
-    Pin { ip: Ipv4Addr, index: u32, mac: Mac },
-    Release { ip: Ipv4Addr, index: u32, mac: Mac },
+    #[cfg(target_os = "linux")]
+    Protection {
+        command: crate::protection::Command,
+    },
+    Open {
+        iface: String,
+        filter: String,
+    },
+    Send {
+        id: u64,
+        data: Vec<u8>,
+    },
+    Next {
+        id: u64,
+    },
+    Close {
+        id: u64,
+    },
+    Pin {
+        ip: Ipv4Addr,
+        index: u32,
+        mac: Mac,
+    },
+    Release {
+        ip: Ipv4Addr,
+        index: u32,
+        mac: Mac,
+    },
     Shutdown,
 }
 #[derive(Serialize, Deserialize)]
@@ -250,6 +272,16 @@ impl Client {
         }
     }
     fn call(&mut self, request: &Request) -> Result<Value, String> {
+        #[cfg(target_os = "linux")]
+        self.stream
+            .set_read_timeout(Some(Duration::from_secs(
+                if matches!(request, Request::Protection { .. }) {
+                    45
+                } else {
+                    5
+                },
+            )))
+            .map_err(|e| e.to_string())?;
         self.healthy = false;
         write_message(&mut self.stream, request)?;
         let reply: Reply = read_message(&mut self.stream)?;
@@ -281,6 +313,10 @@ fn call(request: Request, start: bool) -> Result<Value, String> {
 }
 pub fn authorize() -> Result<(), String> {
     call(Request::Ready, true).map(|_| ())
+}
+#[cfg(target_os = "linux")]
+pub fn protection(command: crate::protection::Command) -> Result<Value, String> {
+    call(Request::Protection { command }, true)
 }
 pub fn open_capture(iface: &str, filter: &str) -> Result<u64, String> {
     call(
@@ -395,6 +431,8 @@ pub fn worker(arguments: &[String]) -> Result<(), String> {
         let stop = matches!(request, Request::Shutdown);
         let result: Result<Value, String> = (|| match request {
             Request::Ready => Ok(json!(true)),
+            #[cfg(target_os = "linux")]
+            Request::Protection { command } => crate::protection::linux::execute(command),
             Request::Open { iface, filter } => {
                 if captures.len() >= 16
                     || !matches!(
