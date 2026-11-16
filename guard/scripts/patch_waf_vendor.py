@@ -1,11 +1,12 @@
 """Apply the small, documented integration patches to the frozen source assets."""
 import hashlib
 import json
+import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1] / 'vendor/waf'
-assets = json.loads((root / 'assets.json').read_text())
-meta = json.loads((root / 'upstream.json').read_text())
+assets = json.loads((root / 'assets.json').read_text(encoding='utf-8'))
+meta = json.loads((root / 'upstream.json').read_text(encoding='utf-8'))
 lua = assets['lua/crowdsec.lua']
 lua = lua.replace('function csmod.AppSecCheck(ip)', 'function csmod.AppSecCheck(ip, skip_body)')
 lua = lua.replace('local body, body_len, unreadable_body, close_body = get_body()', 'local body, body_len, unreadable_body, close_body = nil, 0, false, nil\n  if not skip_body then body, body_len, unreadable_body, close_body = get_body() end\n  if unreadable_body then return false, "ban", 503, {}, "Request body could not be inspected" end')
@@ -13,6 +14,12 @@ lua = lua.replace('local body, body_len, unreadable_body, close_body = get_body(
 # sanitized events instead of logging per-request transport errors or responses.
 lua = lua.replace('ngx.log(ngx.ERR, "Fallback because of err: " .. err .. " (body: " .. body_len .. " bytes)")', '-- Transport failures are recorded by the Quiet Guard hook without raw request context.')
 lua = lua.replace('ngx.log(ngx.DEBUG, "Appsec body response: " .. res.body)', '-- Do not log response details derived from requests.')
+assets['lua/crowdsec.lua'] = lua
+for start_marker,end_marker in [('local function get_body()', 'function csmod.GetCaptchaBackendKey'),('function csmod.AppSecCheck(', 'function csmod.Allow(')]:
+    start=lua.index(start_marker);end=lua.index(end_marker,start)
+    section=lua[start:end]
+    section=re.sub(r'(?m)^(\s*)ngx\.log\([^\n]*\)\s*$',r'\1-- Request diagnostics are emitted only through sanitized Guard metadata.',section)
+    lua=lua[:start]+section+lua[end:]
 assets['lua/crowdsec.lua'] = lua
 setup = assets['data/crs-setup.conf'].replace('log,auditlog,pass', 'nolog,noauditlog,pass')
 assets['data/crs-setup.conf'] = setup

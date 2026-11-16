@@ -13,7 +13,7 @@
     "lua/crowdsec.lua": {
       "source": "crowdsecurity/lua-cs-bouncer@ec94d512927cf70be865686e4eb928d128189633/lib/crowdsec.lua",
       "sha256": "f6d5591a1e0493a44564519c5a94907f3ea129fdf8f3e30e98f384f76274e197",
-      "patched_sha256": "d2e913ce291167f06b1ab1545f4b5e0696299a4e26a01ddbaa3926ce86ecac6b",
+      "patched_sha256": "52a62cbb86e45cc7ab20fc2ed9d875fb82081406aab32ce4e5da2ab32cc9d28b",
       "patch": "Unexpected/authentication responses and body read failures remain unverified; optionally inspect headers only for unsupported bodies; suppress per-request context logging."
     },
     "lua/plugins/crowdsec/ban.lua": {

@@ -201,7 +201,7 @@ def fresh(args):
         cfg('acquis.yaml',{'source':'appsec','listen_addr':'127.0.0.1:17426','appsec_config_path':str(ROOT/'rules/appsec-configs/quiet-guard.yaml'),'body_read_timeout':'1s','labels':{'type':'appsec'}})
         cfg('rules/appsec-configs/quiet-guard.yaml',{'name':'quiet-guard/waf','default_remediation':'ban','inband_rules':['crowdsecurity/crs','crowdsecurity/vpatch-env-access','quiet-guard/body-proof'],
              'on_match':[{'filter':'true','apply':['CancelAlert()']}], 'on_load':[{'apply':['SetMaxBodySize('+str(args.max_inspect_bytes)+')']}]})
-        canary = 'SecRule REQUEST_HEADERS:X-Quiet-Guard-Diagnostic "@streq '+config['probe_token']+'" "id:1999991,phase:2,deny,status:403,nolog,noauditlog,chain"\n SecRule ARGS:quiet_guard_probe "@streq QuietGuardBodyInspectionMarker" "t:none"'
+        canary = 'SecRule REQUEST_HEADERS:X-Quiet-Guard-Diagnostic "@streq '+config['probe_token']+'" "id:1999991,phase:2,deny,status:403,nolog,noauditlog,chain"\n SecRule ARGS "@streq QuietGuardBodyInspectionMarker" "t:none"'
         cfg('rules/appsec-rules/quiet-guard.yaml',{'name':'quiet-guard/body-proof','seclang_rules':[canary,'SecAuditEngine Off','SecDebugLogLevel 0']})
         cfg('config.yaml',{'common':{'daemonize':False,'log_media':'stdout','log_level':'warning'},
             'config_paths':{'config_dir':str(ROOT/'rules'),'data_dir':str(STATE/'data'),'simulation_path':str(ROOT/'simulation.yaml'),
