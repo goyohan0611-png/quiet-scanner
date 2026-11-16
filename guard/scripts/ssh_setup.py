@@ -103,7 +103,7 @@ def supported():
 
 
 def prerequisites():
-    for path in ['/usr/bin/crowdsec', '/usr/bin/cscli', '/usr/bin/curl', '/usr/sbin/nft', '/usr/sbin/sshd']:
+    for path in ['/usr/bin/crowdsec', '/usr/bin/cscli', '/usr/bin/curl', '/usr/bin/logger', '/usr/sbin/nft', '/usr/sbin/sshd']:
         if not os.access(path, os.X_OK):
             raise ValueError('Missing prerequisite ' + path + '; see scripts/install_ssh_dependencies.sh')
     version = command('/usr/bin/dpkg-query', '-W', '-f=${Version}', 'crowdsec').stdout.decode().strip()
@@ -280,9 +280,10 @@ def create_fresh(args):
     for name in [ENGINE, ENFORCER]:
         if system('show', '--property=FragmentPath', '--value', name).stdout.strip():
             raise ValueError('Existing unowned service: ' + name)
-    with socket.socket() as test:
-        test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        test.bind(('127.0.0.1', 17423))
+    for port in [17423,17424]:
+        with socket.socket() as test:
+            test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            test.bind(('127.0.0.1', port))
     directory(ROOT, 0o700)
     directory(STATE, 0o755)
     directory(STATE / 'data', 0o700)
@@ -322,7 +323,7 @@ def create_fresh(args):
                            'profiles_path': str(ROOT / 'profiles.yaml'), 'console_path': str(ROOT / 'console.yaml'),
                            'disable_remote_lapi_registration': True, 'disable_usage_metrics_export': True,
                            'trusted_ips': ['127.0.0.1', '::1']}},
-        'prometheus': {'enabled': False}})
+        'prometheus': {'enabled': True, 'level': 'full', 'listen_addr': '127.0.0.1', 'listen_port': 17424}})
     cscli('machines', 'add', 'quiet-guard-ssh', '--auto', '--force')
     credentials = ROOT / 'local_api_credentials.yaml'
     TRANSACTION['files'][credentials] = hashlib.sha256(read(credentials)).hexdigest()

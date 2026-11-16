@@ -273,7 +273,14 @@ fn write_health(config: &Config, phase: &str, count: usize, message: &str) -> Re
     result
 }
 pub fn enforce(cleanup: bool) -> Result<(), String> {
-    let config: Config = serde_json::from_slice(&root_file(Path::new(POLICY), 65536)?)
+    // Systemd may unmount LoadCredential before ExecStopPost. The root-only
+    // fixed policy remains available until the setup helper completes OFF.
+    let policy_path = if cleanup {
+        "/etc/quiet-guard/ssh/policy.json"
+    } else {
+        POLICY
+    };
+    let config: Config = serde_json::from_slice(&root_file(Path::new(policy_path), 65536)?)
         .map_err(|_| "invalid SSH policy")?;
     config.validate()?;
     if cleanup {
@@ -296,6 +303,7 @@ pub fn enforce(cleanup: bool) -> Result<(), String> {
     loop {
         let result = (|| {
             verify_installation()?;
+            source_alive()?;
             ensure_table(&config)?;
             let raw = command(
                 "/usr/bin/curl",
@@ -332,7 +340,7 @@ pub fn enforce(cleanup: bool) -> Result<(), String> {
                 &config,
                 "verified",
                 wanted.len(),
-                "Local API and SSH-only firewall membership verified",
+                "Local API, SSH log acquisition and SSH-only firewall membership verified",
             )
         })();
         if let Err(error) = result {
@@ -340,6 +348,67 @@ pub fn enforce(cleanup: bool) -> Result<(), String> {
         }
         thread::sleep(Duration::from_secs(10));
     }
+}
+
+fn source_count() -> Result<f64, String> {
+    let raw = command(
+        "/usr/bin/curl",
+        &[
+            "-q",
+            "--noproxy",
+            "*",
+            "--proto",
+            "=http",
+            "--fail",
+            "--silent",
+            "--connect-timeout",
+            "1",
+            "--max-time",
+            "2",
+            "--max-filesize",
+            "1048576",
+            "http://127.0.0.1:17424/metrics",
+        ],
+        None,
+        1024 * 1024,
+    )?;
+    let text = std::str::from_utf8(&raw).map_err(|_| "invalid local acquisition metrics")?;
+    let mut count = 0.0;
+    for line in text.lines().filter(|line| {
+        line.starts_with("cs_journalctlsource_hits_total{")
+            && line.contains("acquis_type=\"syslog\"")
+    }) {
+        let value: f64 = line
+            .split_whitespace()
+            .last()
+            .ok_or("missing acquisition count")?
+            .parse()
+            .map_err(|_| "invalid acquisition count")?;
+        if !value.is_finite() || value < 0.0 {
+            return Err("invalid acquisition count".into());
+        }
+        count += value;
+    }
+    Ok(count)
+}
+fn source_alive() -> Result<(), String> {
+    let before = source_count()?;
+    // A benign line has no SSH failure fields; it cannot create an attack decision.
+    // This checks the actual journald follower instead of just an open API socket.
+    command(
+        "/usr/bin/logger",
+        &["--tag", "sshd", "--", "Quiet Guard source liveness check"],
+        None,
+        65536,
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if source_count()? > before {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err("SSH journal acquisition did not observe its benign liveness check".into())
 }
 pub fn observation() -> serde_json::Value {
     let result = (|| -> Result<serde_json::Value, String> {
