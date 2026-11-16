@@ -164,9 +164,11 @@ def fresh(args):
         if system('show','--property=FragmentPath','--value',unit).stdout.strip(): raise ValueError('Unowned WAF unit exists')
     for port in [17425,17426,17427]:
         with socket.socket() as test: test.bind(('127.0.0.1',port))
+    failure_action=args.failure_action or 'passthrough';body_action=args.body_action or 'passthrough'
+    max_inspect_bytes=args.max_inspect_bytes if args.max_inspect_bytes is not None else 1048576
     config = {'schema':1,'generation':secrets.token_hex(16),'probe_peer':str(peer),'probe_token':secrets.token_hex(32),
-              'targets':plan['targets'],'scopes':plan['scopes'],'failure_action':args.failure_action,'body_action':args.body_action,
-              'max_inspect_bytes':args.max_inspect_bytes,'insecure_probe':args.allow_insecure_probe}
+              'targets':plan['targets'],'scopes':plan['scopes'],'failure_action':failure_action,'body_action':body_action,
+              'max_inspect_bytes':max_inspect_bytes,'insecure_probe':args.allow_insecure_probe}
     directories = [];created = {}
     def mkdir(path,mode):
         if not path.exists(): directory(path,mode);directories.append(path)
@@ -175,7 +177,7 @@ def fresh(args):
         atomic(path,data,mode);created[str(path)]=sha(data)
     try:
         mkdir(ROOT,0o700);mkdir(STATE,0o755);mkdir(CODE,0o755)
-        for folder in ['data','data/trace']: mkdir(STATE/folder,0o700)
+        for folder in ['data','data/trace','data/fingerprint_dumps']: mkdir(STATE/folder,0o700)
         for folder in ['rules','rules/parsers','rules/scenarios','rules/postoverflows','rules/contexts','rules/patterns','rules/hub','rules/appsec-configs','rules/appsec-rules']: mkdir(ROOT/folder,0o700)
         for name,text in ASSETS.items():
             if name.endswith('.service'):
@@ -200,7 +202,7 @@ def fresh(args):
         cfg('profiles.yaml',{'name':'quiet_guard_no_web_ip_bans','filters':['false'],'decisions':[],'on_success':'break'})
         cfg('acquis.yaml',{'source':'appsec','listen_addr':'127.0.0.1:17426','appsec_config_path':str(ROOT/'rules/appsec-configs/quiet-guard.yaml'),'body_read_timeout':'1s','labels':{'type':'appsec'}})
         cfg('rules/appsec-configs/quiet-guard.yaml',{'name':'quiet-guard/waf','default_remediation':'ban','inband_rules':['crowdsecurity/crs','crowdsecurity/vpatch-env-access','quiet-guard/body-proof'],
-             'on_match':[{'filter':'true','apply':['CancelAlert()']}], 'on_load':[{'apply':['SetMaxBodySize('+str(args.max_inspect_bytes)+')']}]})
+             'on_match':[{'filter':'true','apply':['CancelAlert()']}], 'on_load':[{'apply':['SetMaxBodySize('+str(max_inspect_bytes)+')']}]})
         canary = 'SecRule REQUEST_HEADERS:X-Quiet-Guard-Diagnostic "@streq '+config['probe_token']+'" "id:1999991,phase:2,deny,status:403,nolog,noauditlog,chain"\n SecRule ARGS "@streq QuietGuardBodyInspectionMarker" "t:none"'
         cfg('rules/appsec-rules/quiet-guard.yaml',{'name':'quiet-guard/body-proof','seclang_rules':[canary,'SecAuditEngine Off','SecDebugLogLevel 0']})
         cfg('config.yaml',{'common':{'daemonize':False,'log_media':'stdout','log_level':'warning'},
@@ -248,6 +250,7 @@ def fresh(args):
 
 
 def start(record):
+    if package_revision()!=record['packages']: raise ValueError('Inspection packages changed; configure a new validated integration')
     if record['enabled']:
         verify_active(record)
         system('enable','--now',ENGINE);system('enable','--now',MONITOR)
@@ -334,9 +337,9 @@ def main():
     parser.add_argument('action',choices=['enable','disable','remove','status','check'])
     parser.add_argument('--direct',action='store_true');parser.add_argument('--probe-peer')
     parser.add_argument('--site',action='append');parser.add_argument('--allow-insecure-probe',action='store_true')
-    parser.add_argument('--failure-action',choices=['passthrough','deny'],default='passthrough')
-    parser.add_argument('--body-action',choices=['passthrough','deny'],default='passthrough')
-    parser.add_argument('--max-inspect-bytes',type=int,default=1048576)
+    parser.add_argument('--failure-action',choices=['passthrough','deny'])
+    parser.add_argument('--body-action',choices=['passthrough','deny'])
+    parser.add_argument('--max-inspect-bytes',type=int)
     args=parser.parse_args();supported()
     # Checks are read-only with one bounded private epoch synchronization. Avoid
     # holding the deployment lock during monitor checks or service shutdown.
@@ -350,7 +353,17 @@ def main():
         directory(STATE.parent,0o755)
         if args.action=='enable' and not ROOT.exists(): fresh(args)
         record=owned()
-        if args.action=='enable': start(record);print('WAF connected. External GET/POST/body-block proofs are still required; use the private probe-client.json on the configured external peer.')
+        if args.action=='enable':
+            config=json.loads(read(ROOT/'settings.json'))
+            for name in ['failure_action','body_action','max_inspect_bytes']:
+                value=getattr(args,name)
+                if value is not None and value!=config[name]: raise ValueError('Remove the existing WAF configuration before changing '+name)
+            if args.probe_peer and str(ipaddress.ip_address(args.probe_peer))!=config['probe_peer']: raise ValueError('Remove WAF before changing the external verifier')
+            if args.site:
+                configured={t['url'][:-len(t['path'])] for t in config['targets']}
+                if {value.rstrip('/') for value in args.site}!=configured: raise ValueError('Remove WAF before changing site origins')
+            if args.allow_insecure_probe and not config['insecure_probe']: raise ValueError('Remove WAF before changing transport policy')
+            start(record);print('WAF connected. External GET/POST/body-block proofs are still required; use the private probe-client.json on the configured external peer.')
         elif args.action in ['disable','remove']:
             stop(record)
             if args.action=='remove':
@@ -360,11 +373,12 @@ def main():
                 for name,digest in reversed(list(record['files'].items())):
                     if sha(read(name))!=digest: raise ValueError('Changed WAF file preserved')
                     pathlib.Path(name).unlink()
-                trace=STATE/'data/trace'
-                if trace.exists():
-                    meta=trace.lstat()
-                    if not stat.S_ISDIR(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o022: raise ValueError('Untrusted WAF trace preserved')
-                    trace.rename(archive/'trace')
+                for name in ['trace','fingerprint_dumps']:
+                    trace=STATE/'data'/name
+                    if trace.exists():
+                        meta=trace.lstat()
+                        if not stat.S_ISDIR(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o022: raise ValueError('Untrusted WAF engine directory preserved')
+                        trace.rename(archive/name)
                 for path in [STATE/'data',STATE]:
                     try:path.rmdir()
                     except OSError:pass

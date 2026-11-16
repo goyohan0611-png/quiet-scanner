@@ -97,6 +97,7 @@ PY
   done
 }
 wait_phase awaiting_external_check
+if quiet-guard waf enable --failure-action deny; then exit 1; fi
 # Root-local probes use the wrong source and must never be accepted as evidence.
 if python3 "$root/scripts/waf_probe.py" /etc/quiet-guard/waf/probe-client.json --once; then exit 1; fi
 wait_phase awaiting_external_check
@@ -120,6 +121,7 @@ events=[json.loads(s) for s in pathlib.Path('/var/lib/quiet-guard/waf/events.jso
 assert events and all(e['peer']=='10.204.0.2' for e in events),events
 assert all(set(e)=={'seq','epoch','boot_seconds','scope','peer','outcome'} for e in events)
 assert all('QuietGuardSecretMarker' not in p.read_text(errors='replace') for p in pathlib.Path('/var/lib/quiet-guard/waf').glob('*.json*'))
+assert not list(pathlib.Path('/var/lib/quiet-guard/waf/data/fingerprint_dumps').rglob('*'))
 import subprocess
 assert 'QuietGuardSecretMarker' not in subprocess.run(['journalctl','-u','quiet-guard-waf-engine','--no-pager'],stdout=subprocess.PIPE).stdout.decode(errors='replace')
 PY
