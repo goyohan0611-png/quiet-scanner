@@ -10,6 +10,7 @@ import ipaddress
 import json
 import os
 import pathlib
+import re
 import socket
 import stat
 import subprocess
@@ -257,7 +258,16 @@ def fresh(args):
     if not token or len(token) > 256 or not token.isascii() or not all(c.isalnum() or c in '-_+=' for c in token):
         raise ValueError('Unexpected local API key format')
     atomic(ROOT / 'api.curl', ('header = "X-Api-Key: ' + token + '"\n').encode())
-    command('/usr/bin/crowdsec', '-t', '-c', str(ROOT / 'config.yaml'))
+    validation = command('/usr/bin/crowdsec', '-t', '-c', str(ROOT / 'config.yaml'), check=False)
+    if validation.returncode:
+        diagnostic = (validation.stdout + validation.stderr).decode(errors='replace')[-4000:]
+        diagnostic = diagnostic.replace(token, '[redacted]')
+        for line in read(ROOT / 'local_api_credentials.yaml').decode().splitlines():
+            if line.startswith(('password:', 'login:')):
+                secret = line.split(':', 1)[1].strip().strip('\"\'')
+                if secret: diagnostic = diagnostic.replace(secret, '[redacted]')
+        diagnostic = re.sub(r'(?im)^.*(?:password|api.key).*$','[credential line redacted]',diagnostic)
+        raise RuntimeError('CrowdSec configuration validation failed: ' + diagnostic)
     save(RECORD, {'marker': MARKER, 'files': record_files()})
     publish(False)
     system('daemon-reload')
@@ -325,6 +335,8 @@ def main():
             ip = str(ipaddress.ip_address(args.ip))
             current = policy()
             if args.operation == 'unblock':
+                if not json.loads(read(PUBLIC, 65536))['enabled']:
+                    raise ValueError('SSH protection is off; unblock never starts it implicitly')
                 cscli('decisions', 'delete', '-i', ip)
                 system('restart', ENFORCER)
                 wait_ready()
