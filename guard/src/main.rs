@@ -1,5 +1,6 @@
 use quiet_guard::{
     bundle::{self, Kind},
+    exposure,
     policy::IngressPolicy,
     runtime, ssh, waf,
 };
@@ -15,6 +16,44 @@ fn run(args: &[String]) -> Result<(), String> {
     {
         [] | ["--help"] | ["help"] => println!("{USAGE}"),
         ["--version"] => println!("quiet-guard {}", env!("CARGO_PKG_VERSION")),
+        ["exposure", "probe", path] => {
+            if !fs::symlink_metadata(path)
+                .map_err(|e| e.to_string())?
+                .is_file()
+            {
+                return Err("Probe request must be a regular JSON file".into());
+            }
+            let mut options = fs::OpenOptions::new();
+            options.read(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+            }
+            let file = options.open(path).map_err(|e| e.to_string())?;
+            if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+                return Err("Probe request must be a regular JSON file".into());
+            }
+            let mut raw = String::new();
+            std::io::Read::read_to_string(&mut std::io::Read::take(file, 262145), &mut raw)
+                .map_err(|e| e.to_string())?;
+            if raw.len() > 262144 {
+                return Err("Probe request exceeds size limit".into());
+            }
+            let request: exposure::Request =
+                serde_json::from_str(&raw).map_err(|_| "Invalid exposure probe request")?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&exposure::probe(
+                    &request,
+                    std::time::Duration::from_millis(500)
+                )?)
+                .map_err(|e| e.to_string())?
+            );
+        }
+        ["exposure", rest @ ..] => {
+            exposure::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
+        }
         ["waf", rest @ ..] => {
             waf::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
         }

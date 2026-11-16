@@ -1,0 +1,22 @@
+# Managed by Quiet Guard exposure v1
+[Unit]
+Description=Quiet Guard read-only host exposure inventory
+After=local-fs.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/quiet-guard/quiet-guard exposure collect
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/quiet-guard/exposure
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+TimeoutStartSec=15

@@ -17,6 +17,8 @@ pub struct State {
     pub ssh: Option<serde_json::Value>,
     #[serde(default)]
     pub waf: Option<serde_json::Value>,
+    #[serde(default)]
+    pub exposure: Option<serde_json::Value>,
 }
 
 pub fn boot_seconds() -> u64 {
@@ -45,15 +47,28 @@ pub fn state() -> State {
             .into(),
         ssh: None,
         waf: None,
+        exposure: None,
     };
     #[cfg(target_os = "linux")]
     let state = {
         let mut state = state;
         apply_ssh(&mut state, crate::ssh::observation());
         apply_waf(&mut state, crate::waf::observation());
+        apply_exposure(&mut state, crate::exposure::observation());
         state
     };
     state
+}
+#[cfg(any(target_os = "linux", test))]
+fn apply_exposure(state: &mut State, observation: serde_json::Value) {
+    if observation["risk"] == "attention"
+        && observation["state"] != "unknown"
+        && observation["state"] != "off"
+    {
+        state.risk = "attention".into();
+        state.message="Review host exposure findings separately from SSH/WAF protection. Local binds or one probe cannot establish overall server safety.".into();
+    }
+    state.exposure = Some(observation);
 }
 #[cfg(any(target_os = "linux", test))]
 fn apply_waf(state: &mut State, observation: serde_json::Value) {
@@ -181,5 +196,23 @@ mod tests {
         assert_eq!(state.protection, "partially_protected");
         assert_eq!(state.waf.unwrap()["state"], "degraded");
         assert_eq!(state.risk, "not_assessed");
+    }
+    #[test]
+    fn exposure_findings_are_independent_of_protection_and_never_clear_server_risk() {
+        let mut state = super::state();
+        super::apply_ssh(&mut state, serde_json::json!({"state":"verified"}));
+        super::apply_exposure(
+            &mut state,
+            serde_json::json!({"state":"local_only","risk":"attention"}),
+        );
+        assert_eq!(state.protection, "partially_protected");
+        assert_eq!(state.risk, "attention");
+        let mut state = super::state();
+        super::apply_exposure(
+            &mut state,
+            serde_json::json!({"state":"local_and_operator_probe","risk":"not_assessed"}),
+        );
+        assert_eq!(state.risk, "not_assessed");
+        assert_eq!(state.protection, "not_configured");
     }
 }

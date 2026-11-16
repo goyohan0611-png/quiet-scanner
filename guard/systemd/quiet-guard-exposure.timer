@@ -1,0 +1,10 @@
+# Managed by Quiet Guard exposure v1
+[Unit]
+Description=Periodically inspect host exposure without changing services or firewall rules
+[Timer]
+OnActiveSec=5
+OnUnitInactiveSec=30
+AccuracySec=2
+Unit=quiet-guard-exposure.service
+[Install]
+WantedBy=timers.target

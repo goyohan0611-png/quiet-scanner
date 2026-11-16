@@ -7,6 +7,27 @@ on:
 permissions:
   contents: read
 jobs:
+  exposure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build and test read-only exposure inspection
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --all-targets -- -D warnings
+          cargo build --locked
+      - name: Real host inventory and independent IPv4/IPv6 connectivity evidence
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends iproute2 nftables
+          sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_exposure.sh target/debug/quiet-guard
   foundation:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
