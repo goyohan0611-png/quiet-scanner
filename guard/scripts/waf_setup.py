@@ -197,7 +197,7 @@ def fresh(args):
         cfg('rules/hub/.index.json',{})
         cfg('simulation.yaml',{'simulation':False})
         cfg('console.yaml',{'share_manual_decisions':False,'share_tainted':False,'share_custom':False,'share_context':False})
-        put(ROOT/'profiles.yaml',b'')
+        cfg('profiles.yaml',{'name':'quiet_guard_no_web_ip_bans','filters':['false'],'decisions':[],'on_success':'break'})
         cfg('acquis.yaml',{'source':'appsec','listen_addr':'127.0.0.1:17426','appsec_config_path':str(ROOT/'rules/appsec-configs/quiet-guard.yaml'),'body_read_timeout':'1s','labels':{'type':'appsec'}})
         cfg('rules/appsec-configs/quiet-guard.yaml',{'name':'quiet-guard/waf','default_remediation':'ban','inband_rules':['crowdsecurity/crs','crowdsecurity/vpatch-env-access','quiet-guard/body-proof'],
              'on_match':[{'filter':'true','apply':['CancelAlert()']}], 'on_load':[{'apply':['SetMaxBodySize('+str(args.max_inspect_bytes)+')']}]})
