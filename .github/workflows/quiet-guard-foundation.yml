@@ -23,3 +23,7 @@ jobs:
         env:
           QUIET_GUARD_DISPOSABLE_VM: YES
         run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash guard/tests/test_foundation.sh guard/target/debug/quiet-guard
+      - name: Load a frozen rules snapshot with the actual CrowdSec engine
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash guard/tests/test_rules_snapshot.sh guard/target/debug/quiet-guard

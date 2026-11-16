@@ -7,6 +7,7 @@ binary=$(realpath "${1:?compiled binary}")
 root=$(realpath "$(dirname "$0")/..")
 temporary=$(mktemp -d)
 trap 'rm -rf -- "$temporary"' EXIT
+trap 'journalctl -u quiet-guard.service --no-pager -n 20 || true' ERR
 umask 077
 openssl genpkey -algorithm ED25519 -out "$temporary/private.pem"
 openssl pkey -in "$temporary/private.pem" -pubout -out "$temporary/public.pem"
@@ -31,7 +32,7 @@ systemctl is-active --quiet quiet-guard.service
 bash "$root/scripts/package.sh" "$binary" "$temporary/replay" 1 0.1.0 "$temporary/private.pem"
 if python3 "$root/scripts/deploy.py" install --bundle "$temporary/replay" --trusted-key "$temporary/public.pem"; then exit 1; fi
 systemctl is-active --quiet quiet-guard.service
-bash "$root/scripts/package.sh" "$binary" "$temporary/release2" 2 0.1.1 "$temporary/private.pem"
+bash "$root/scripts/package.sh" "$binary" "$temporary/release2" 2 0.1.0 "$temporary/private.pem"
 python3 "$root/scripts/deploy.py" install --bundle "$temporary/release2" --trusted-key "$temporary/public.pem"
 quiet-guard status >/dev/null
 cp /etc/systemd/system/quiet-guard.service "$temporary/installed-unit"
@@ -46,10 +47,10 @@ test ! -e /etc/systemd/system/quiet-guard.service
 echo 'PASS: tampered/replayed updates rejected, signed update accepted, user edits preserved, owned files removed'
 
 # A correctly signed but non-starting unit must roll back a fresh installation.
-bash "$root/scripts/package.sh" "$binary" "$temporary/failing" 3 0.1.2 "$temporary/private.pem"
+bash "$root/scripts/package.sh" "$binary" "$temporary/failing" 3 0.1.0 "$temporary/private.pem"
 sed -i 's|ExecStart=.*|ExecStart=/usr/bin/false|' "$temporary/failing/quiet-guard.service"
 rm "$temporary/failing/manifest.json" "$temporary/failing/signature.bin"
-"$binary" bundle manifest "$temporary/failing" release 3 0.1.2
+"$binary" bundle manifest "$temporary/failing" release 3 0.1.0
 openssl pkeyutl -sign -inkey "$temporary/private.pem" -rawin -in "$temporary/failing/manifest.json" -out "$temporary/failing/signature.bin"
 if python3 "$root/scripts/deploy.py" install --bundle "$temporary/failing" --trusted-key "$temporary/public.pem"; then exit 1; fi
 test ! -e /usr/local/lib/quiet-guard/quiet-guard

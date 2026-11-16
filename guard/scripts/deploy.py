@@ -52,6 +52,7 @@ def read_regular(path, maximum, root_owned=False):
 def mkdir_owned(path, mode):
     if not path.exists():
         path.mkdir(mode=mode)
+        path.chmod(mode)  # umask 077 must not make the executable parent 0700.
     meta = path.lstat()
     if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
         raise ValueError('Untrusted product directory: ' + str(path))
@@ -87,6 +88,9 @@ def verify_release(directory, public_key):
             maximum = 1024 * 1024 if name == 'manifest.json' else 64 if name == 'signature.bin' else MAX_FILE
             (stage / name).write_bytes(read_regular(directory / name, maximum))
         (stage / 'public.pem').write_bytes(public_key)
+        der = command('/usr/bin/openssl', 'pkey', '-pubin', '-in', str(stage / 'public.pem'), '-outform', 'DER').stdout
+        if len(der) != 44 or not der.startswith(bytes.fromhex('302a300506032b6570032100')):
+            raise ValueError('Trust anchor must be an Ed25519 public key')
         command('/usr/bin/openssl', 'pkeyutl', '-verify', '-pubin', '-inkey', str(stage / 'public.pem'),
                 '-rawin', '-in', str(stage / 'manifest.json'), '-sigfile', str(stage / 'signature.bin'))
         manifest = json.loads((stage / 'manifest.json').read_bytes(), object_pairs_hook=unique_pairs)
@@ -127,6 +131,8 @@ def owned_install():
         data = read_regular(path, MAX_FILE, True)
         if hashlib.sha256(data).hexdigest() != record['hashes'][name]:
             raise ValueError('Installed file was modified; preserving it: ' + str(path))
+    if hashlib.sha256(read_regular(KEY, 4096, True)).hexdigest() != record.get('key_sha256'):
+        raise ValueError('Installed trust anchor was modified; preserving it')
     if not LINK.is_symlink() or LINK.lstat().st_uid != 0 or os.readlink(LINK) != str(PROGRAM):
         raise ValueError('Command link was modified; preserving it')
     return record
@@ -160,6 +166,8 @@ def install(directory, key_path):
         if old:
             command('/usr/bin/systemctl', 'stop', 'quiet-guard.service')
         atomic(PROGRAM, payload['quiet-guard'], 0o755)
+        if command(str(PROGRAM), '--version').stdout.decode().strip() != 'quiet-guard ' + manifest['version']:
+            raise ValueError('Signed version and binary version differ')
         atomic(UNIT, payload['quiet-guard.service'], 0o644)
         atomic(KEY, public_key, 0o600)
         if not old:
@@ -181,6 +189,8 @@ def install(directory, key_path):
         else:
             for path in [LINK, PROGRAM, UNIT, KEY]:
                 if os.path.lexists(path): path.unlink()
+            try: PROGRAM.parent.rmdir()
+            except OSError: pass
         command('/usr/bin/systemctl', 'daemon-reload', check=False)
         if was_enabled: command('/usr/bin/systemctl', 'enable', 'quiet-guard.service', check=False)
         if was_active: command('/usr/bin/systemctl', 'start', 'quiet-guard.service', check=False)
