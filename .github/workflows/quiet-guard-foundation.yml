@@ -1,0 +1,25 @@
+name: Quiet Guard foundation
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/quiet-guard-foundation]
+    paths: ['guard/**', '.github/workflows/quiet-guard-foundation.yml']
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Standalone Rust tests and checks
+        run: |
+          cargo fmt --manifest-path guard/Cargo.toml --check
+          cargo test --manifest-path guard/Cargo.toml --locked
+          cargo clippy --manifest-path guard/Cargo.toml --all-targets -- -D warnings
+          cargo build --manifest-path guard/Cargo.toml --locked
+          python3 guard/tests/test_signatures.py guard/target/debug/quiet-guard
+      - name: Real signed install, update, rollback and removal
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash guard/tests/test_foundation.sh guard/target/debug/quiet-guard

@@ -1,0 +1,25 @@
+[package]
+name = "quiet-guard"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+description = "Standalone Quiet Guard server foundation (no protection enabled yet)"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+ed25519-dalek = { version = "2.2", features = ["pem"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

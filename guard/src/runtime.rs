@@ -1,0 +1,106 @@
+//! Phase-one service heartbeat. It never claims that a protection engine exists.
+use serde::{Deserialize, Serialize};
+use std::{fs, io::Write, path::Path, thread, time::Duration};
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct State {
+    pub schema: u32,
+    pub version: String,
+    pub pid: u32,
+    pub boot_seconds: u64,
+    pub agent: String,
+    pub protection: String,
+    pub risk: String,
+    pub message: String,
+}
+
+pub fn boot_seconds() -> u64 {
+    #[cfg(target_os = "linux")]
+    {
+        let mut value = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        if unsafe { libc::clock_gettime(libc::CLOCK_BOOTTIME, &mut value) } == 0 {
+            return value.tv_sec.max(0) as u64;
+        }
+    }
+    0
+}
+pub fn state() -> State {
+    State { schema: 1, version: env!("CARGO_PKG_VERSION").into(), pid: std::process::id(),
+        boot_seconds: boot_seconds(), agent: "running".into(), protection: "not_configured".into(),
+        risk: "not_assessed".into(), message: "Foundation service only. Login protection, WAF and exposure checks are not connected yet.".into() }
+}
+pub fn run(directory: &Path, once: bool) -> Result<(), String> {
+    if !cfg!(target_os = "linux") {
+        return Err("The agent runs on Linux. Offline verification works on this platform.".into());
+    }
+    let metadata = fs::symlink_metadata(directory).map_err(|e| e.to_string())?;
+    if !metadata.is_dir() {
+        return Err("runtime must be a real existing directory".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o022 != 0 {
+            return Err("runtime directory ownership/permissions invalid".into());
+        }
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+            .map_err(|e| e.to_string())?;
+    }
+    loop {
+        let temporary = directory.join(format!("state-{}.tmp", std::process::id()));
+        let result: Result<(), String> = (|| {
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+            }
+            let mut file = options.open(&temporary).map_err(|e| e.to_string())?;
+            file.write_all(&serde_json::to_vec(&state()).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())?;
+            fs::rename(&temporary, directory.join("state.json")).map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result?;
+        if once {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_secs(crate::policy::SERVICE_PERIOD));
+    }
+}
+pub fn read(directory: &Path) -> Result<State, String> {
+    let path = directory.join("state.json");
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|_| "No agent observation is available; protection state is unknown.")?;
+    if !metadata.is_file() || metadata.len() > 65536 {
+        return Err("invalid state file".into());
+    }
+    let mut state: State = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    let now = boot_seconds();
+    if now < state.boot_seconds || now - state.boot_seconds > crate::policy::SERVICE_TTL {
+        state.agent = "unknown".into();
+        state.protection = "unknown".into();
+        state.message = "Agent observation expired. This does not prove external protection services are stopped.".into();
+    }
+    Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn foundation_never_reports_protection_or_risk_checks_passed() {
+        let state = super::state();
+        assert_eq!(state.protection, "not_configured");
+        assert_eq!(state.risk, "not_assessed");
+    }
+}

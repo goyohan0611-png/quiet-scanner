@@ -48,6 +48,10 @@ build.log
 /_smoke/
 /.impeccable/review/
 /research/**/target/
+/scripts/protection-harness/target/
+/guard/target/
+/guard/dist/
+/guard/**/__pycache__/
 
 # ── Editors / OS ──────────────────────────────────────────────────────
 .vscode/
