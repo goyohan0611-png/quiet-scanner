@@ -127,6 +127,10 @@ def prerequisites():
     system('is-active','--quiet','nginx.service')
 
 
+def package_revision():
+    return command('/usr/bin/dpkg-query','-W','-f=${Package}=${Version}\n','crowdsec','nginx','libnginx-mod-http-lua','lua-cjson').stdout.decode()
+
+
 def fresh(args):
     if not args.direct or not args.probe_peer or not args.site:
         raise ValueError('First enable requires --direct --probe-peer EXTERNAL_IP --site https://site.example')
@@ -204,7 +208,7 @@ def fresh(args):
         patched=nginx_patched(inventory,plan)
         backups={path:{'raw':base64.b64encode(inventory['texts'][path].encode()).decode(),'mode':stat.S_IMODE(inventory['metas'][path].st_mode),'gid':inventory['metas'][path].st_gid,'patched_hash':sha(raw)} for path,raw in patched.items()}
         include=('lua_package_path "'+str(CODE)+'/lua/?.lua;;";\nlua_shared_dict crowdsec_cache 10m;\nlua_shared_dict quiet_guard_waf 16m;\ninit_by_lua_file '+str(CODE)+'/nginx/init.lua;\naccess_by_lua_file '+str(CODE)+'/nginx/access.lua;\nlog_by_lua_file '+str(CODE)+'/nginx/log.lua;\nserver { listen unix:'+SOCKET+'; server_name localhost; access_log off; set $quiet_guard_scope_id ""; location / { content_by_lua_file '+str(CODE)+'/nginx/status.lua; } }\n').encode()
-        record={'marker':MARKER,'enabled':False,'files':created,'backups':backups,'include':base64.b64encode(include).decode(),'include_hash':sha(include),'baseline_digest':inventory['digest'],'active_digest':None}
+        record={'marker':MARKER,'enabled':False,'files':created,'backups':backups,'include':base64.b64encode(include).decode(),'include_hash':sha(include),'baseline_digest':inventory['digest'],'active_digest':None,'packages':package_revision()}
         save(RECORD,record);public(False,config);system('daemon-reload')
     except Exception:
         for path,digest in reversed(list(created.items())):
@@ -285,8 +289,7 @@ def check():
     record=owned();config=json.loads(read(ROOT/'settings.json'))
     if not record['enabled']: raise ValueError('WAF is explicitly off')
     verify_active(record)
-    prerequisites_version=command('/usr/bin/dpkg-query','-W','-f=${Version}','crowdsec').stdout.decode().strip()
-    if not (prerequisites_version=='1.8.2' or prerequisites_version.startswith('1.8.2-')): raise ValueError('Engine version changed')
+    if package_revision()!=record['packages']: raise ValueError('Web inspection dependency versions changed; revalidation is required')
     system('is-active','--quiet',ENGINE)
     epoch=system('show','--property=InvocationID','--value',ENGINE).stdout.decode().strip()
     if not re.fullmatch('[a-f0-9]{32}',epoch): raise ValueError('Engine epoch unavailable')

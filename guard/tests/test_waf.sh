@@ -60,7 +60,7 @@ ThreadingHTTPServer(('127.0.0.1',18081),Handler).serve_forever()
 PY
 echo "$!" > "$temporary/app.pid"
 nginx -t
-systemctl reload nginx.service
+systemctl restart nginx.service
 request() { ip netns exec qg-waf-client curl --noproxy '*' --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' "$@"; }
 test "$(request http://guard.test:18080/)" = 200
 quiet-guard waf enable --direct --probe-peer 10.204.0.2 --site http://guard.test:18080 --site http://api.guard.test:18080 --allow-insecure-probe
