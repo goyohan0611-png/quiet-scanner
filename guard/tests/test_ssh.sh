@@ -7,6 +7,7 @@ binary=$(realpath "${1:?compiled binary}")
 root=$(realpath "$(dirname "$0")/..")
 temporary=$(mktemp -d)
 cleanup() {
+  if [[ -e /usr/bin/crowdsec.qg-test-original ]]; then mv /usr/bin/crowdsec.qg-test-original /usr/bin/crowdsec; fi
   ip netns delete qg-ssh-client 2>/dev/null || true
   ip link delete qg-ssh-host 2>/dev/null || true
   if [[ -s "$temporary/listener.pid" ]]; then kill "$(cat "$temporary/listener.pid")" 2>/dev/null || true; fi
@@ -63,6 +64,16 @@ nft add table inet quiet_guard_ssh
 if quiet-guard ssh enable --direct --management-ip 10.203.0.3; then exit 1; fi
 nft list table inet quiet_guard_ssh >/dev/null
 nft delete table inet quiet_guard_ssh  # The test created this collision, not Guard.
+test ! -e /usr/bin/crowdsec.qg-test-original
+mv /usr/bin/crowdsec /usr/bin/crowdsec.qg-test-original
+printf '#!/bin/sh\nexit 42\n' > /usr/bin/crowdsec
+chmod 755 /usr/bin/crowdsec
+if quiet-guard ssh enable --direct --management-ip 10.203.0.3; then exit 1; fi
+mv /usr/bin/crowdsec.qg-test-original /usr/bin/crowdsec
+test ! -e /etc/quiet-guard/ssh
+test ! -e /var/lib/quiet-guard/ssh
+test ! -e /etc/systemd/system/quiet-guard-ssh-engine.service
+echo 'PASS: failed first SSH setup rolls back only its own files and can be retried'
 quiet-guard ssh enable --direct --management-ip 10.203.0.3
 systemctl is-enabled --quiet quiet-guard-ssh-engine quiet-guard-ssh-enforcer
 quiet-guard ssh status

@@ -29,6 +29,7 @@ ENFORCER = 'quiet-guard-ssh-enforcer.service'
 UNIT_ROOT = pathlib.Path('/etc/systemd/system')
 MARKER = 'quiet-guard-ssh-v1'
 ASSETS = {}
+TRANSACTION = None
 
 
 def read(path, maximum=262144):
@@ -47,6 +48,8 @@ def directory(path, mode):
     if not path.exists():
         path.mkdir(mode=mode)
         path.chmod(mode)
+        if TRANSACTION is not None:
+            TRANSACTION['directories'].append(path)
     meta = path.lstat()
     if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
         raise ValueError('Untrusted directory: ' + str(path))
@@ -61,6 +64,8 @@ def atomic(path, data, mode=0o600):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(name, path)
+        if TRANSACTION is not None:
+            TRANSACTION['files'][path] = hashlib.sha256(data).hexdigest()
     finally:
         if os.path.lexists(name):
             os.unlink(name)
@@ -198,6 +203,37 @@ def ensure_foundation():
 
 
 def fresh(args):
+    global TRANSACTION
+    TRANSACTION = {'files': {}, 'directories': []}
+    try:
+        create_fresh(args)
+    except Exception:
+        # Before ON there are no live decisions to retain. Remove only paths
+        # created by this attempt whose bytes still match; preserve user edits.
+        for path, digest in reversed(list(TRANSACTION['files'].items())):
+            try:
+                if hashlib.sha256(read(path)).hexdigest() == digest:
+                    path.unlink()
+            except OSError:
+                pass
+        if STATE in TRANSACTION['directories']:
+            for name in ['crowdsec.db', 'crowdsec.db-shm', 'crowdsec.db-wal', 'crowdsec.db-journal']:
+                path = STATE / name
+                try:
+                    read(path, 128 * 1024 * 1024)
+                    path.unlink()
+                except OSError:
+                    pass
+        for path in reversed(TRANSACTION['directories']):
+            try: path.rmdir()
+            except OSError: pass
+        system('daemon-reload', check=False)
+        raise
+    finally:
+        TRANSACTION = None
+
+
+def create_fresh(args):
     if not args.direct or not args.management_ip:
         raise ValueError('First enable requires --direct and --management-ip IP; shared/jump-host SSH is not supported')
     ports = sorted(set(args.port or [22]))
@@ -254,6 +290,8 @@ def fresh(args):
                            'profiles_path': str(ROOT / 'profiles.yaml'), 'trusted_ips': ['127.0.0.1', '::1']}},
         'prometheus': {'enabled': False}})
     cscli('machines', 'add', 'quiet-guard-ssh', '--auto', '--force')
+    credentials = ROOT / 'local_api_credentials.yaml'
+    TRANSACTION['files'][credentials] = hashlib.sha256(read(credentials)).hexdigest()
     token = cscli('bouncers', 'add', 'quiet-guard-ssh', '-o', 'raw').stdout.decode().strip()
     if not 16 <= len(token) <= 256 or not token.isascii() or not all(c.isalnum() or c in '-_+=/' for c in token):
         raise ValueError('Unexpected local API key format')

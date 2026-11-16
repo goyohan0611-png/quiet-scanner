@@ -343,6 +343,8 @@ pub fn assets() -> serde_json::Value {
         "upstream.json":include_str!("../vendor/crowdsec-ssh/upstream.json"),
         "LICENSE.engine":include_str!("../vendor/crowdsec-ssh/LICENSE.engine"),
         "engine-upstream.json":include_str!("../vendor/crowdsec-ssh/engine-upstream.json"),
+        // These are fixed local items, not an automatically upgraded Hub install.
+        "hub/.index.json":"{}\n",
         "engine.service":include_str!("../systemd/quiet-guard-ssh-engine.service"),
         "enforcer.service":include_str!("../systemd/quiet-guard-ssh-enforcer.service")
     });
