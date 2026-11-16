@@ -104,6 +104,12 @@ def main():
     job({'action': 'prepare_dependencies'}, 850)
     assert all(state()['prerequisites'].values())
     assert not state()['configured']['ssh'] and not state()['configured']['waf']
+    job({'action': 'ssh_enable', 'management_ips': ['198.51.100.10'], 'ports': [22], 'direct': True})
+    assert state()['configured']['ssh']
+    job({'action': 'ssh_disable', 'confirmed': True})
+    job({'action': 'ssh_enable', 'management_ips': [], 'ports': [], 'direct': False})
+    job({'action': 'ssh_disable', 'confirmed': True})
+    subprocess.run(['quiet-guard', 'ssh', 'remove'], check=True, stdout=subprocess.DEVNULL)
     job({'action': 'exposure_enable'})
     job({'action': 'exposure_check'})
     assert state()['listeners'] and state()['configured']['exposure']
