@@ -8,3 +8,6 @@
 
 .mobile-logout{display:none}
 @media(max-width:760px){.rail nav button{white-space:nowrap;flex:1;min-width:max-content;padding-left:9px;padding-right:9px;gap:5px}.mobile-logout{display:inline-flex}.topbar-actions{gap:7px}}
+
+.table-scroll-cue{display:none}
+@media(max-width:760px){.condition-strip>div{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.condition-strip>div>span:last-child{width:100%;min-width:0;flex:initial}.page-heading p,.service-info p,.section-heading p,.guidance p{word-break:keep-all;overflow-wrap:anywhere}.prerequisites>.section-heading{flex-direction:column;gap:15px}.table-scroll-cue{display:flex;align-items:center;gap:6px;font-size:12px;padding:0 18px 12px;margin:0;color:#52617a;word-break:keep-all}.table-scroll-cue .icon{width:15px;height:15px}.table-scroll:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}}

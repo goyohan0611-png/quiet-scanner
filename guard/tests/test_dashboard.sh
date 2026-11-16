@@ -14,6 +14,8 @@ openssl genpkey -algorithm ED25519 -out "$temporary/private.pem"
 openssl pkey -in "$temporary/private.pem" -pubout -out "$temporary/public.pem"
 bash "$root/scripts/package.sh" "$binary" "$temporary/release" 1 0.1.0 "$temporary/private.pem"
 python3 "$root/scripts/deploy.py" install --bundle "$temporary/release" --trusted-key "$temporary/public.pem"
+mkdir -p /run/sshd
+/usr/sbin/sshd -T > /dev/null
 quiet-guard dashboard enable
 python3 "$root/tests/test_dashboard_api.py"
 # The UI must not survive foundational removal, and removal must not silently
