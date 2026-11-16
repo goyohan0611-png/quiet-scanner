@@ -117,6 +117,12 @@ r=json.load(open(sys.argv[1]));assert r['external'] is None
 assert not any(x['port']==5432 for x in r['inventory']['listeners'])
 PY
 systemctl stop quiet-guard-exposure.timer
+# Hosted VMs can be younger than the 90-second observation TTL. Wait until a
+# genuinely expired nonnegative boot-clock timestamp can be represented.
+python3 - <<'PY'
+import time
+while time.clock_gettime(time.CLOCK_BOOTTIME)<92:time.sleep(1)
+PY
 python3 - <<'PY'
 import json,pathlib,time
 p=pathlib.Path('/var/lib/quiet-guard/exposure/health.json');r=json.loads(p.read_text());r['boot_seconds']=max(0,int(time.clock_gettime(time.CLOCK_BOOTTIME))-91);p.write_text(json.dumps(r))

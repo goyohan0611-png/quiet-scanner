@@ -530,7 +530,7 @@ fn stop(remove: bool) -> Result<(), String> {
         ] {
             let path = Path::new(STATE).join(name);
             if path.exists() {
-                read(&path, 2 * 1024 * 1024, true)?;
+                read(&path, 8 * 1024 * 1024, true)?;
                 fs::rename(&path, archive.join(name)).map_err(|e| e.to_string())?;
             }
         }
