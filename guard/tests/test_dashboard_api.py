@@ -29,7 +29,7 @@ def request(path='/api/state', body=None, *, token=TOKEN, headers=None, method=N
     conn = http.client.HTTPConnection('127.0.0.1', 9417, timeout=8)
     conn.request(method or ('POST' if body is not None else 'GET'), path, data, h)
     reply = conn.getresponse()
-    status, raw, fields = reply.status, reply.read(), dict(reply.getheaders())
+    status, raw, fields = reply.status, reply.read(), {k.lower(): v for k, v in reply.getheaders()}
     conn.close()
     # Never include raw bodies/headers in failures: they can contain secrets.
     return status, raw, fields
@@ -79,8 +79,8 @@ def main():
     assert not Path('/tmp/bypass').exists()
     status, raw, fields = request('/', token=None)
     assert status == 200 and b'Quiet Guard' in raw
-    assert fields['Cache-Control'] == 'no-store'
-    assert "frame-ancestors 'none'" in fields['Content-Security-Policy']
+    assert fields['cache-control'] == 'no-store'
+    assert "frame-ancestors 'none'" in fields['content-security-policy']
     assert request('/app.js', token=None)[0] == 200
     assert request('/fonts/suit.woff2', token=None)[0] == 200
     assert request('/etc/quiet-guard/dashboard/access-token', token=None)[0] == 404

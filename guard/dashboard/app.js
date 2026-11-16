@@ -174,7 +174,7 @@
   document.addEventListener('click',event => { const viewButton = event.target.closest('[data-view],[data-go]'); if (viewButton) setView(viewButton.dataset.view || viewButton.dataset.go); const button = event.target.closest('[data-service]'); if (button) service(button.dataset.service,button.dataset.operation); const close = event.target.closest('[data-close]'); if (close) $(close.dataset.close).hidden = true; });
   $('filter').addEventListener('input',renderTable);
   $('refresh').addEventListener('click',() => load());
-  $('logout').addEventListener('click',() => { token = ''; sessionStorage.removeItem('quiet-guard-access'); data = null; online = false; $('app').hidden = true; $('login').hidden = false; $('access-key').value = ''; $('login-error').textContent = ''; });
+  ['logout','logout-mobile'].forEach(id => $(id).addEventListener('click',() => { token = ''; sessionStorage.removeItem('quiet-guard-access'); data = null; online = false; $('app').hidden = true; $('login').hidden = false; $('access-key').value = ''; $('login-error').textContent = ''; }));
   $('login-form').addEventListener('submit',event => { event.preventDefault(); token = $('access-key').value.trim(); if (!/^[a-f0-9]{64}$/i.test(token)) { $('login-error').textContent = '서버에서 확인한 64자리 접속 키를 입력해 주세요.'; return; } load(true); });
   $('prepare-dependencies').addEventListener('click',async () => { if (await confirm('필수 프로그램을 준비할까요?','검사 엔진과 Nginx 연결 모듈을 내려받고 설치해요. 패키지 설치 중 웹 서버가 다시 설정을 읽을 수 있어요. 기존 보호 기능을 자동으로 켜지는 않아요.','프로그램 준비')) perform({action:'prepare_dependencies'}); });
   $('exposure-run').addEventListener('click',() => perform({action:configured('exposure') && !isOff('exposure') ? 'exposure_check' : 'exposure_enable'}));

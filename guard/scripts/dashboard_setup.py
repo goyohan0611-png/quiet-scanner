@@ -49,7 +49,7 @@ def stop(record):
     if (DATA/'jobs.json').exists():
         for job in json.loads(read(DATA/'jobs.json',262144)):
             job_id=job.get('id','')
-            if len(job_id)==24 and all(c in '0123456789abcdef' for c in job_id) and system('is-active','--quiet','quiet-guard-task-'+job_id+'.service',check=False).returncode==0:
+            if job.get('status')=='running' or (len(job_id)==24 and all(c in '0123456789abcdef' for c in job_id) and system('show','--property=ActiveState','--value','quiet-guard-task-'+job_id+'.service',check=False).stdout.strip() in [b'active',b'activating',b'deactivating']):
                 raise RuntimeError('An administrative task is still running; finish it before stopping or rotating dashboard access')
     system('disable','--now',WEB);system('stop',BROKER);system('disable','--now',SOCKET)
     record['enabled']=False;save(record)

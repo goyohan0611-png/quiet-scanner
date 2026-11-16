@@ -108,6 +108,52 @@ struct Controller {
     jobs: Mutex<Vec<Job>>,
     gate: tokio::sync::Mutex<()>,
 }
+fn deployment_lock() -> Result<fs::File, String> {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open("/run/lock/quiet-guard-deploy.lock")
+        .map_err(|_| "Setup lock unavailable")?;
+    let m = file.metadata().map_err(|_| "Setup lock unavailable")?;
+    if !m.is_file()
+        || m.uid() != 0
+        || m.mode() & 0o077 != 0
+        || unsafe {
+            libc::flock(
+                std::os::fd::AsRawFd::as_raw_fd(&file),
+                libc::LOCK_EX | libc::LOCK_NB,
+            )
+        } != 0
+    {
+        return Err("Another setup is running".into());
+    }
+    Ok(file)
+}
+fn transient_active(jobs: &[Job]) -> bool {
+    jobs.iter().any(|job| {
+        if job.id.len() != 24 || !job.id.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+        let state = Command::new("/usr/bin/systemctl")
+            .args([
+                "show",
+                "--property=ActiveState",
+                "--value",
+                &format!("quiet-guard-task-{}.service", job.id),
+            ])
+            .stdin(Stdio::null())
+            .output();
+        state.is_ok_and(|s| {
+            matches!(
+                s.stdout.as_slice(),
+                b"active\n" | b"activating\n" | b"deactivating\n"
+            )
+        })
+    })
+}
 fn snapshot(jobs: &[Job]) -> serde_json::Value {
     let agent = crate::runtime::read(Path::new("/run/quiet-guard"))
         .map(|s| serde_json::to_value(s).unwrap_or_default())
@@ -319,11 +365,22 @@ async fn handle(
             Operation::Start { action } => {
                 action.args()?;
                 let _guard = controller.gate.lock().await;
+                // Serialize acceptance with CLI disable/rotation/removal. The job
+                // record is durable before this lock is released; stop refuses it.
+                let _deployment = deployment_lock()?;
+                let previous = controller
+                    .jobs
+                    .lock()
+                    .map_err(|_| "Job state unavailable")?
+                    .clone();
+                let unit_running = tokio::task::spawn_blocking(move || transient_active(&previous))
+                    .await
+                    .map_err(|_| "Administrative task status unavailable")?;
                 let mut jobs = controller
                     .jobs
                     .lock()
                     .map_err(|_| "Job state unavailable")?;
-                if jobs.iter().any(|j| j.status == "running") {
+                if unit_running || jobs.iter().any(|j| j.status == "running") {
                     serde_json::json!({"error":"다른 작업을 처리하고 있습니다. 완료 후 다시 시도해 주세요."})
                 } else {
                     let id = secret()?[..24].to_string();
