@@ -8,7 +8,9 @@ Quiet Scanner는 CCTV·AV·네트워크 설치 현장에서 반복되는 IP 충�
 
 4.0부터 화면은 Tauri, 네트워크 처리는 Rust로 구성했습니다. Windows에 설치된 WebView2를 사용하며 별도 Electron·Python 실행 파일을 띄우지 않습니다. AI 개발 도구를 활용해 구현하고, 실제 현장의 충돌 처리 흐름에 맞춰 기능을 줄이고 다듬고 있습니다.
 
-**[Windows 설치 파일 받기](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.0/Quiet.Scanner.Setup.4.2.0.exe)** · [4.2.0 변경 사항](docs/release-v4.2.0.md)
+**[Windows 설치 파일 받기](https://github.com/goyohan0611-png/quiet-scanner/releases/download/v4.2.1/Quiet.Scanner.Setup.4.2.1.exe)** · [4.2.1 Windows 분리 안정성 수정](docs/release-v4.2.1.md)
+
+Windows 최신 버전은 4.2.1입니다. macOS·Linux는 아래 4.2.0 파일을 사용합니다. 스캐너에는 보호 모드를 포함하지 않으며, 보호 기능은 별도 Quiet Guard 프로젝트에서 개발합니다.
 
 **[4.2.0 설치 파일 전체 보기 — Windows·macOS·Linux](https://github.com/goyohan0611-png/quiet-scanner/releases/tag/v4.2.0)**: macOS 13 이상 Apple Silicon·Intel 맥과 Ubuntu 24.04 이상 x64용 파일을 함께 제공합니다. 맥 파일은 Developer ID 서명과 Apple 공증을 거쳤습니다. CPU별 다운로드와 권한·검증 범위는 [다른 운영체제 안내](docs/cross-platform.md)를 참고하십시오.
 
@@ -87,12 +89,12 @@ DHCP REQUEST를 보내지 않으며 이 PC의 주소 설정은 변경하지 않�
 
 ## 설치와 실행
 
-[최신 릴리즈](https://github.com/goyohan0611-png/quiet-scanner/releases/latest)의 **Assets**에서 `Quiet.Scanner.Setup.4.2.0.exe`를 내려받아 설치합니다.
+[최신 릴리즈](https://github.com/goyohan0611-png/quiet-scanner/releases/latest)의 **Assets**에서 `Quiet.Scanner.Setup.4.2.1.exe`를 내려받아 설치합니다.
 
 설치 프로그램 첫 화면에서 **Npcap / Microsoft Edge WebView2 Runtime** 두 항목의 설치 상태를 확인합니다. 미설치는 빨간색, 설치 완료는 초록색으로 표시합니다. **설치하러 가기**를 누르면 공식 다운로드 페이지가 열립니다. 내려받은 구성 요소를 설치하면 약 1초마다 다시 확인해 상태를 갱신하며, **두 항목이 모두 설치돼야 다음 단계로 진행**합니다. 이미 설치된 항목은 다시 설치하지 않아도 됩니다.
 
 - Windows 10 / 11 64비트
-- Windows 4.2.0 안내입니다. macOS·Linux의 설치 방식은 [별도 안내](docs/cross-platform.md)를 확인하십시오.
+- Windows 4.2.1 안내입니다. macOS·Linux의 설치 방식은 [별도 안내](docs/cross-platform.md)를 확인하십시오.
 - 관리자 권한 필요. 실행 시 Windows 권한 확인 창이 표시됩니다.
 - [Npcap](https://npcap.com) 설치 필요. 기본 설치 위치의 Npcap API를 사용하며 설치 파일에 Npcap을 포함하지 않습니다.
 - Microsoft Edge WebView2 Runtime 필요. 없으면 체크리스트의 설치 버튼으로 Microsoft 공식 설치 프로그램을 받아 설치합니다. 새로 받으려면 인터넷 연결이 필요합니다.

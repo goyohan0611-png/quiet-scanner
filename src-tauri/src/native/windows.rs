@@ -123,6 +123,14 @@ fn row(ip: Ipv4Addr, index: u32) -> Result<MIB_IPNET_ROW2, String> {
         InterfaceIndex: index,
         ..Default::default()
     };
+    // Resolve the current adapter identity instead of depending on an index-only
+    // write. A missing adapter is an error, never an absent/released ARP entry.
+    let rc = unsafe { ConvertInterfaceIndexToLuid(index, &mut row.InterfaceLuid) };
+    if rc != 0 {
+        return Err(format!(
+            "네트워크 인터페이스를 찾을 수 없습니다 (번호 {index}, Windows {rc}). 새로고침 후 다시 스캔하십시오."
+        ));
+    }
     row.Address.Ipv4.sin_family = AF_INET;
     row.Address.Ipv4.sin_addr.S_un.S_addr = u32::from_ne_bytes(ip.octets());
     Ok(row)
@@ -150,23 +158,87 @@ pub fn pin(ip: Ipv4Addr, index: u32, mac: Mac) -> Result<(), String> {
     r.PhysicalAddress[..6].copy_from_slice(&mac);
     r.PhysicalAddressLength = 6;
     r.State = NlnsPermanent;
-    let existing = read(ip, index)?;
-    if existing.as_ref().is_some_and(|n| n.permanent) {
-        return Err("이미 정적으로 고정된 주소입니다. 기존 설정을 먼저 확인하십시오.".into());
-    }
-    let rc = unsafe {
-        if existing.is_some() {
-            SetIpNetEntry2(&r)
-        } else {
-            CreateIpNetEntry2(&r)
+    pin_with_retry(
+        || read(ip, index),
+        |operation| unsafe {
+            match operation {
+                PinWrite::Set => SetIpNetEntry2(&r),
+                PinWrite::Create => CreateIpNetEntry2(&r),
+                PinWrite::DeleteDynamic => DeleteIpNetEntry2(&r),
+            }
+        },
+        || verify(ip, index, mac),
+    )
+    .map_err(|error| format!("{error} [IP {ip}, 인터페이스 {index}]"))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PinWrite {
+    Set,
+    Create,
+    DeleteDynamic,
+}
+fn pin_error(code: u32, operation: PinWrite) -> String {
+    let detail = match code {
+        5 => "관리자 권한으로 실행하십시오.",
+        1168 | 2 => {
+            "네트워크 인터페이스 또는 ARP 항목을 찾지 못했습니다. 새로고침 후 다시 스캔하십시오."
         }
+        5010 => "ARP 항목이 작업 중 변경됐습니다. 다시 시도하십시오.",
+        87 => "인터페이스나 IP·MAC 설정을 확인하십시오.",
+        _ => "네트워크 어댑터 상태를 확인하십시오.",
     };
-    if rc != 0 {
-        return Err(format!(
-            "분리 설정 실패 (Windows {rc}). 관리자 권한을 확인하십시오."
-        ));
+    format!("분리 설정 실패 ({operation:?}, Windows {code}). {detail}")
+}
+fn reject_static(entry: &Option<Neighbor>) -> Result<(), String> {
+    if entry.as_ref().is_some_and(|n| n.permanent) {
+        Err("이미 정적으로 고정된 주소입니다. 기존 설정은 변경하지 않았습니다.".into())
+    } else {
+        Ok(())
     }
-    verify(ip, index, mac)
+}
+/// The cache can expire between Get and Set, or be repopulated between Get and
+/// Create. Some adapters also reject converting a dynamic entry with Set. Retry
+/// those cases only; preserve static entries and propagate real failures.
+fn pin_with_retry<R, W, V>(mut read: R, mut write: W, mut verify: V) -> Result<(), String>
+where
+    R: FnMut() -> Result<Option<Neighbor>, String>,
+    W: FnMut(PinWrite) -> u32,
+    V: FnMut() -> Result<(), String>,
+{
+    for _ in 0..3 {
+        let existing = read()?;
+        reject_static(&existing)?;
+        let operation = if existing.is_some() {
+            PinWrite::Set
+        } else {
+            PinWrite::Create
+        };
+        let mut code = write(operation);
+        let mut last = operation;
+        if operation == PinWrite::Set && code == 1168 {
+            let current = read()?;
+            reject_static(&current)?;
+            if current.is_some() {
+                // Only the selected dynamic cache row is removed. Do not flush
+                // the adapter or touch any IP configuration/persistent entries.
+                let deleted = write(PinWrite::DeleteDynamic);
+                if deleted != 0 && deleted != 1168 {
+                    return Err(pin_error(deleted, PinWrite::DeleteDynamic));
+                }
+            }
+            last = PinWrite::Create;
+            code = write(last);
+        }
+        if code == 0 {
+            return verify();
+        }
+        if last == PinWrite::Create && code == 5010 {
+            continue;
+        }
+        return Err(pin_error(code, last));
+    }
+    Err("분리 중 ARP 항목이 반복해서 변경됐습니다. 다시 스캔 후 시도하십시오.".into())
 }
 pub fn release(ip: Ipv4Addr, index: u32, mac: Mac) -> Result<(), String> {
     release_checked(
@@ -182,4 +254,119 @@ pub fn release(ip: Ipv4Addr, index: u32, mac: Mac) -> Result<(), String> {
             }
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    fn dynamic() -> Option<Neighbor> {
+        Some(Neighbor {
+            mac: vec![2, 0, 0, 0, 0, 1],
+            permanent: false,
+        })
+    }
+    fn permanent() -> Option<Neighbor> {
+        Some(Neighbor {
+            mac: vec![2, 0, 0, 0, 0, 2],
+            permanent: true,
+        })
+    }
+    fn exercise(
+        reads: Vec<Option<Neighbor>>,
+        writes: Vec<(PinWrite, u32)>,
+        verified: bool,
+    ) -> Result<(), String> {
+        let mut reads: VecDeque<_> = reads.into();
+        let mut writes: VecDeque<_> = writes.into();
+        let result = pin_with_retry(
+            || Ok(reads.pop_front().expect("unexpected read")),
+            |operation| {
+                let (expected, code) = writes.pop_front().expect("unexpected write");
+                assert_eq!(operation, expected);
+                code
+            },
+            || {
+                if verified {
+                    Ok(())
+                } else {
+                    Err("verification failed".into())
+                }
+            },
+        );
+        assert!(writes.is_empty(), "unconsumed writes");
+        result
+    }
+    #[test]
+    fn expired_neighbor_is_created_after_set_not_found() {
+        assert!(exercise(
+            vec![dynamic(), None],
+            vec![(PinWrite::Set, 1168), (PinWrite::Create, 0)],
+            true
+        )
+        .is_ok());
+    }
+    #[test]
+    fn adapter_rejecting_set_recreates_only_dynamic_entry() {
+        assert!(exercise(
+            vec![dynamic(), dynamic()],
+            vec![
+                (PinWrite::Set, 1168),
+                (PinWrite::DeleteDynamic, 0),
+                (PinWrite::Create, 0)
+            ],
+            true
+        )
+        .is_ok());
+    }
+    #[test]
+    fn static_entry_appearing_during_retry_is_preserved() {
+        assert!(exercise(
+            vec![dynamic(), permanent()],
+            vec![(PinWrite::Set, 1168)],
+            true
+        )
+        .is_err());
+        assert!(exercise(
+            vec![None, permanent()],
+            vec![(PinWrite::Create, 5010)],
+            true
+        )
+        .is_err());
+    }
+    #[test]
+    fn cache_repopulated_before_create_retries_set() {
+        assert!(exercise(
+            vec![None, dynamic()],
+            vec![(PinWrite::Create, 5010), (PinWrite::Set, 0)],
+            true
+        )
+        .is_ok());
+    }
+    #[test]
+    fn failures_are_not_reported_as_success_or_permission_errors() {
+        assert!(exercise(vec![None], vec![(PinWrite::Create, 1168)], true)
+            .unwrap_err()
+            .contains("새로고침"));
+        assert!(exercise(vec![dynamic()], vec![(PinWrite::Set, 5)], true)
+            .unwrap_err()
+            .contains("관리자"));
+        assert!(exercise(
+            vec![dynamic(), dynamic()],
+            vec![(PinWrite::Set, 1168), (PinWrite::DeleteDynamic, 5)],
+            true
+        )
+        .is_err());
+        assert!(exercise(vec![None], vec![(PinWrite::Create, 0)], false).is_err());
+        assert!(!pin_error(1168, PinWrite::Set).contains("관리자"));
+    }
+    #[test]
+    fn retry_is_bounded() {
+        assert!(exercise(
+            vec![None, None, None],
+            vec![(PinWrite::Create, 5010); 3],
+            true
+        )
+        .is_err());
+    }
 }
