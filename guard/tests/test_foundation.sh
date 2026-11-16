@@ -15,6 +15,7 @@ bash "$root/scripts/package.sh" "$binary" "$temporary/release1" 1 0.1.0 "$tempor
 "$binary" bundle verify "$temporary/release1" "$temporary/public.pem" >/dev/null
 python3 "$root/scripts/deploy.py" install --bundle "$temporary/release1" --trusted-key "$temporary/public.pem"
 quiet-guard status > "$temporary/status.json"
+runuser -u nobody -- quiet-guard status >/dev/null  # Public status contains no credentials or log payloads.
 python3 - "$temporary/status.json" <<'PY'
 import json, sys
 s=json.load(open(sys.argv[1]))

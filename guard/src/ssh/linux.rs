@@ -140,6 +140,7 @@ fn verify_installation() -> Result<(), String> {
         "acquis.yaml",
         "profiles.yaml",
         "simulation.yaml",
+        "console.yaml",
     ] {
         expected.insert(format!("/etc/quiet-guard/ssh/{name}"));
     }

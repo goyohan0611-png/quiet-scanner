@@ -14,7 +14,7 @@ cleanup() {
   rm -rf -- "$temporary"
 }
 trap cleanup EXIT
-trap 'journalctl -u quiet-guard-ssh-engine -u quiet-guard-ssh-enforcer --no-pager -n 60 || true; cat /run/quiet-guard-ssh/health.json 2>/dev/null || true' ERR
+trap 'echo "SSH integration failure at line $LINENO"; find /etc/quiet-guard/ssh /var/lib/quiet-guard/ssh -maxdepth 3 -printf "%m %p\n" 2>/dev/null || true; journalctl -u quiet-guard-ssh-engine -u quiet-guard-ssh-enforcer --no-pager -n 60 || true; cat /run/quiet-guard-ssh/health.json 2>/dev/null || true; nft -j list table inet quiet_guard_ssh || true' ERR
 umask 077
 apt-get update -qq
 apt-get install -y --no-install-recommends nftables openssh-server openssh-client iproute2
@@ -125,6 +125,10 @@ if quiet-guard ssh remove; then exit 1; fi
 cp "$temporary/original" /etc/quiet-guard/ssh/rules/scenarios/ssh-bf.yaml
 quiet-guard ssh remove
 nft list table inet quiet_guard_test_sentinel >/dev/null
+quiet-guard ssh enable --direct --management-ip 10.203.0.3
+! has_ban 10.203.0.2
+quiet-guard ssh remove
+echo 'PASS: remove retains a private incident archive and allows a clean reinstall without resurrecting old bans'
 nft delete table inet quiet_guard_test_sentinel
 python3 "$root/scripts/deploy.py" uninstall
 echo 'PASS: OFF/remove preserve foreign firewall rules; edited configuration is preserved; active SSH integration blocks unsafe foundation uninstall'

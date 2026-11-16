@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import socket
 import stat
 import subprocess
@@ -117,7 +118,7 @@ def unit_path(name):
 def expected_files():
     return {ROOT / 'rules' / name for name in ASSETS if not name.endswith('.service')} | {
         ROOT / name for name in ['config.yaml', 'policy.json', 'local_api_credentials.yaml', 'api.curl',
-                                 'acquis.yaml', 'profiles.yaml', 'simulation.yaml']
+                                 'acquis.yaml', 'profiles.yaml', 'simulation.yaml', 'console.yaml']
     } | {unit_path(ENGINE), unit_path(ENFORCER)}
 
 
@@ -193,6 +194,21 @@ def stop():
     publish(False)
 
 
+def archive_database():
+    archive = STATE.parent / ('ssh-archive-' + secrets.token_hex(8))
+    directory(archive, 0o700)
+    for name in ['crowdsec.db', 'crowdsec.db-shm', 'crowdsec.db-wal', 'crowdsec.db-journal']:
+        path = STATE / name
+        if os.path.lexists(path):
+            meta = path.lstat()
+            if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
+                raise ValueError('Untrusted database file; preserving it: ' + str(path))
+            path.rename(archive / name)
+    try: STATE.rmdir()
+    except OSError: pass  # Keep any files added by the operator at their original path.
+    return str(archive)
+
+
 def ensure_foundation():
     install = json.loads(read(ROOT.parent / 'install.json', 65536))
     digest = hashlib.sha256(read(PROGRAM, 128 * 1024 * 1024)).hexdigest()
@@ -254,6 +270,7 @@ def create_fresh(args):
         if system('show', '--property=FragmentPath', '--value', name).stdout.strip():
             raise ValueError('Existing unowned service: ' + name)
     with socket.socket() as test:
+        test.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         test.bind(('127.0.0.1', 17423))
     directory(ROOT, 0o700)
     directory(STATE, 0o755)
@@ -275,6 +292,8 @@ def create_fresh(args):
         'filters': ["Alert.Remediation == true && Alert.GetScope() == 'Ip' && Alert.GetScenario() startsWith 'crowdsecurity/ssh-'"],
         'decisions': [{'type': 'ban', 'duration': '10m'}], 'on_success': 'break'})
     save(ROOT / 'simulation.yaml', {'simulation': False})
+    save(ROOT / 'console.yaml', {'share_manual_decisions': False, 'share_tainted': False,
+                                'share_custom': False, 'share_context': False})
     save(ROOT / 'config.yaml', {
         'common': {'daemonize': False, 'log_media': 'stdout', 'log_level': 'info'},
         'config_paths': {'config_dir': str(ROOT / 'rules'), 'data_dir': str(ROOT / 'rules/data'),
@@ -287,7 +306,9 @@ def create_fresh(args):
                       'flush': {'max_items': 5000, 'max_age': '7d'}},
         'api': {'client': {'credentials_path': str(ROOT / 'local_api_credentials.yaml')},
                 'server': {'enable': True, 'listen_uri': '127.0.0.1:17423',
-                           'profiles_path': str(ROOT / 'profiles.yaml'), 'trusted_ips': ['127.0.0.1', '::1']}},
+                           'profiles_path': str(ROOT / 'profiles.yaml'), 'console_path': str(ROOT / 'console.yaml'),
+                           'disable_remote_lapi_registration': True, 'disable_usage_metrics_export': True,
+                           'trusted_ips': ['127.0.0.1', '::1']}},
         'prometheus': {'enabled': False}})
     cscli('machines', 'add', 'quiet-guard-ssh', '--auto', '--force')
     credentials = ROOT / 'local_api_credentials.yaml'
@@ -360,8 +381,10 @@ def main():
                 pathlib.Path(path).unlink()
             RECORD.unlink()
             PUBLIC.unlink()
+            archive = archive_database()
+            print(json.dumps({'incident_database_archive': archive}))
             system('daemon-reload')
-            # Keep the private incident DB for inspection; never recursively delete.
+            # Keep the private incident DB archive for inspection; never recursively delete.
             for parent in sorted((p for p in ROOT.rglob('*') if p.is_dir()), reverse=True):
                 try: parent.rmdir()
                 except OSError: pass

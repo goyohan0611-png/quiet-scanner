@@ -84,7 +84,7 @@ pub fn run(directory: &Path, once: bool) -> Result<(), String> {
         if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o022 != 0 {
             return Err("runtime directory ownership/permissions invalid".into());
         }
-        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
     }
     loop {
@@ -95,7 +95,7 @@ pub fn run(directory: &Path, once: bool) -> Result<(), String> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+                options.mode(0o644).custom_flags(libc::O_NOFOLLOW);
             }
             let mut file = options.open(&temporary).map_err(|e| e.to_string())?;
             file.write_all(&serde_json::to_vec(&state()).map_err(|e| e.to_string())?)
