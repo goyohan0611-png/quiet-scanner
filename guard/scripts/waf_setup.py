@@ -41,7 +41,8 @@ def read(path, limit=4*1024*1024):
 
 
 def directory(path, mode=0o700):
-    if not path.exists(): path.mkdir(mode=mode)
+    if not path.exists():
+        path.mkdir(mode=mode);path.chmod(mode)
     meta = path.lstat()
     if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
         raise ValueError('Untrusted directory: ' + str(path))
