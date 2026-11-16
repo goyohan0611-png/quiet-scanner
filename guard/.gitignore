@@ -1,0 +1,13 @@
+/target/
+/dist/
+**/__pycache__/
+*.pyc
+*.key
+*.pem
+!keys/release-public.pem
+*.p12
+*.p8
+*.log
+/.idea/
+/.vscode/
+/reference/

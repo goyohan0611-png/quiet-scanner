@@ -3,8 +3,8 @@
 Quiet Scanner와 별도로 빌드하는 Rust 서버 프로그램이다. 현재는 **개발 1단계**이며 상주 서비스·서명 검증·설치/제거·규칙 스냅샷 기반만 제공한다. CrowdSec 로그인 방어, WAF, 노출 점검, 관리 화면과 알림은 아직 연결하지 않았다. 실행 중이라고 보호 중으로 표시하지 않는다.
 
 ```sh
-cargo test --manifest-path guard/Cargo.toml --locked
-cargo build --manifest-path guard/Cargo.toml --release --locked
+cargo test --manifest-path Cargo.toml --locked
+cargo build --manifest-path Cargo.toml --release --locked
 ```
 
 GUI·Tauri·Python 패킷 처리·Npcap에 의존하지 않는다. Ubuntu x86_64가 첫 설치 대상이다. Windows에서는 서명·정책·스냅샷 검증 도구를 시험할 수 있지만 Linux 상주 서비스를 실행하지 않는다.
@@ -13,12 +13,12 @@ GUI·Tauri·Python 패킷 처리·Npcap에 의존하지 않는다. Ubuntu x86_64
 
 ```sh
 # 배포자의 안전한 서명 환경에서 실행. private.pem은 저장소에 넣지 않는다.
-bash guard/scripts/package.sh guard/target/release/quiet-guard /새로운/배포폴더 1 0.1.0 /안전한/private.pem
+bash scripts/package.sh target/release/quiet-guard /새로운/배포폴더 1 0.1.0 /안전한/private.pem
 
 # 사용자 서버: 공식 배포자에게 별도로 확인한 공개키를 사용한다.
-sudo python3 guard/scripts/deploy.py install --bundle /배포폴더 --trusted-key /신뢰한/release-public.pem
+sudo python3 scripts/deploy.py install --bundle /배포폴더 --trusted-key /신뢰한/release-public.pem
 sudo quiet-guard status
-sudo python3 guard/scripts/deploy.py uninstall
+sudo python3 scripts/deploy.py uninstall
 ```
 
 최초 설치는 시스템 OpenSSL로 Ed25519 서명과 파일 해시를 확인한 **뒤에** 내려받은 프로그램을 실행한다. 검증하려는 프로그램 자신에게 최초 신뢰 검증을 맡기지 않는다. 묶음에 같이 들어 있는 임의 공개키를 믿어서는 안 된다. 현재 배포자 공개키는 `keys/release-public.pem`이며, 개인키는 저장소 밖의 로컬 전용 보관소에만 둔다. CI는 일회용 시험 키를 사용하고 제품 개인키를 받지 않는다.

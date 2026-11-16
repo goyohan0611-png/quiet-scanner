@@ -119,6 +119,8 @@ def verify_release(directory, public_key):
         return manifest, payload
 
 def owned_install():
+    if os.path.lexists(CONFIG / 'ssh'):
+        raise ValueError('Remove SSH integration with quiet-guard ssh remove before updating/removing the foundation; preserving the active protection installation')
     if not RECORD.exists():
         for path in [PROGRAM, UNIT, LINK, KEY]:
             if os.path.lexists(path):

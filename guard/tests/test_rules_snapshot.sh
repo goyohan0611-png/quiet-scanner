@@ -16,7 +16,7 @@ install -m 644 "$temporary/repository.gpg" /etc/apt/keyrings/quiet-guard-researc
 printf 'deb [signed-by=/etc/apt/keyrings/quiet-guard-research.gpg] https://packagecloud.io/crowdsec/crowdsec/any any main\n' > /etc/apt/sources.list.d/quiet-guard-research.list
 printf 'crowdsec crowdsec/lapi boolean true\ncrowdsec crowdsec/capi boolean false\n' | debconf-set-selections
 apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends crowdsec
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends crowdsec=1.8.2
 systemctl stop crowdsec.service
 
 python3 - "$temporary" <<'PY'

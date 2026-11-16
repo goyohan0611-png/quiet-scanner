@@ -1,0 +1,11 @@
+{
+  "upstream": "crowdsecurity/hub",
+  "commit": "6068c4464f630cc650909e0a2b7f3fe2d950bfb2",
+  "files": {
+    "syslog-logs.yaml": "6b4d9420455e79da328a9bec07ee8ee663f49b91a996e8991411db41a7294ed0",
+    "sshd-logs.yaml": "045ff4c7895888becf161a8666ec173c45b58e52f2a72583a03f22b40203390d",
+    "dateparse-enrich.yaml": "3f51a6c389bbf1c38f49d8824b6bffd9a265d0fa78a98af71628256019847951",
+    "ssh-bf.yaml": "242f36684d66bbae3044e576b7cfffef62d5323465f3f74f87923167c6d93356",
+    "LICENSE": "388fce2152078f636fcade06400ca4e895c1eaad1f44e2c8e5eb2cf390a03467"
+  }
+}

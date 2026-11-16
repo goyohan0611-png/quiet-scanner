@@ -13,6 +13,8 @@ pub struct State {
     pub protection: String,
     pub risk: String,
     pub message: String,
+    #[serde(default)]
+    pub ssh: Option<serde_json::Value>,
 }
 
 pub fn boot_seconds() -> u64 {
@@ -29,9 +31,44 @@ pub fn boot_seconds() -> u64 {
     0
 }
 pub fn state() -> State {
-    State { schema: 1, version: env!("CARGO_PKG_VERSION").into(), pid: std::process::id(),
-        boot_seconds: boot_seconds(), agent: "running".into(), protection: "not_configured".into(),
-        risk: "not_assessed".into(), message: "Foundation service only. Login protection, WAF and exposure checks are not connected yet.".into() }
+    let state = State {
+        schema: 1,
+        version: env!("CARGO_PKG_VERSION").into(),
+        pid: std::process::id(),
+        boot_seconds: boot_seconds(),
+        agent: "running".into(),
+        protection: "not_configured".into(),
+        risk: "not_assessed".into(),
+        message: "No protection is configured. WAF and exposure checks are not connected yet."
+            .into(),
+        ssh: None,
+    };
+    #[cfg(target_os = "linux")]
+    let state = {
+        let mut state = state;
+        apply_ssh(&mut state, crate::ssh::observation());
+        state
+    };
+    state
+}
+#[cfg(any(target_os = "linux", test))]
+fn apply_ssh(state: &mut State, observation: serde_json::Value) {
+    match observation["state"].as_str() {
+        Some("verified") => {
+            state.protection = "partially_protected".into();
+            state.message = "SSH engine and SSH-only firewall recently verified. WAF/exposure checks are not connected; overall risk is not assessed.".into();
+        }
+        Some("unknown") => {
+            state.protection = "unknown".into();
+            state.message = "SSH protection cannot currently be verified. Existing bans may expire; do not assume protection is active.".into();
+        }
+        Some("off") => {
+            state.message =
+                "SSH protection is explicitly off. WAF/exposure checks are not connected.".into();
+        }
+        _ => {}
+    }
+    state.ssh = Some(observation);
 }
 pub fn run(directory: &Path, once: bool) -> Result<(), String> {
     if !cfg!(target_os = "linux") {
@@ -102,5 +139,14 @@ mod tests {
         let state = super::state();
         assert_eq!(state.protection, "not_configured");
         assert_eq!(state.risk, "not_assessed");
+    }
+    #[test]
+    fn ssh_only_can_never_claim_complete_protection_or_risk_assessment() {
+        let mut state = super::state();
+        super::apply_ssh(&mut state, serde_json::json!({"state":"verified"}));
+        assert_eq!(state.protection, "partially_protected");
+        assert_eq!(state.risk, "not_assessed");
+        super::apply_ssh(&mut state, serde_json::json!({"state":"unknown"}));
+        assert_eq!(state.protection, "unknown");
     }
 }

@@ -1,11 +1,11 @@
 use quiet_guard::{
     bundle::{self, Kind},
     policy::IngressPolicy,
-    runtime,
+    runtime, ssh,
 };
 use std::{env, fs, io::Write, path::Path};
 
-const USAGE: &str = "Quiet Guard 0.1 foundation\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nNo protection engine or web dashboard is enabled in this phase.";
+const USAGE: &str = "Quiet Guard 0.1 development\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  ssh enable --direct --management-ip IP [--port 22]\n  ssh enable|status|disable|remove\n  ssh allow|remove-allow|unblock IP\n  ssh-policy <policy.json>\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nSSH is opt-in on Ubuntu 24.04. WAF/exposure checks and the dashboard are not connected yet.";
 fn run(args: &[String]) -> Result<(), String> {
     match args
         .iter()
@@ -15,6 +15,21 @@ fn run(args: &[String]) -> Result<(), String> {
     {
         [] | ["--help"] | ["help"] => println!("{USAGE}"),
         ["--version"] => println!("quiet-guard {}", env!("CARGO_PKG_VERSION")),
+        ["ssh", rest @ ..] => {
+            ssh::control(&rest.iter().map(|s| s.to_string()).collect::<Vec<_>>())?
+        }
+        ["ssh-policy", input] => {
+            let config: ssh::Config =
+                serde_json::from_slice(&fs::read(input).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            config.validate()?;
+            println!(
+                "{}",
+                serde_json::json!({"revision":config.revision(),"applied":false})
+            );
+        }
+        ["ssh-enforcer"] => ssh::enforce(false)?,
+        ["ssh-enforcer-cleanup"] => ssh::enforce(true)?,
         ["agent"] => runtime::run(Path::new("/run/quiet-guard"), false)?,
         ["agent", directory] => runtime::run(Path::new(directory), false)?,
         ["agent", directory, "--once"] => runtime::run(Path::new(directory), true)?,
