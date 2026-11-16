@@ -94,9 +94,19 @@ impl Inventory {
             .iter()
             .map(|l| (&l.transport, l.address, l.port, l.inode))
             .collect();
+        let transport_coverage: Vec<_> = self
+            .coverage
+            .iter()
+            .filter(|s| s.ends_with("_table_unavailable"))
+            .collect();
         hex::encode(Sha256::digest(
-            serde_json::to_vec(&(&self.addresses, sockets, &self.coverage, &self.namespace))
-                .expect("inventory serialization"),
+            serde_json::to_vec(&(
+                &self.addresses,
+                sockets,
+                transport_coverage,
+                &self.namespace,
+            ))
+            .expect("inventory serialization"),
         ))
     }
 }
@@ -383,7 +393,11 @@ pub fn report(
 ) -> Report {
     let revision = inventory.revision();
     let external = external.filter(|e| {
-        validate_result(&e.request, &e.result, &revision, &boot_id, &generation, now).is_ok()
+        !inventory
+            .coverage
+            .iter()
+            .any(|c| c == "sockets_changed_during_collection")
+            && validate_result(&e.request, &e.result, &revision, &boot_id, &generation, now).is_ok()
     });
     let mut findings = Vec::new();
     for listener in &inventory.listeners {

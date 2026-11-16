@@ -330,6 +330,29 @@ fn public(cfg: &Config) -> Result<(), String> {
     )
 }
 fn collect() -> Result<Report, String> {
+    let lock = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open("/run/lock/quiet-guard-exposure.lock")
+        .map_err(|e| e.to_string())?;
+    let m = lock.metadata().map_err(|e| e.to_string())?;
+    if !m.is_file()
+        || m.uid() != 0
+        || m.mode() & 0o077 != 0
+        || unsafe {
+            libc::flock(
+                std::os::fd::AsRawFd::as_raw_fd(&lock),
+                libc::LOCK_EX | libc::LOCK_NB,
+            )
+        } != 0
+    {
+        return Err(
+            "Another exposure collection is running or its lock is untrusted; retry shortly".into(),
+        );
+    }
     let cfg = config()?;
     if !cfg.enabled {
         return Err("Exposure inspection is off".into());
@@ -388,10 +411,7 @@ fn enable() -> Result<(), String> {
             }
         }
         directory(root, 0o700)?;
-        directory(
-            &state.parent().ok_or("State parent missing")?.to_path_buf(),
-            0o755,
-        )?;
+        directory(state.parent().ok_or("State parent missing")?, 0o755)?;
         directory(state, 0o755)?;
         let cfg = Config {
             schema: 1,
@@ -551,6 +571,7 @@ pub fn control(args: &[String]) -> Result<(), String> {
         ["check"]=>println!("{}",serde_json::to_string_pretty(&collect()?).map_err(|e|e.to_string())?),
         ["prepare","--target",target,rest @ ..]=>{
             let report=collect()?;
+            if report.inventory.coverage.iter().any(|c|c=="sockets_changed_during_collection"){return Err("Sockets changed during inspection; retry before preparing a probe".into());}
             let selected=match rest {[]=>{let mut p: BTreeSet<u16>=COMMON_PORTS.iter().copied().collect();p.extend(report.inventory.listeners.iter().filter(|l|l.transport=="tcp").map(|l|l.port));p.into_iter().collect()},["--ports",value]=>ports(value)?,_=>return Err("Use prepare --target IP [--ports 3000,5432,...]".into())};
             let request=Request{schema:1,nonce:random()?,revision:report.revision,generation:report.generation,boot_id:report.boot_id,issued_boot_seconds:crate::runtime::boot_seconds(),target:target.parse().map_err(|_|"Use one literal target IP, not a hostname or subnet")?,ports:selected,server_addresses:report.inventory.addresses};
             request.validate()?;save(&Path::new(STATE).join("request.json"),&request,0o600)?;
@@ -560,7 +581,9 @@ pub fn control(args: &[String]) -> Result<(), String> {
             let result:ProbeResult=serde_json::from_slice(&read(Path::new(path),262144,false)?).map_err(|_|"Invalid probe result")?;
             let request:Request=serde_json::from_slice(&read(&Path::new(STATE).join("request.json"),262144,true)?).map_err(|_|"Missing active exposure request")?;
             let cfg=config()?;if !cfg.enabled{return Err("Exposure inspection is off".into());}
-            let inventory=inventory()?;validate_result(&request,&result,&inventory.revision(),&boot_id()?,&cfg.generation,crate::runtime::boot_seconds())?;
+            let inventory=inventory()?;
+            if inventory.coverage.iter().any(|c|c=="sockets_changed_during_collection"){return Err("Sockets changed during inspection; retry before importing evidence".into());}
+            validate_result(&request,&result,&inventory.revision(),&boot_id()?,&cfg.generation,crate::runtime::boot_seconds())?;
             let external=External{request,result};save(&Path::new(STATE).join("external.json"),&external,0o600)?;
             fs::remove_file(Path::new(STATE).join("request.json")).map_err(|e|e.to_string())?;
             collect()?;println!("Operator TCP evidence imported. Failed connects do not prove safety; exposure status lists remaining limits.");
