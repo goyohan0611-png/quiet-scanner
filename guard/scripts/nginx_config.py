@@ -168,7 +168,7 @@ def nginx_plan(inventory, base_urls):
         if any(not re.fullmatch(r'[a-zA-Z0-9_.:-]+', name) for name in names): raise ValueError('Regex/wildcard server names are not in the first supported deployment')
         listens = []
         for n in (n for n in server.children if n.name == 'listen'):
-            if any(x in n.args for x in ['proxy_protocol', 'quic']): raise ValueError('Proxy protocol and HTTP/3 require another deployment profile')
+            if any(x in n.args for x in ['proxy_protocol', 'quic', 'http2']): raise ValueError('Proxy protocol and HTTP/2/3 require another tested deployment profile')
             value = n.args[0]
             if value.startswith('unix:'): raise ValueError('Existing Unix application listeners need a separate integration')
             port = int(value.rsplit(':', 1)[-1]) if ':' in value else int(value)

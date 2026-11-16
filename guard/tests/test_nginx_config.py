@@ -21,7 +21,7 @@ class CoverageTests(unittest.TestCase):
         module.nginx_parse(patched)
 
     def test_refuses_coverage_bypass_proxy_and_local_error_handlers(self):
-        for extra in ['real_ip_header X-Forwarded-For;','error_page 403 =200 /error;','access_by_lua_block { }','return 200 "ok";','rewrite / /index last;']:
+        for extra in ['real_ip_header X-Forwarded-For;','error_page 403 =200 /error;','access_by_lua_block { }','return 200 "ok";','rewrite / /index last;','listen 8080 http2;']:
             with self.subTest(extra=extra),self.assertRaises(ValueError):self.plan(extra)
         for loc in ['location ~ \\.php$ { fastcgi_pass 127.0.0.1:9000; }','location @app { proxy_pass http://127.0.0.1; }','location / { location /inner { } }']:
             with self.subTest(loc=loc),self.assertRaises(ValueError):self.plan(location=loc)
