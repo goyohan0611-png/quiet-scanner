@@ -17,3 +17,6 @@ for command in [['journalctl','-u','quiet-guard-waf-engine','-u','quiet-guard-wa
     for secret in secrets:
         if secret:output=output.replace(secret,'[redacted]')
     print(output)
+state=pathlib.Path('/var/lib/quiet-guard/waf')
+if state.exists():
+    print('Remaining state paths:',[(str(p.relative_to(state)),oct(p.lstat().st_mode & 0o777)) for p in state.rglob('*')][:200])
