@@ -109,11 +109,17 @@ def nginx_read(path, limit=4 * 1024 * 1024):
 
 def nginx_inventory():
     files = {};raws = {};metas = {}
+    expansions = 0
     def expand(path, stack=()):
+        nonlocal expansions
+        expansions += 1
+        if expansions > 256: raise ValueError('Too many Nginx include expansions')
         path, raw, meta = nginx_read(path)
         if path in stack or len(stack) > 24: raise ValueError('Recursive Nginx include')
         if len(files) > 256: raise ValueError('Too many Nginx configuration files')
         files[str(path)] = hashlib.sha256(raw).hexdigest();raws[str(path)] = raw.decode('utf-8');metas[str(path)] = meta
+        if sum(len(text.encode()) for text in raws.values()) > 1024*1024:
+            raise ValueError('Combined Nginx configuration exceeds the first deployment profile limit')
         def walk(nodes):
             result = []
             for node in nodes:

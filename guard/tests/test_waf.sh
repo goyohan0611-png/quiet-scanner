@@ -70,7 +70,19 @@ nginx -t
 systemctl restart nginx.service
 request() { ip netns exec qg-waf-client curl --noproxy '*' --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' "$@"; }
 test "$(request http://guard.test:18080/)" = 200
-quiet-guard waf enable --direct --probe-peer 10.204.0.2 --site http://guard.test:18080 --site http://api.guard.test:18080 --allow-insecure-probe
+# A real reload command failure must restore configuration and stop our engine,
+# even when the attempted rollback reload fails for the same external reason.
+install -d -m 755 /etc/systemd/system/nginx.service.d
+printf '[Service]\nExecReload=\nExecReload=/usr/bin/false\n' > /etc/systemd/system/nginx.service.d/quiet-guard-test.conf
+systemctl daemon-reload
+if quiet-guard waf enable --direct --probe-peer 10.204.0.2 --site http://guard.test:18080 --site http://api.guard.test:18080 --allow-insecure-probe; then exit 1; fi
+cmp /etc/nginx/conf.d/quiet-guard-fixture.conf "$temporary/original.conf"
+test ! -e /etc/nginx/conf.d/00-quiet-guard-waf.conf
+! systemctl is-active --quiet quiet-guard-waf-engine
+rm /etc/systemd/system/nginx.service.d/quiet-guard-test.conf
+systemctl daemon-reload
+quiet-guard waf enable
+echo 'PASS: failed reload restores original bytes, stops the isolated engine, and supports retry'
 systemctl is-active --quiet quiet-guard-waf-engine quiet-guard-waf-monitor
 wait_phase() {
   local deadline=$((SECONDS+40))
@@ -114,9 +126,11 @@ PY
 cscli -c /etc/quiet-guard/waf/config.yaml alerts list -o json | python3 -c 'import json,sys;assert not json.load(sys.stdin)'
 echo 'PASS: normal login/API/multipart pass; URI, query and JSON-body attacks blocked; metadata-only events and no diagnostic alerts'
 # Oversized bodies stay available by default but are never counted as fully inspected.
-python3 -c 'print("x"*1100000,end="")' > "$temporary/large-body"
-test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: text/plain')" = 200
-test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Transfer-Encoding: chunked' -H 'Content-Type: text/plain')" = 200
+# Use a supported content type: a CRS content-type-policy rejection is distinct
+# from the body-size passthrough behavior this test is checking.
+python3 -c 'import json;print(json.dumps({"message":"x"*1100000}),end="")' > "$temporary/large-body"
+test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: application/json')" = 200
+test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Transfer-Encoding: chunked' -H 'Content-Type: application/json')" = 200
 wait_phase degraded
 systemctl stop quiet-guard-waf-engine
 test "$(request http://guard.test:18080/)" = 200
@@ -147,7 +161,7 @@ quiet-guard waf enable --direct --probe-peer 10.204.0.2 --site http://guard.test
 wait_phase awaiting_external_check
 ip netns exec qg-waf-client python3 "$root/scripts/waf_probe.py" /etc/quiet-guard/waf/probe-client.json --once
 wait_phase verified
-test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: text/plain')" = 413
+test "$(request http://guard.test:18080/api/upload --data-binary @"$temporary/large-body" -H 'Content-Type: application/json')" = 413
 systemctl stop quiet-guard-waf-engine
 test "$(request http://guard.test:18080/)" = 503
 wait_phase unknown

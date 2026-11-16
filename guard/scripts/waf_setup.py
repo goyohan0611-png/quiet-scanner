@@ -97,8 +97,8 @@ def private_status(body=None):
         connection.request('POST' if body else 'GET','/',body=json.dumps(body).encode() if body else None,
                            headers={'Host':'localhost','Content-Type':'application/json'})
         response = connection.getresponse()
-        data = response.read(262145)
-        if response.status != 200 or len(data)>262144: raise ValueError('Invalid private Nginx response')
+        data = response.read(524289)
+        if response.status != 200 or len(data)>524288: raise ValueError('Invalid private Nginx response')
         return json.loads(data)
     finally: connection.close()
 

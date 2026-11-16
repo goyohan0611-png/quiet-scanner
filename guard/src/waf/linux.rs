@@ -60,7 +60,7 @@ fn helper(args: &[String]) -> Result<Vec<u8>, String> {
     let stdout = child.stdout.take().ok_or("Missing controller output")?;
     let reader = thread::spawn(move || {
         let mut data = Vec::new();
-        stdout.take(524289).read_to_end(&mut data).map(|_| data)
+        stdout.take(1048577).read_to_end(&mut data).map(|_| data)
     });
     let start = Instant::now();
     let limit = if args.first().map(String::as_str) == Some("check") {
@@ -88,7 +88,7 @@ fn helper(args: &[String]) -> Result<Vec<u8>, String> {
         .join()
         .map_err(|_| "Controller output failed")?
         .map_err(|_| "Controller output failed")?;
-    if !status.success() || data.len() > 524288 {
+    if !status.success() || data.len() > 1048576 {
         return Err("WAF check/control could not be completed".into());
     }
     Ok(data)
@@ -167,6 +167,7 @@ pub fn monitor() -> Result<(), String> {
     let mut previous = String::new();
     let mut last_epoch = String::new();
     let mut last_seq = 0;
+    let mut lost_total = 0u64;
     loop {
         let now = crate::runtime::boot_seconds();
         let public: serde_json::Value = serde_json::from_slice(&read(PUBLIC, 65536)?)
@@ -202,12 +203,16 @@ pub fn monitor() -> Result<(), String> {
                 .first()
                 .map(|e| e.seq.saturating_sub(last_seq + 1))
                 .unwrap_or(0);
+            if lost > 0 {
+                println!("WAF metadata ring lost {lost} events before collection");
+            }
+            lost_total = lost_total.saturating_add(lost);
             event_log(&events)?;
             last_seq = check.snapshot.event_seq;
             Ok(
                 serde_json::json!({"schema":1,"generation":check.config.generation,"boot_id":boot_id()?,"boot_seconds":now,"phase":phase,
                 "allowed":check.snapshot.allowed,"blocked":check.snapshot.blocked,"incomplete":check.snapshot.incomplete,"failures":check.snapshot.failures,
-                "event_gap":lost,"message":"Per-request inspection only; exposure risk is not assessed. External path proofs expire after 180 seconds."}),
+                "event_gap":lost_total,"message":"Per-request inspection only; exposure risk is not assessed. External path proofs expire after 180 seconds."}),
             )
         })();
         let health=result.unwrap_or_else(|_|serde_json::json!({"schema":1,"generation":public["generation"],"boot_id":boot_id().unwrap_or_default(),"boot_seconds":now,"phase":"unknown","message":"Web inspection or its configuration cannot be verified. Passthrough may be active; inspect service logs."}));
