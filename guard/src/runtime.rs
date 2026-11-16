@@ -1,4 +1,4 @@
-//! Phase-one service heartbeat. It never claims that a protection engine exists.
+//! Low-privilege service heartbeat and bounded observations of protection services.
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::Path, thread, time::Duration};
 
@@ -63,6 +63,7 @@ fn apply_ssh(state: &mut State, observation: serde_json::Value) {
             state.message = "SSH protection cannot currently be verified. Existing bans may expire; do not assume protection is active.".into();
         }
         Some("off") => {
+            state.protection = "off".into();
             state.message =
                 "SSH protection is explicitly off. WAF/exposure checks are not connected.".into();
         }
@@ -148,5 +149,7 @@ mod tests {
         assert_eq!(state.risk, "not_assessed");
         super::apply_ssh(&mut state, serde_json::json!({"state":"unknown"}));
         assert_eq!(state.protection, "unknown");
+        super::apply_ssh(&mut state, serde_json::json!({"state":"off"}));
+        assert_eq!(state.protection, "off");
     }
 }

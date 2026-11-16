@@ -1,6 +1,6 @@
 # Managed by Quiet Guard foundation v1
 [Unit]
-Description=Quiet Guard foundation agent (protection not connected yet)
+Description=Quiet Guard status agent
 After=local-fs.target
 
 [Service]

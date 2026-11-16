@@ -204,6 +204,14 @@ def archive_database():
             if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
                 raise ValueError('Untrusted database file; preserving it: ' + str(path))
             path.rename(archive / name)
+    trace = STATE / 'data/trace'
+    if trace.exists():
+        meta = trace.lstat()
+        if not stat.S_ISDIR(meta.st_mode) or meta.st_uid != 0 or meta.st_mode & 0o022:
+            raise ValueError('Untrusted engine trace directory; preserving it')
+        trace.rename(archive / 'trace')
+    try: (STATE / 'data').rmdir()
+    except OSError: pass
     try: STATE.rmdir()
     except OSError: pass  # Keep any files added by the operator at their original path.
     return str(archive)
@@ -274,6 +282,8 @@ def create_fresh(args):
         test.bind(('127.0.0.1', 17423))
     directory(ROOT, 0o700)
     directory(STATE, 0o755)
+    directory(STATE / 'data', 0o700)
+    directory(STATE / 'data/trace', 0o700)
     directory(ROOT / 'rules', 0o700)
     for name in ['parsers', 'parsers/s00-raw', 'parsers/s01-parse', 'parsers/s02-enrich',
                  'scenarios', 'patterns', 'postoverflows', 'contexts', 'hub', 'data']:
@@ -296,7 +306,7 @@ def create_fresh(args):
                                 'share_custom': False, 'share_context': False})
     save(ROOT / 'config.yaml', {
         'common': {'daemonize': False, 'log_media': 'stdout', 'log_level': 'info'},
-        'config_paths': {'config_dir': str(ROOT / 'rules'), 'data_dir': str(ROOT / 'rules/data'),
+        'config_paths': {'config_dir': str(ROOT / 'rules'), 'data_dir': str(STATE / 'data'),
             'simulation_path': str(ROOT / 'simulation.yaml'), 'hub_dir': str(ROOT / 'rules/hub'),
             'index_path': str(ROOT / 'rules/hub/.index.json'), 'notification_dir': str(ROOT / 'rules/notifications'),
             'plugin_dir': str(ROOT / 'rules/plugins')},

@@ -3,7 +3,7 @@ name = "quiet-guard"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
-description = "Standalone Quiet Guard server foundation (no protection enabled yet)"
+description = "Standalone Linux server guard with opt-in SSH defense (development)"
 publish = false
 
 [dependencies]
