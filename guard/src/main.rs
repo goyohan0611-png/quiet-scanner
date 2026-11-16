@@ -6,7 +6,7 @@ use quiet_guard::{
 };
 use std::{env, fs, io::Write, path::Path};
 
-const USAGE: &str = "Quiet Guard 0.1 development\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  ssh enable --direct --management-ip IP [--port 22]\n  ssh enable|status|disable|remove\n  ssh allow|remove-allow|unblock IP\n  ssh-policy <policy.json>\n  waf enable --direct --probe-peer IP --site https://example.com\n  waf enable|status|disable|remove\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nSSH and Nginx WAF are opt-in on Ubuntu 24.04. External WAF proofs are required. Exposure checks and the dashboard are not connected yet.";
+const USAGE: &str = "Quiet Guard 0.1 development\nCommands:\n  agent [runtime-directory] [--once]\n  status [runtime-directory]\n  ssh enable --direct --management-ip IP [--port 22]\n  ssh enable|status|disable|remove\n  ssh allow|remove-allow|unblock IP\n  ssh-policy <policy.json>\n  waf enable --direct --probe-peer IP --site https://example.com\n  waf enable|status|disable|remove\n  exposure enable|check|status|disable|remove\n  exposure prepare --target IP [--ports LIST]\n  exposure probe REQUEST.json\n  exposure import RESULT.json\n  policy <policy.json>\n  bundle manifest <directory> <release|rules> <sequence> <version>\n  bundle verify <directory> <trusted-public.pem>\n  rules stage <directory> <trusted-public.pem> <store>\nSSH and Nginx WAF are opt-in on Ubuntu 24.04. External WAF proofs are required. Read-only exposure checks are opt-in. The dashboard is not connected yet.";
 fn run(args: &[String]) -> Result<(), String> {
     match args
         .iter()

@@ -25,6 +25,20 @@ struct Config {
     enabled: bool,
     files: BTreeMap<String, String>,
 }
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Health {
+    schema: u32,
+    generation: String,
+    boot_id: String,
+    boot_seconds: u64,
+    state: String,
+    risk: String,
+    listener_count: usize,
+    review_count: usize,
+    external_issued: Option<u64>,
+    limitations: Vec<String>,
+}
 
 fn read(path: &Path, limit: u64, root: bool) -> Result<Vec<u8>, String> {
     let file = fs::OpenOptions::new()
@@ -367,7 +381,30 @@ fn collect() -> Result<Report, String> {
         crate::runtime::boot_seconds(),
         external,
     );
-    save(&Path::new(STATE).join("report.json"), &report, 0o644)?;
+    save(&Path::new(STATE).join("report.json"), &report, 0o600)?;
+    save(
+        &Path::new(STATE).join("health.json"),
+        &Health {
+            schema: 1,
+            generation: report.generation.clone(),
+            boot_id: report.boot_id.clone(),
+            boot_seconds: report.boot_seconds,
+            state: report.state.clone(),
+            risk: report.risk.clone(),
+            listener_count: report.inventory.listeners.len(),
+            review_count: report
+                .findings
+                .iter()
+                .filter(|f| f.severity == "review")
+                .count(),
+            external_issued: report
+                .external
+                .as_ref()
+                .map(|e| e.request.issued_boot_seconds),
+            limitations: report.limitations.clone(),
+        },
+        0o644,
+    )?;
     Ok(report)
 }
 fn require_foundation() -> Result<(), String> {
@@ -486,6 +523,7 @@ fn stop(remove: bool) -> Result<(), String> {
         directory(&archive, 0o700)?;
         for name in [
             "public.json",
+            "health.json",
             "report.json",
             "request.json",
             "external.json",
@@ -600,12 +638,9 @@ pub fn observation() -> serde_json::Value {
         if public["enabled"] != true {
             return Ok(serde_json::json!({"state":"off","risk":"not_assessed"}));
         }
-        let report: Report = serde_json::from_slice(&read(
-            &Path::new(STATE).join("report.json"),
-            2 * 1024 * 1024,
-            true,
-        )?)
-        .map_err(|_| "Invalid exposure report")?;
+        let report: Health =
+            serde_json::from_slice(&read(&Path::new(STATE).join("health.json"), 65536, true)?)
+                .map_err(|_| "Invalid exposure report")?;
         let now = crate::runtime::boot_seconds();
         if report.schema != 1
             || public["generation"] != report.generation
@@ -615,19 +650,11 @@ pub fn observation() -> serde_json::Value {
         {
             return Err("Exposure observation expired or generation changed".to_string());
         }
-        let external_current = report.external.as_ref().is_some_and(|e| {
-            validate_result(
-                &e.request,
-                &e.result,
-                &report.revision,
-                &report.boot_id,
-                &report.generation,
-                now,
-            )
-            .is_ok()
-        });
+        let external_current = report
+            .external_issued
+            .is_some_and(|issued| issued <= now && now - issued <= PROBE_TTL);
         Ok(
-            serde_json::json!({"state":if report.state=="local_and_operator_probe"&&!external_current{"local_only"}else{&report.state},"risk":report.risk,"checked_boot_seconds":report.boot_seconds,"listener_count":report.inventory.listeners.len(),"review_count":report.findings.iter().filter(|f|f.evidence=="non_loopback_bind_only").count(),"external_probe_current":external_current,"external_evidence_trust":"operator_supplied","limitations":report.limitations}),
+            serde_json::json!({"state":if report.state=="local_and_operator_probe"&&!external_current{"local_only"}else{&report.state},"risk":report.risk,"checked_boot_seconds":report.boot_seconds,"listener_count":report.listener_count,"review_count":report.review_count,"external_probe_current":external_current,"external_evidence_trust":"operator_supplied","limitations":report.limitations}),
         )
     })();
     result.unwrap_or_else(|error|serde_json::json!({"state":if Path::new(STATE).join("public.json").exists(){"unknown"}else{"not_configured"},"risk":"not_assessed","message":error}))

@@ -10,7 +10,7 @@ temporary=$(mktemp -d)
 cleanup() {
   if [[ -s "$temporary/fixture.pid" ]]; then kill "$(cat "$temporary/fixture.pid")" 2>/dev/null || true; fi
   ip netns delete qg-exposure-client 2>/dev/null || true
-  ip link delete qg-exposure-host 2>/dev/null || true
+  ip link delete qg-exp-host 2>/dev/null || true
   nft delete table inet quiet_guard_exposure_test 2>/dev/null || true
   rm -rf -- "$temporary"
 }
@@ -22,15 +22,15 @@ openssl pkey -in "$temporary/private.pem" -pubout -out "$temporary/public.pem"
 bash "$root/scripts/package.sh" "$binary" "$temporary/release" 1 0.1.0 "$temporary/private.pem"
 python3 "$root/scripts/deploy.py" install --bundle "$temporary/release" --trusted-key "$temporary/public.pem"
 ip netns add qg-exposure-client
-ip link add qg-exposure-host type veth peer name qg-exposure-peer
-ip link set qg-exposure-peer netns qg-exposure-client
-ip addr add 10.205.0.1/24 dev qg-exposure-host
-ip -6 addr add fd205::1/64 dev qg-exposure-host nodad
-ip link set qg-exposure-host up
-ip -n qg-exposure-client addr add 10.205.0.2/24 dev qg-exposure-peer
-ip -n qg-exposure-client -6 addr add fd205::2/64 dev qg-exposure-peer nodad
+ip link add qg-exp-host type veth peer name qg-exp-peer
+ip link set qg-exp-peer netns qg-exposure-client
+ip addr add 10.205.0.1/24 dev qg-exp-host
+ip -6 addr add fd205::1/64 dev qg-exp-host nodad
+ip link set qg-exp-host up
+ip -n qg-exposure-client addr add 10.205.0.2/24 dev qg-exp-peer
+ip -n qg-exposure-client -6 addr add fd205::2/64 dev qg-exp-peer nodad
 ip -n qg-exposure-client link set lo up
-ip -n qg-exposure-client link set qg-exposure-peer up
+ip -n qg-exposure-client link set qg-exp-peer up
 python3 - "$temporary/fixture.ready" <<'PY' &
 import socket,select,sys,pathlib
 sockets=[]
@@ -62,6 +62,7 @@ quiet-guard exposure enable
 systemctl is-enabled --quiet quiet-guard-exposure.timer
 quiet-guard exposure check > "$temporary/local.json"
 runuser -u nobody -- quiet-guard exposure status > "$temporary/public-status.json"
+if runuser -u nobody -- cat /var/lib/quiet-guard/exposure/report.json >/dev/null 2>&1; then echo 'Private process/port inventory exposed'; exit 1; fi
 python3 - "$temporary/local.json" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]));s=r['inventory']['listeners']
@@ -118,7 +119,7 @@ PY
 systemctl stop quiet-guard-exposure.timer
 python3 - <<'PY'
 import json,pathlib,time
-p=pathlib.Path('/var/lib/quiet-guard/exposure/report.json');r=json.loads(p.read_text());r['boot_seconds']=max(0,int(time.clock_gettime(time.CLOCK_BOOTTIME))-91);p.write_text(json.dumps(r))
+p=pathlib.Path('/var/lib/quiet-guard/exposure/health.json');r=json.loads(p.read_text());r['boot_seconds']=max(0,int(time.clock_gettime(time.CLOCK_BOOTTIME))-91);p.write_text(json.dumps(r))
 PY
 quiet-guard exposure status | python3 -c 'import json,sys;assert json.load(sys.stdin)["state"]=="unknown"'
 quiet-guard exposure check > /dev/null

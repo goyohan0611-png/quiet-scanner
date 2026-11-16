@@ -376,6 +376,7 @@ pub struct Report {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Finding {
+    pub severity: String,
     pub transport: String,
     pub address: Option<IpAddr>,
     pub port: u16,
@@ -402,7 +403,7 @@ pub fn report(
     let mut findings = Vec::new();
     for listener in &inventory.listeners {
         if listener.needs_review() {
-            findings.push(Finding{transport:listener.transport.clone(),address:Some(listener.address),port:listener.port,
+            findings.push(Finding{severity:"review".into(),transport:listener.transport.clone(),address:Some(listener.address),port:listener.port,
             category:listener.role().into(),evidence:"non_loopback_bind_only".into(),hint:port_hint(listener.port).into(),
             recommendation:"Review whether this binding is intended. Prefer loopback/private bindings and explicit access control for app, database and admin services; a local bind does not prove external reachability.".into()});
         }
@@ -410,7 +411,16 @@ pub fn report(
     if let Some(external) = &external {
         for attempt in &external.result.attempts {
             if attempt.outcome == "connected" {
-                findings.push(Finding{transport:"tcp".into(),address:Some(external.result.target),port:attempt.port,
+                let target = external.result.target;
+                let known_frontend = inventory.addresses.contains(&target)
+                    && inventory.listeners.iter().any(|s| {
+                        s.transport == "tcp"
+                            && s.port == attempt.port
+                            && s.role() == "web_frontend_process"
+                            && s.address.is_ipv4() == target.is_ipv4()
+                            && (s.address.is_unspecified() || s.address == target)
+                    });
+                findings.push(Finding{severity:if known_frontend{"info"}else{"review"}.into(),transport:"tcp".into(),address:Some(external.result.target),port:attempt.port,
             category:"operator_reported_tcp_reachability".into(),evidence:"connected_from_one_operator_probe".into(),hint:port_hint(attempt.port).into(),
             recommendation:"Compare this reachable endpoint with intended public services. Connectivity alone does not identify the service, prove WAF coverage, or show who else can connect.".into()});
             }
@@ -424,7 +434,7 @@ pub fn report(
         "local_only"
     }
     .into();
-    Report{schema:1,generation,boot_id,boot_seconds:now,revision,state,risk:if findings.is_empty(){"not_assessed"}else{"attention"}.into(),inventory,external,findings,
+    Report{schema:1,generation,boot_id,boot_seconds:now,revision,state,risk:if findings.iter().any(|f|f.severity=="review"){"attention"}else{"not_assessed"}.into(),inventory,external,findings,
         limitations:vec!["Local listener inventory covers only the collector's network namespace; Docker/NAT forwarding, other namespaces and cloud firewall policy are not enumerated.".into(),
         "External results are operator-supplied point-in-time TCP evidence from one source, not authenticated server-side receipt evidence or proof of worldwide reachability.".into(),
         "Refusal, timeout, missing IPv6 checks or a successful web-port connection never prove safety. UDP/raw protocols, application authorization and service vulnerabilities are not tested.".into()]}
