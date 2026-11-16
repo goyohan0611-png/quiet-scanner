@@ -125,8 +125,28 @@ fn verify_installation() -> Result<(), String> {
     let files = record["files"]
         .as_object()
         .ok_or("missing ownership hashes")?;
-    if files.len() > 128 {
-        return Err("too many owned files".into());
+    let mut expected: std::collections::BTreeSet<String> = assets()
+        .as_object()
+        .ok_or("missing embedded assets")?
+        .keys()
+        .filter(|name| !name.ends_with(".service"))
+        .map(|name| format!("/etc/quiet-guard/ssh/rules/{name}"))
+        .collect();
+    for name in [
+        "config.yaml",
+        "policy.json",
+        "local_api_credentials.yaml",
+        "api.curl",
+        "acquis.yaml",
+        "profiles.yaml",
+        "simulation.yaml",
+    ] {
+        expected.insert(format!("/etc/quiet-guard/ssh/{name}"));
+    }
+    expected.insert("/etc/systemd/system/quiet-guard-ssh-engine.service".into());
+    expected.insert("/etc/systemd/system/quiet-guard-ssh-enforcer.service".into());
+    if expected != files.keys().cloned().collect() {
+        return Err("incomplete/extra SSH ownership records".into());
     }
     for (name, digest) in files {
         if !(name.starts_with("/etc/quiet-guard/ssh/")
@@ -154,6 +174,18 @@ fn verify_installation() -> Result<(), String> {
             None,
             65536,
         )?;
+    }
+    let version = command(
+        "/usr/bin/dpkg-query",
+        &["-W", "-f=${Version}", "crowdsec"],
+        None,
+        4096,
+    )?;
+    let version = std::str::from_utf8(&version)
+        .map_err(|_| "invalid engine package version")?
+        .trim();
+    if version != "1.8.2" && !version.starts_with("1.8.2-") {
+        return Err("detection engine version changed; revalidation required".into());
     }
     Ok(())
 }

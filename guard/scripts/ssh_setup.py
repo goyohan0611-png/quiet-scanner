@@ -255,7 +255,7 @@ def fresh(args):
         'prometheus': {'enabled': False}})
     cscli('machines', 'add', 'quiet-guard-ssh', '--auto', '--force')
     token = cscli('bouncers', 'add', 'quiet-guard-ssh', '-o', 'raw').stdout.decode().strip()
-    if not token or len(token) > 256 or not token.isascii() or not all(c.isalnum() or c in '-_+=' for c in token):
+    if not 16 <= len(token) <= 256 or not token.isascii() or not all(c.isalnum() or c in '-_+=/' for c in token):
         raise ValueError('Unexpected local API key format')
     atomic(ROOT / 'api.curl', ('header = "X-Api-Key: ' + token + '"\n').encode())
     validation = command('/usr/bin/crowdsec', '-t', '-c', str(ROOT / 'config.yaml'), check=False)
