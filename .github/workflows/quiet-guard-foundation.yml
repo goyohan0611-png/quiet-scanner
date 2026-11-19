@@ -1,0 +1,99 @@
+name: Quiet Guard foundation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/quiet-guard-foundation']
+    paths: ['guard/**', '.github/workflows/quiet-guard-foundation.yml']
+permissions:
+  contents: read
+jobs:
+  dashboard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build authenticated management service
+        run: |
+          cargo build --locked
+          node --check dashboard/app.js
+      - name: Auth boundaries, real privileged jobs, isolation and lifecycle
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-server iproute2
+          sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_dashboard.sh target/debug/quiet-guard
+  exposure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build and test read-only exposure inspection
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --all-targets -- -D warnings
+          cargo build --locked
+      - name: Real host inventory and independent IPv4/IPv6 connectivity evidence
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends iproute2 nftables
+          sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_exposure.sh target/debug/quiet-guard
+  foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Standalone Rust tests and checks
+        run: |
+          cargo fmt --manifest-path Cargo.toml --check
+          cargo test --manifest-path Cargo.toml --locked
+          cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
+          cargo build --manifest-path Cargo.toml --locked
+          python3 tests/test_nginx_config.py
+          python3 tests/test_signatures.py target/debug/quiet-guard
+      - name: Real signed install, update, rollback and removal
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_foundation.sh target/debug/quiet-guard
+      - name: Load a frozen rules snapshot with the actual CrowdSec engine
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_rules_snapshot.sh target/debug/quiet-guard
+      - name: Real SSH detection, scoped blocking, exceptions, failure handling and teardown
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_ssh.sh target/debug/quiet-guard
+  waf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: guard
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build the standalone WAF controller
+        run: |
+          cargo build --locked
+          python3 tests/test_nginx_config.py
+      - name: Prepare disposable Ubuntu dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-server iproute2
+          sudo bash scripts/install_ssh_dependencies.sh
+          sudo bash scripts/install_waf_dependencies.sh
+      - name: Actual request inspection, external proofs, fail-open and configuration recovery
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_waf.sh target/debug/quiet-guard

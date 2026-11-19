@@ -1,0 +1,29 @@
+# Managed by Quiet Guard SSH v1
+[Unit]
+Description=Quiet Guard isolated SSH detection engine
+After=network.target systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/crowdsec -c /etc/quiet-guard/ssh/config.yaml
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/quiet-guard/ssh
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+IPAddressDeny=any
+IPAddressAllow=localhost
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

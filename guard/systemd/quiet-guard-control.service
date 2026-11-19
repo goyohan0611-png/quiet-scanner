@@ -1,0 +1,22 @@
+# Managed by Quiet Guard dashboard v1
+[Unit]
+Description=Quiet Guard restricted administrative broker
+Requires=quiet-guard-control.socket
+After=quiet-guard-control.socket
+[Service]
+ExecStart=/usr/local/lib/quiet-guard/quiet-guard dashboard broker
+NoNewPrivileges=yes
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/quiet-guard/dashboard /run/lock/quiet-guard-deploy.lock
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+TimeoutStopSec=10

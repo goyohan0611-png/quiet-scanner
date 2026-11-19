@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-16T10:04:03.972623+00:00",
+  "title": "Design System: Quiet Guard",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Operating Blue",
+        "canonical": "#2563eb",
+        "tonalRamp": [
+          "oklch(15.00% 0.21521 262.88)",
+          "oklch(26.43% 0.21521 262.88)",
+          "oklch(37.86% 0.21521 262.88)",
+          "oklch(49.29% 0.21521 262.88)",
+          "oklch(60.71% 0.21521 262.88)",
+          "oklch(72.14% 0.21521 262.88)",
+          "oklch(83.57% 0.21521 262.88)",
+          "oklch(95.00% 0.21521 262.88)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Deep Action Blue",
+        "canonical": "#1d4ed8",
+        "tonalRamp": [
+          "oklch(15.00% 0.21717 264.38)",
+          "oklch(26.43% 0.21717 264.38)",
+          "oklch(37.86% 0.21717 264.38)",
+          "oklch(49.29% 0.21717 264.38)",
+          "oklch(60.71% 0.21717 264.38)",
+          "oklch(72.14% 0.21717 264.38)",
+          "oklch(83.57% 0.21717 264.38)",
+          "oklch(95.00% 0.21717 264.38)"
+        ]
+      },
+      "primary-selected": {
+        "role": "primary",
+        "displayName": "Pale Selected Blue",
+        "canonical": "#edf3ff",
+        "tonalRamp": [
+          "oklch(15.00% 0.01733 264.49)",
+          "oklch(26.43% 0.01733 264.49)",
+          "oklch(37.86% 0.01733 264.49)",
+          "oklch(49.29% 0.01733 264.49)",
+          "oklch(60.71% 0.01733 264.49)",
+          "oklch(72.14% 0.01733 264.49)",
+          "oklch(83.57% 0.01733 264.49)",
+          "oklch(95.00% 0.01733 264.49)"
+        ]
+      },
+      "primary-selected-text": {
+        "role": "primary",
+        "displayName": "Selected Blue Ink",
+        "canonical": "#2058c7",
+        "tonalRamp": [
+          "oklch(15.00% 0.18299 262.04)",
+          "oklch(26.43% 0.18299 262.04)",
+          "oklch(37.86% 0.18299 262.04)",
+          "oklch(49.29% 0.18299 262.04)",
+          "oklch(60.71% 0.18299 262.04)",
+          "oklch(72.14% 0.18299 262.04)",
+          "oklch(83.57% 0.18299 262.04)",
+          "oklch(95.00% 0.18299 262.04)"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Verified Green",
+        "canonical": "#087f5b",
+        "tonalRamp": [
+          "oklch(15.00% 0.10983 164.67)",
+          "oklch(26.43% 0.10983 164.67)",
+          "oklch(37.86% 0.10983 164.67)",
+          "oklch(49.29% 0.10983 164.67)",
+          "oklch(60.71% 0.10983 164.67)",
+          "oklch(72.14% 0.10983 164.67)",
+          "oklch(83.57% 0.10983 164.67)",
+          "oklch(95.00% 0.10983 164.67)"
+        ]
+      },
+      "success-text": {
+        "role": "secondary",
+        "displayName": "Verified Green Ink",
+        "canonical": "#08734f",
+        "tonalRamp": [
+          "oklch(15.00% 0.10476 162.57)",
+          "oklch(26.43% 0.10476 162.57)",
+          "oklch(37.86% 0.10476 162.57)",
+          "oklch(49.29% 0.10476 162.57)",
+          "oklch(60.71% 0.10476 162.57)",
+          "oklch(72.14% 0.10476 162.57)",
+          "oklch(83.57% 0.10476 162.57)",
+          "oklch(95.00% 0.10476 162.57)"
+        ]
+      },
+      "success-surface": {
+        "role": "secondary",
+        "displayName": "Pale Verified Green",
+        "canonical": "#eaf8f1",
+        "tonalRamp": [
+          "oklch(15.00% 0.01739 164.66)",
+          "oklch(26.43% 0.01739 164.66)",
+          "oklch(37.86% 0.01739 164.66)",
+          "oklch(49.29% 0.01739 164.66)",
+          "oklch(60.71% 0.01739 164.66)",
+          "oklch(72.14% 0.01739 164.66)",
+          "oklch(83.57% 0.01739 164.66)",
+          "oklch(95.00% 0.01739 164.66)"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Review Amber",
+        "canonical": "#986000",
+        "tonalRamp": [
+          "oklch(15.00% 0.11632 70.29)",
+          "oklch(26.43% 0.11632 70.29)",
+          "oklch(37.86% 0.11632 70.29)",
+          "oklch(49.29% 0.11632 70.29)",
+          "oklch(60.71% 0.11632 70.29)",
+          "oklch(72.14% 0.11632 70.29)",
+          "oklch(83.57% 0.11632 70.29)",
+          "oklch(95.00% 0.11632 70.29)"
+        ]
+      },
+      "warning-text": {
+        "role": "secondary",
+        "displayName": "Review Amber Ink",
+        "canonical": "#885600",
+        "tonalRamp": [
+          "oklch(15.00% 0.10716 70.85)",
+          "oklch(26.43% 0.10716 70.85)",
+          "oklch(37.86% 0.10716 70.85)",
+          "oklch(49.29% 0.10716 70.85)",
+          "oklch(60.71% 0.10716 70.85)",
+          "oklch(72.14% 0.10716 70.85)",
+          "oklch(83.57% 0.10716 70.85)",
+          "oklch(95.00% 0.10716 70.85)"
+        ]
+      },
+      "warning-surface": {
+        "role": "secondary",
+        "displayName": "Pale Review Amber",
+        "canonical": "#fff4da",
+        "tonalRamp": [
+          "oklch(15.00% 0.03600 87.79)",
+          "oklch(26.43% 0.03600 87.79)",
+          "oklch(37.86% 0.03600 87.79)",
+          "oklch(49.29% 0.03600 87.79)",
+          "oklch(60.71% 0.03600 87.79)",
+          "oklch(72.14% 0.03600 87.79)",
+          "oklch(83.57% 0.03600 87.79)",
+          "oklch(95.00% 0.03600 87.79)"
+        ]
+      },
+      "warning-marker": {
+        "role": "secondary",
+        "displayName": "Review Marker Amber",
+        "canonical": "#fff5df",
+        "tonalRamp": [
+          "oklch(15.00% 0.03078 86.46)",
+          "oklch(26.43% 0.03078 86.46)",
+          "oklch(37.86% 0.03078 86.46)",
+          "oklch(49.29% 0.03078 86.46)",
+          "oklch(60.71% 0.03078 86.46)",
+          "oklch(72.14% 0.03078 86.46)",
+          "oklch(83.57% 0.03078 86.46)",
+          "oklch(95.00% 0.03078 86.46)"
+        ]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Failure Red",
+        "canonical": "#c02d42",
+        "tonalRamp": [
+          "oklch(15.00% 0.18212 18.53)",
+          "oklch(26.43% 0.18212 18.53)",
+          "oklch(37.86% 0.18212 18.53)",
+          "oklch(49.29% 0.18212 18.53)",
+          "oklch(60.71% 0.18212 18.53)",
+          "oklch(72.14% 0.18212 18.53)",
+          "oklch(83.57% 0.18212 18.53)",
+          "oklch(95.00% 0.18212 18.53)"
+        ]
+      },
+      "danger-surface": {
+        "role": "secondary",
+        "displayName": "Pale Failure Red",
+        "canonical": "#fff0f2",
+        "tonalRamp": [
+          "oklch(15.00% 0.01640 8.16)",
+          "oklch(26.43% 0.01640 8.16)",
+          "oklch(37.86% 0.01640 8.16)",
+          "oklch(49.29% 0.01640 8.16)",
+          "oklch(60.71% 0.01640 8.16)",
+          "oklch(72.14% 0.01640 8.16)",
+          "oklch(83.57% 0.01640 8.16)",
+          "oklch(95.00% 0.01640 8.16)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Cool Canvas",
+        "canonical": "#f6f8fb",
+        "tonalRamp": [
+          "oklch(15.00% 0.00453 258.32)",
+          "oklch(26.43% 0.00453 258.32)",
+          "oklch(37.86% 0.00453 258.32)",
+          "oklch(49.29% 0.00453 258.32)",
+          "oklch(60.71% 0.00453 258.32)",
+          "oklch(72.14% 0.00453 258.32)",
+          "oklch(83.57% 0.00453 258.32)",
+          "oklch(95.00% 0.00453 258.32)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "White Working Surface",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(15.00% 0.00000 89.88)",
+          "oklch(26.43% 0.00000 89.88)",
+          "oklch(37.86% 0.00000 89.88)",
+          "oklch(49.29% 0.00000 89.88)",
+          "oklch(60.71% 0.00000 89.88)",
+          "oklch(72.14% 0.00000 89.88)",
+          "oklch(83.57% 0.00000 89.88)",
+          "oklch(95.00% 0.00000 89.88)"
+        ]
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Rail White",
+        "canonical": "#fbfcfe",
+        "tonalRamp": [
+          "oklch(15.00% 0.00286 264.54)",
+          "oklch(26.43% 0.00286 264.54)",
+          "oklch(37.86% 0.00286 264.54)",
+          "oklch(49.29% 0.00286 264.54)",
+          "oklch(60.71% 0.00286 264.54)",
+          "oklch(72.14% 0.00286 264.54)",
+          "oklch(83.57% 0.00286 264.54)",
+          "oklch(95.00% 0.00286 264.54)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ledger Ink",
+        "canonical": "#18253b",
+        "tonalRamp": [
+          "oklch(15.00% 0.04527 260.50)",
+          "oklch(26.43% 0.04527 260.50)",
+          "oklch(37.86% 0.04527 260.50)",
+          "oklch(49.29% 0.04527 260.50)",
+          "oklch(60.71% 0.04527 260.50)",
+          "oklch(72.14% 0.04527 260.50)",
+          "oklch(83.57% 0.04527 260.50)",
+          "oklch(95.00% 0.04527 260.50)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "canonical": "#52617a",
+        "tonalRamp": [
+          "oklch(15.00% 0.04438 260.55)",
+          "oklch(26.43% 0.04438 260.55)",
+          "oklch(37.86% 0.04438 260.55)",
+          "oklch(49.29% 0.04438 260.55)",
+          "oklch(60.71% 0.04438 260.55)",
+          "oklch(72.14% 0.04438 260.55)",
+          "oklch(83.57% 0.04438 260.55)",
+          "oklch(95.00% 0.04438 260.55)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Panel Border",
+        "canonical": "#e5eaf1",
+        "tonalRamp": [
+          "oklch(15.00% 0.01088 256.70)",
+          "oklch(26.43% 0.01088 256.70)",
+          "oklch(37.86% 0.01088 256.70)",
+          "oklch(49.29% 0.01088 256.70)",
+          "oklch(60.71% 0.01088 256.70)",
+          "oklch(72.14% 0.01088 256.70)",
+          "oklch(83.57% 0.01088 256.70)",
+          "oklch(95.00% 0.01088 256.70)"
+        ]
+      },
+      "row-divider": {
+        "role": "neutral",
+        "displayName": "Row Divider",
+        "canonical": "#edf0f5",
+        "tonalRamp": [
+          "oklch(15.00% 0.00744 260.73)",
+          "oklch(26.43% 0.00744 260.73)",
+          "oklch(37.86% 0.00744 260.73)",
+          "oklch(49.29% 0.00744 260.73)",
+          "oklch(60.71% 0.00744 260.73)",
+          "oklch(72.14% 0.00744 260.73)",
+          "oklch(83.57% 0.00744 260.73)",
+          "oklch(95.00% 0.00744 260.73)"
+        ]
+      },
+      "control-border": {
+        "role": "neutral",
+        "displayName": "Control Border",
+        "canonical": "#d8e1ee",
+        "tonalRamp": [
+          "oklch(15.00% 0.02025 257.47)",
+          "oklch(26.43% 0.02025 257.47)",
+          "oklch(37.86% 0.02025 257.47)",
+          "oklch(49.29% 0.02025 257.47)",
+          "oklch(60.71% 0.02025 257.47)",
+          "oklch(72.14% 0.02025 257.47)",
+          "oklch(83.57% 0.02025 257.47)",
+          "oklch(95.00% 0.02025 257.47)"
+        ]
+      },
+      "field-border": {
+        "role": "neutral",
+        "displayName": "Field Border",
+        "canonical": "#d5dfeb",
+        "tonalRamp": [
+          "oklch(15.00% 0.01968 252.89)",
+          "oklch(26.43% 0.01968 252.89)",
+          "oklch(37.86% 0.01968 252.89)",
+          "oklch(49.29% 0.01968 252.89)",
+          "oklch(60.71% 0.01968 252.89)",
+          "oklch(72.14% 0.01968 252.89)",
+          "oklch(83.57% 0.01968 252.89)",
+          "oklch(95.00% 0.01968 252.89)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus Blue",
+        "canonical": "#8aaffc",
+        "tonalRamp": [
+          "oklch(15.00% 0.11868 264.14)",
+          "oklch(26.43% 0.11868 264.14)",
+          "oklch(37.86% 0.11868 264.14)",
+          "oklch(49.29% 0.11868 264.14)",
+          "oklch(60.71% 0.11868 264.14)",
+          "oklch(72.14% 0.11868 264.14)",
+          "oklch(83.57% 0.11868 264.14)",
+          "oklch(95.00% 0.11868 264.14)"
+        ]
+      },
+      "neutral-state": {
+        "role": "neutral",
+        "displayName": "Neutral State Surface",
+        "canonical": "#f1f4f8",
+        "tonalRamp": [
+          "oklch(15.00% 0.00624 255.48)",
+          "oklch(26.43% 0.00624 255.48)",
+          "oklch(37.86% 0.00624 255.48)",
+          "oklch(49.29% 0.00624 255.48)",
+          "oklch(60.71% 0.00624 255.48)",
+          "oklch(72.14% 0.00624 255.48)",
+          "oklch(83.57% 0.00624 255.48)",
+          "oklch(95.00% 0.00624 255.48)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page Headline",
+        "purpose": "Page title; 23px on narrow screens."
+      },
+      "title": {
+        "displayName": "Panel Title",
+        "purpose": "Compact section hierarchy."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Root reading size and service names; no global line-height token."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Desktop labeled buttons."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Compact functional states, labels and table data."
+      },
+      "detail": {
+        "displayName": "Detail",
+        "purpose": "Supporting descriptions and explanatory copy."
+      },
+      "code": {
+        "displayName": "Command",
+        "purpose": "Inline command fragments; address rows use SUIT."
+      }
+    },
+    "shadows": [
+      {
+        "name": "confirmation",
+        "value": "0 15px 70px #15203030",
+        "purpose": "Temporary foreground confirmation dialog."
+      },
+      {
+        "name": "toast",
+        "value": "0 8px 24px #20314b25",
+        "purpose": "Fixed transient feedback."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "background .16s ease,color .16s ease,border-color .16s ease",
+        "purpose": "Button feedback; disabled under reduced-motion preference."
+      },
+      {
+        "name": "working-indicator",
+        "value": "working 1s linear infinite",
+        "purpose": "Indeterminate rotation to 360deg; stopped under reduced-motion preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "760px"
+      },
+      {
+        "name": "intermediate",
+        "value": "1100px"
+      },
+      {
+        "name": "wide",
+        "value": "1600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Compact labeled action with the shipped hover, focus and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">설정 시작</button>",
+      "css": ".ds-button-primary{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;min-height:36px;padding:8px 13px;border-radius:var(--radius,8px);border:1px solid #d8e1ee;background:#fff;color:#34455f;font-size:13px;font-weight:580;line-height:1.35;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;background:var(--blue,#2563eb);border-color:var(--blue,#2563eb);color:#fff;}.ds-button-primary:hover:not(:disabled){background:#1d4ed8;border-color:#1d4ed8;}.ds-button-primary:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}.ds-button-primary:disabled{opacity:.45;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Compact labeled action with the shipped hover, focus and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">노출 점검 실행</button>",
+      "css": ".ds-button-secondary{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;min-height:36px;padding:8px 13px;border-radius:var(--radius,8px);border:1px solid #d8e1ee;background:#fff;color:#34455f;font-size:13px;font-weight:580;line-height:1.35;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;color:#2457b1;border-color:#d3dff4;}.ds-button-secondary:hover:not(:disabled){background:#f3f6fb;border-color:#b9c9e0;}.ds-button-secondary:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}.ds-button-secondary:disabled{opacity:.45;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none}}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Compact labeled action with the shipped hover, focus and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-quiet\">관리</button>",
+      "css": ".ds-button-quiet{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;min-height:36px;padding:8px 13px;border-radius:var(--radius,8px);border:1px solid #d8e1ee;background:#fff;color:#34455f;font-size:13px;font-weight:580;line-height:1.35;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;background:transparent;}.ds-button-quiet:hover:not(:disabled){background:#f3f6fb;border-color:#b9c9e0;}.ds-button-quiet:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}.ds-button-quiet:disabled{opacity:.45;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button-quiet{transition:none}}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Compact labeled action with the shipped hover, focus and disabled treatments.",
+      "html": "<button type=\"button\" class=\"ds-button-danger\">보호 끄기</button>",
+      "css": ".ds-button-danger{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;min-height:36px;padding:8px 13px;border-radius:var(--radius,8px);border:1px solid #d8e1ee;background:#fff;color:#34455f;font-size:13px;font-weight:580;line-height:1.35;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;color:var(--red,#c02d42);border-color:#efc5cd;}.ds-button-danger:hover:not(:disabled){background:#fff0f2;}.ds-button-danger:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}.ds-button-danger:disabled{opacity:.45;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button-danger{transition:none}}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Local exposure search by address, port or executable.",
+      "html": "<label class=\"ds-search\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15.5 15.5 21 21 M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z\"/></svg><input class=\"ds-search-input\" type=\"search\" placeholder=\"주소, 포트, 실행 프로그램 검색\" aria-label=\"포트 목록 검색\"></label>",
+      "css": ".ds-icon{width:18px;height:18px;flex-shrink:0;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}.ds-search{width:300px;max-width:100%;position:relative;display:flex;align-items:center}.ds-search>.ds-icon{position:absolute;left:11px;width:16px;height:16px;color:#687b98;pointer-events:none}.ds-search-input{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:100%;min-width:0;border:1px solid #d5dfeb;border-radius:7px;padding:10px 11px 10px 36px;background:#fbfcfe;color:#21324c;font-size:12px;line-height:1.45;caret-color:var(--blue,#2563eb)}.ds-search-input::placeholder{color:#607089}.ds-search-input:focus{outline:2px solid #9dbcfb;outline-offset:1px;border-color:#2563eb}"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "refersTo": "nav-selected",
+      "description": "Pale selected destination with authored outline icon and current-page semantics.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"주 메뉴\"><button class=\"ds-nav-item\" aria-current=\"page\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 3.5h6v5H9z M3.5 15.5h6v5h-6z M14.5 15.5h6v5h-6z M12 8.5v4 M6.5 15.5v-3h11v3\"/></svg>노출 점검</button><button class=\"ds-nav-item\">작업 기록</button></nav>",
+      "css": ".ds-icon{width:18px;height:18px;flex-shrink:0;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}.ds-nav{display:flex;flex-direction:column;gap:5px;max-width:172px}.ds-nav-item{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:42px;border:0;border-radius:8px;padding:11px 13px;text-align:left;display:flex;gap:11px;align-items:center;color:#52617a;background:transparent;font-size:13px;font-weight:570;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-nav-item:hover{background:#f0f3f8;color:#18253b}.ds-nav-item[aria-current=page]{background:#edf3ff;color:#2058c7}.ds-nav-item:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-nav-item{transition:none}}"
+    },
+    {
+      "name": "Review State Badge",
+      "kind": "chip",
+      "refersTo": "state-warning",
+      "description": "Informational state; wording and dot communicate the state together.",
+      "html": "<span class=\"ds-state\"><i class=\"ds-dot\"></i>공개 범위 검토</span>",
+      "css": ".ds-state{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;gap:6px;align-items:center;font-size:12px;font-weight:600;white-space:nowrap;padding:5px 8px;border-radius:6px;background:#fff4da;color:#885600;line-height:1.3}.ds-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}"
+    },
+    {
+      "name": "Working Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Flat bordered container with a shared inset and section title.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-panel-heading\"><h2 class=\"ds-panel-title\">보호 기능</h2><p class=\"ds-panel-description\">켜짐 여부와 실제 동작 확인을 구분해서 표시해요.</p></div></section>",
+      "css": ".ds-panel{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;border:1px solid var(--line,#e5eaf1);border-radius:12px;background:var(--surface,#fff);overflow:hidden;color:#18253b}.ds-panel-heading{padding:21px 24px 17px}.ds-panel-title{margin:0;letter-spacing:-.025em;font-size:16px;font-weight:680}.ds-panel-description{font-size:12px;margin:4px 0 0;line-height:1.6;color:var(--muted,#52617a)}"
+    },
+    {
+      "name": "Service Ledger Row",
+      "kind": "custom",
+      "description": "Aligned identity, evidence, state and management action; actions wrap below identity on narrow screens.",
+      "html": "<div class=\"ds-service\"><span class=\"ds-service-symbol\"><svg class=\"ds-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M14.5 3.5a6 6 0 1 1-5.8 7.5L3 16.5V21h4v-3h3v-3l1.4-1.4 M16.5 7.5h.01\"/></svg></span><div class=\"ds-service-info\"><strong>SSH 접속 보호</strong><p>SSH 포트의 탐지·차단을 확인했어요.</p></div><span class=\"ds-state ds-state-good\"><i class=\"ds-dot\"></i>동작 확인</span><div class=\"ds-service-actions\"><button class=\"ds-button-quiet\" type=\"button\">관리</button></div></div>",
+      "css": ".ds-icon{width:18px;height:18px;flex-shrink:0;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}.ds-state{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;gap:6px;align-items:center;font-size:12px;font-weight:600;white-space:nowrap;padding:5px 8px;border-radius:6px;background:#fff4da;color:#885600;line-height:1.3}.ds-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}.ds-button-quiet{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;min-height:36px;padding:8px 13px;border-radius:var(--radius,8px);border:1px solid #d8e1ee;background:#fff;color:#34455f;font-size:13px;font-weight:580;line-height:1.35;cursor:pointer;transition:background .16s ease,color .16s ease,border-color .16s ease;background:transparent}.ds-button-quiet:hover{background:#f3f6fb;border-color:#b9c9e0}.ds-button-quiet:focus-visible{outline:3px solid #8aaffc;outline-offset:3px}.ds-service{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;grid-template-columns:36px minmax(170px,1fr) auto auto;align-items:center;gap:16px;padding:20px 24px;border-top:1px solid #edf0f5;background:#fff;color:#18253b;min-height:86px}.ds-service-symbol{width:34px;height:34px;border-radius:9px;background:#f2f5fa;color:#597195;display:grid;place-items:center}.ds-service-info strong{font-size:14px;font-weight:640}.ds-service-info p{font-size:12px;margin:5px 0 0;line-height:1.5;color:#52617a}.ds-service-actions{display:flex;justify-content:flex-end;min-width:105px}.ds-state-good{color:#08734f;background:#eaf8f1}@media(max-width:760px){.ds-service{grid-template-columns:29px minmax(0,1fr) auto;padding:18px;gap:9px 11px}.ds-service-actions{grid-column:2/4;justify-content:flex-start;min-width:0;padding-top:2px}.ds-service-info strong{font-size:13px}.ds-service-info p{word-break:keep-all;overflow-wrap:anywhere}.ds-service-symbol{width:29px;height:30px;border-radius:7px}}@media(prefers-reduced-motion:reduce){.ds-button-quiet{transition:none}}"
+    },
+    {
+      "name": "Exposure Evidence Table",
+      "kind": "custom",
+      "description": "Readable evidence rows with understated rules and focusable local horizontal scrolling.",
+      "html": "<div class=\"ds-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"포트와 실행 프로그램 표, 가로로 이동할 수 있음\"><table class=\"ds-table\"><thead><tr><th scope=\"col\">주소 · 포트</th><th scope=\"col\">프로토콜</th><th scope=\"col\">실행 프로그램</th><th scope=\"col\">접속 범위</th><th scope=\"col\">확인 사항</th></tr></thead><tbody><tr><td>0.0.0.0:5432</td><td>TCP</td><td>postgres</td><td>모든 인터페이스</td><td>공개 범위 검토</td></tr></tbody></table></div>",
+      "css": ".ds-table-scroll{overflow:auto;border-top:1px solid var(--line,#e5eaf1);scrollbar-color:#c1ccdb #f7f9fc;scrollbar-width:thin}.ds-table-scroll:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}.ds-table{font-family:SUIT,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;width:100%;border-collapse:collapse;white-space:nowrap;text-align:left;font-size:12px;background:#fff}.ds-table th{background:#f8fafd;color:#65748c;font-size:12px;font-weight:570;padding:12px 19px;border-bottom:1px solid var(--line,#e5eaf1)}.ds-table td{padding:14px 19px;border-bottom:1px solid #edf0f5;font-variant-numeric:tabular-nums;color:#40516b}.ds-table th:first-child,.ds-table td:first-child{padding-left:24px}.ds-table tbody tr:last-child td{border-bottom:0}.ds-table tbody tr:hover{background:#fafcfe}@media(max-width:760px){.ds-table{min-width:630px}.ds-table th:first-child,.ds-table td:first-child{padding-left:18px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Operating Ledger",
+    "overview": "Quiet Guard uses restrained blue, white working surfaces and compact Korean labels to make a server's condition readable. Its operating-handover structure presents current condition before outstanding work. Repeated service rows keep service identity, evidence, status and action aligned, while diagnostic detail stays folded until requested.\n\nThis is a code-led record of the implemented Operate surface, not a claim of user-approved brand language. The Quiet family commitments are clear Korean labels, restrained blue accents and compact operational screens. The preliminary direction considered a service timetable, audit note, editorial daily brief, emergency contact sheet, operations handover, library ledger and inspection checklist; operations handover was the assigned fifth direction (seed reference: `seed:ef34ddc9d4fa4098`). Its challenger studies contributed evidence separation, stable alignment and a small semantic legend, without adopting their decorative motifs.",
+    "keyCharacteristics": [
+      "Calm, compact rows with exact service names and visible actions.",
+      "Independent protection and risk summaries; evidence determines state.",
+      "Flat white surfaces, light rules and restrained semantic color.",
+      "Self-hosted Korean typography and authored SVG icons."
+    ],
+    "rules": [
+      {
+        "name": "The Evidence Color Rule",
+        "body": "Green follows verified evidence or successful work. Unknown, disconnected and stale conditions use neutral or amber state treatments with explicit text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable Detail Rule",
+        "body": "Use the label/detail step for compact functional text. Counts, addresses, timestamps and table values use tabular numerals where the source establishes them.",
+        "section": "typography"
+      },
+      {
+        "name": "The Working Surface Rule",
+        "body": "Keep working panels flat; reserve the implemented shadow vocabulary for temporary foreground feedback.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use semantic color together with explicit state wording and evidence scope.",
+      "**Do** preserve aligned service rows, compact controls and readable functional detail.",
+      "**Do** use self-hosted SUIT and inline outline SVGs for the working interface.",
+      "**Do** keep wide data locally scrollable and expose its scroll cue on narrow screens.",
+      "**Do** retain visible keyboard focus and respect reduced-motion preferences."
+    ],
+    "donts": [
+      "**Don't** let an unknown, stale or disconnected condition retain a green live indicator.",
+      "**Don't** imply complete protection from enabled software or local binding evidence.",
+      "**Don't** add decorative shadows to the flat working panels.",
+      "**Don't** load third-party fonts or analytics into the management surface."
+    ]
+  }
+}

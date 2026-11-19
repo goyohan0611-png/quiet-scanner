@@ -1,0 +1,33 @@
+name: Quiet Guard foundation
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/**']
+    paths: ['src/**', 'scripts/**', 'tests/**', 'systemd/**', 'vendor/**', 'Cargo.*', '.github/workflows/foundation.yml']
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Standalone Rust tests and checks
+        run: |
+          cargo fmt --manifest-path Cargo.toml --check
+          cargo test --manifest-path Cargo.toml --locked
+          cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
+          cargo build --manifest-path Cargo.toml --locked
+          python3 tests/test_signatures.py target/debug/quiet-guard
+      - name: Real signed install, update, rollback and removal
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_foundation.sh target/debug/quiet-guard
+      - name: Load a frozen rules snapshot with the actual CrowdSec engine
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_rules_snapshot.sh target/debug/quiet-guard
+      - name: Real SSH detection, scoped blocking, exceptions, failure handling and teardown
+        env:
+          QUIET_GUARD_DISPOSABLE_VM: YES
+        run: sudo --preserve-env=QUIET_GUARD_DISPOSABLE_VM bash tests/test_ssh.sh target/debug/quiet-guard

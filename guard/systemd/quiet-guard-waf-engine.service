@@ -1,0 +1,25 @@
+# Managed by Quiet Guard WAF v1
+[Unit]
+Description=Quiet Guard isolated web request inspection engine
+After=network.target
+[Service]
+ExecStart=/usr/bin/crowdsec -c /etc/quiet-guard/waf/config.yaml
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/quiet-guard/waf
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+# Managed by Quiet Guard SSH v1
+[Unit]
+Description=Quiet Guard SSH-only firewall enforcer
+Wants=quiet-guard-ssh-engine.service
+After=quiet-guard-ssh-engine.service network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/quiet-guard/quiet-guard ssh-enforcer
+ExecStopPost=/usr/local/lib/quiet-guard/quiet-guard ssh-enforcer-cleanup
+LoadCredential=policy:/etc/quiet-guard/ssh/policy.json
+LoadCredential=api.curl:/etc/quiet-guard/ssh/api.curl
+RuntimeDirectory=quiet-guard-ssh
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=restart
+UMask=0022
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+IPAddressDeny=any
+IPAddressAllow=localhost
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
