@@ -9,6 +9,25 @@ cargo build --manifest-path Cargo.toml --release --locked
 
 GUI·Tauri·Python 패킷 처리·Npcap에 의존하지 않는다. Ubuntu x86_64가 첫 설치 대상이다. Windows에서는 서명·정책·스냅샷 검증 도구를 시험할 수 있지만 Linux 상주 서비스를 실행하지 않는다.
 
+## 운영체제 지원 목표와 현재 검증 범위
+
+가능한 많은 서버에서 같은 설치·관리 경험을 제공하는 것이 목표다. 아래의 지원 목표와 현재 동작 검증을 구분한다.
+
+| 환경 | 현재 검증 | 추가 구현·검증 대상 |
+| --- | --- | --- |
+| Ubuntu 24.04 x86_64 | 개발판의 설치·제거, SSH 보호, 제한된 Nginx WAF, 노출 점검, 관리 화면 통합 시험 | 실제 운영 환경 점검과 안정화 |
+| Debian | 보호 서비스 미검증 | 패키지·Nginx·서비스 구성 및 복구 시험 |
+| RHEL·Rocky Linux·AlmaLinux | 보호 서비스 미구현·미검증 | RPM 패키지 설치, SELinux, 방화벽 공존, 로그 수집과 복구 |
+| Windows Server | 공통 정책·서명 검증 도구의 Windows 시험만 수행; Windows 서버 보호 서비스 미구현·미검증 | Windows 서비스, 이벤트 로그, RDP 로그인 공격 탐지, Windows Firewall, 포트·프로세스 점검, IIS 검사 설계 |
+
+Ubuntu 외 운영체제의 지원 버전·아키텍처는 시험 후 확정한다. Amazon Linux도 독립적인 추가 검증 후보로 다룬다. 배포판 계열이 같다는 이유로 전체 호환을 약속하지 않는다.
+
+공통 Rust 정책·상태 모델과 관리 화면을 재사용하고, 설치·서비스·로그·방화벽·권한 통신·노출 수집은 운영체제별 연결부로 나누는 방향이다. Windows용 컴파일 성공이나 관리 화면 표시만으로 서버 보호 지원을 선언하지 않는다. Linux의 Nginx 본문 검사와 Windows의 IIS 요청 필터링은 검증 범위가 다르므로 같은 WAF 기능으로 표시하지 않는다.
+
+플랫폼 확장은 **설치·진단·안전한 제거 → 로그 수집·탐지 → 제한된 차단·해제와 실제 규칙 확인 → 웹 검사 검증** 순서로 진행한다. 단계별로 지원·미지원·미검증 기능을 표시한다. 차단 전에는 관리자 접속 유지, 허용 범위, 만료, 서비스 중단 후 처리와 기존 설정 보존을 확인한다. 서버에 프로그램을 설치할 권한이 없는 관리형 환경은 별도 연동 검토 대상이다.
+
+Windows 설계 참고: [로그인 실패 이벤트 4625](https://learn.microsoft.com/windows/security/threat-protection/auditing/event-4625), [Windows Firewall](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/), [IIS 요청 필터링](https://learn.microsoft.com/en-us/iis/configuration/system.webServer/security/requestFiltering/). 이벤트 하나만으로 출발지나 RDP 공격을 단정하지 않고 실제 감사 설정·접속 경로를 확인해야 한다.
+
 ## 서명된 설치 묶음
 
 ```sh

@@ -14,7 +14,7 @@ Existing Rust agent and controllers. The management surface uses embedded HTML/C
 
 ## Users
 
-Solo and small-service developers operating their own Ubuntu server. They need to understand protection state, act on a small set of findings, and recover from configuration failures without becoming security specialists.
+Solo and small-service developers operating servers they can administer. The product target includes Ubuntu/Debian, RHEL-compatible distributions and Windows Server. They need to understand protection state, act on a small set of findings, and recover from configuration failures without becoming security specialists.
 
 ## Product Purpose
 
@@ -23,6 +23,12 @@ Connect setup, SSH protection, web request inspection, exposure review and recov
 ## Operating Context
 
 Ubuntu 24.04 x86_64 first. Existing SSH and Nginx services must be preserved. WAF currently supports a limited apt Nginx HTTP/1.x direct-access profile. Actual external verification is a separate operation; exposure evidence remains operator-supplied.
+
+The user explicitly wants broad server applicability, including Red Hat-family systems and Windows Server. This is a support goal, not evidence of existing compatibility. Debian, RHEL, Rocky Linux, AlmaLinux and Windows Server require separate installation, protection and recovery verification; their supported versions and architectures are not yet committed. Amazon Linux is an additional candidate requiring its own qualification rather than inferred RHEL compatibility.
+
+Keep the Rust policy/state model, management API contract and interface reusable. Isolate package management, service supervision, authentication-log collection, privileged IPC, exposure inventory and firewall enforcement behind platform-specific implementations. Windows Server needs native service/event-log/firewall integration, RDP-specific evidence evaluation and a separate IIS/web-inspection design. The current Linux Nginx implementation does not establish Windows WAF support.
+
+Qualification is per operating-system version, architecture and feature. A successful build or open management screen does not establish protection support. Unsupported or unverified capabilities must stay explicit; automatic blocking requires proven management-access exceptions, finite decisions, read-back and safe removal. Deployments require authority to install and run a host agent; managed environments without that control need a separate integration design.
 
 ## Capabilities and Constraints
 
@@ -43,3 +49,4 @@ README.md documents implemented scope. The Ubuntu CI covers signed deployment, S
 - Preserve existing configuration and offer explicit recovery controls.
 - Use existing security engines honestly and identify their operational limits.
 - Default management access to local authenticated operation.
+- Expand platform coverage through verified feature support, shared management and native platform adapters.
